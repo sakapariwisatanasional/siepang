@@ -50,6 +50,7 @@ import {
   Menu,
 } from 'lucide-react';
 import { eventService } from '../../services/eventService';
+import { bootstrapService } from '../../services/bootstrapService';
 import { documentationService } from '../../services/documentationService';
 import { bannerSponsorService } from '../../services/bannerSponsorService';
 import { featureControlService } from '../../services/featureControlService';
@@ -97,6 +98,28 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
   const [activeVideoModal, setActiveVideoModal] = useState<MediaItem | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [officialCompetitions, setOfficialCompetitions] = useState<Array<{id:string;title:string;category:string;scheduleTime:string;location:string}>>([]);
+  const [competitionLoading, setCompetitionLoading] = useState(true);
+  const [competitionError, setCompetitionError] = useState('');
+  const refreshOfficialCompetitions = async () => {
+    setCompetitionLoading(true);
+    setCompetitionError('');
+    try {
+      const backend = bootstrapService.getBackendUrl();
+      if (!backend) throw new Error('URL GAS belum tersedia.');
+      const endpoint = new URL(backend);
+      endpoint.searchParams.set('action','competitions.public.list');
+      const response = await fetch(endpoint.toString(), {method:'GET',redirect:'follow'});
+      if (!response.ok) throw new Error(`Server merespons ${response.status}`);
+      const result = await response.json();
+      if (!result.ok || !Array.isArray(result.data?.competitions)) throw new Error(result.error?.message || 'Format daftar lomba tidak valid.');
+      setOfficialCompetitions(result.data.competitions);
+    } catch (e: any) {
+      setCompetitionError(e?.message || 'Informasi lomba belum dapat dimuat.');
+    } finally {setCompetitionLoading(false);}
+  };
+  useEffect(() => {void refreshOfficialCompetitions();}, []);
+
 
   // Certificate Verification Form State
   const [certQuery, setCertQuery] = useState('');
@@ -1370,6 +1393,24 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               )}
             </div>
           )}
+
+          {/* Mata lomba hanya ditampilkan jika sudah disahkan panitia di Spreadsheet. */}
+          <section className="mb-8 rounded-3xl bg-white dark:bg-[#141418] border border-slate-200 dark:border-white/10 p-5 sm:p-6 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="font-bold text-lg flex items-center gap-2"><Trophy className="w-5 h-5 text-amber-500"/> Mata Lomba Resmi</h2>
+              <button type="button" onClick={() => void refreshOfficialCompetitions()} className="rounded-lg px-3 py-2 text-sm bg-slate-100 dark:bg-white/10">Muat Ulang</button>
+            </div>
+            {competitionLoading ? <p className="text-sm text-slate-500">Memuat mata lomba resmi…</p>
+              : competitionError ? <p role="alert" className="text-sm text-rose-600">{competitionError}</p>
+              : officialCompetitions.length === 0 ? <p className="text-sm text-slate-500">Belum ada mata lomba yang diresmikan panitia.</p>
+              : <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{officialCompetitions.map(comp => (
+                <div key={comp.id} className="rounded-2xl bg-slate-50 dark:bg-white/5 p-4 border border-slate-200 dark:border-white/10">
+                  <div className="font-bold">{comp.title}</div>
+                  <div className="text-xs text-emerald-600 font-semibold mt-1">✓ Resmi · {comp.category}</div>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 mt-2">{comp.scheduleTime} · {comp.location}</p>
+                </div>
+              ))}</div>}
+          </section>
 
           {/* DYNAMIC ORDERED PORTAL SECTIONS */}
           <div className="space-y-10">
