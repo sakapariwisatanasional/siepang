@@ -160,35 +160,10 @@ export const RegistrationContingentEditor: React.FC = () => {
     }
   };
 
+  // Kontingen lama bukan Gudep event. Pembuatan lokal tidak tersimpan di GAS.
   const handleCreateContingent = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newContingentForm.name) return;
-    try {
-      const created = participantService.createContingent({
-        name: newContingentForm.name,
-        leaderName: newContingentForm.leaderName,
-        leaderPhone: newContingentForm.leaderPhone,
-        quota: newContingentForm.quota,
-        region: newContingentForm.region,
-        campZone: newContingentForm.campZone,
-        subCamp: newContingentForm.subCamp,
-        campsite_assignment: newContingentForm.subCamp,
-      });
-      setContingents([...participantService.getContingents()]);
-      setShowAddContingentModal(false);
-      setNewContingentForm({
-        name: '',
-        leaderName: '',
-        leaderPhone: '',
-        quota: 32,
-        region: '',
-        campZone: 'Zona A (Putra)',
-        subCamp: 'Kavling A-01',
-      });
-      showToast(`✅ Kontingen '${created.name}' berhasil didaftarkan!`);
-    } catch (err: any) {
-      showToast(`❌ Gagal: ${err.message}`);
-    }
+    showToast('⚠️ Registrasi kontingen lama dinonaktifkan: tidak tersimpan di GAS. Buat Gudep melalui modul registrasi Gudep.');
   };
 
   return (
