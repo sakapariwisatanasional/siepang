@@ -2,8 +2,8 @@
  * SiEpang — Klien Gudep Tahap 2 untuk registrasi hybrid.
  * File BARU: src/services/gudepRegistrationService.ts
  * Tidak memberi hak akses pada sisi klien. Seluruh validasi izin dilakukan GAS.
- * Penyimpanan peserta BARU belum tersedia di API Tahap 2; jangan melakukan
- * participants.create lalu gudep.participant.link secara terpisah untuk operator.
+ * Tahap 5: registrasi peserta BARU melalui gudep.participant.register di GAS.
+ * Jangan memanggil participants.create + gudep.participant.link secara terpisah.
  */
 import { apiTransport } from './apiTransport';
 
@@ -47,6 +47,13 @@ export const gudepRegistrationService = {
     request_key: string; gudep_id: string; full_name: string;
     gender?: string; phone?: string; email?: string;
   }) => send<{ advisor: GudepAdvisor; alreadyExists?: boolean }>('gudep.advisor.create', data),
+  registerParticipant: (data: {
+    request_key: string; gudep_id: string; regu_id: string;
+    name: string; gender: 'M' | 'F'; role?: string;
+    membershipNumber?: string; email?: string; phone?: string;
+    profile_photo_file_id?: string; profile_photo_url?: string;
+  }) => send<{ participant: { id: string }; link: { id: string; gudep_id: string; regu_id: string; participant_id: string }; alreadyExists?: boolean }>(
+    'gudep.participant.register', data),
   linkExistingParticipant: (data: { gudep_id: string; regu_id: string; participant_id: string }) =>
     send<{ link: { id: string; gudep_id: string; regu_id: string; participant_id: string }; alreadyExists?: boolean }>(
       'gudep.participant.link', data),
