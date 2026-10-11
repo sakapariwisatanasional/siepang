@@ -210,18 +210,63 @@ html.dark body { background-color: #0F211D; color: #EAF4ED; }
 html.dark select { color-scheme: dark; }
 html.dark select option { color: #F3FAF6 !important; background: #20342D !important; }
 
-/* Always-visible theme choice, including unauthenticated portal and registration. */
-.scout-theme-toggle {
-  position: fixed; right: 16px; bottom: 86px; z-index: 200;
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  min-height: 43px; padding: 10px 15px; border-radius: 999px;
-  background: #FFFFFF; color: #176348; border: 1px solid #CFE4D6;
-  font: 700 12px/1.2 var(--font-sans); box-shadow: 0 5px 24px rgb(20 80 57 / 17%);
-  cursor: pointer; transition: background .2s, transform .2s, box-shadow .2s;
+
+/* ==========================================================================
+   SiEpang | High contrast forms (light and dark), mobile accessibility
+   All native form controls share explicit readable foreground/background.
+   Existing component-specific Tailwind backgrounds remain intact where set.
+   ========================================================================== */
+:root {
+  --siepang-field-ink: #172B26;
+  --siepang-field-placeholder: #5F716D;
+  --siepang-field-surface: #FFFFFF;
+  --siepang-field-outline: #81938E;
 }
-.scout-theme-toggle:hover { background: #E8F6E9; transform: translateY(-2px); }
-.scout-theme-toggle:focus-visible { outline: 3px solid #F4A53A; outline-offset: 3px; }
-html.dark .scout-theme-toggle { background: #203A30; color: #FFF6DE; border-color: #426B56; }
-html.dark .scout-theme-toggle:hover { background: #2B5040; }
-@media (min-width: 768px) { .scout-theme-toggle { bottom: 22px; right: 24px; } }
-@media (prefers-reduced-motion: reduce) { .scout-theme-toggle { transition: none; } }
+html.dark {
+  --siepang-field-ink: #F8FAFC;
+  --siepang-field-placeholder: #BCC9D2;
+  --siepang-field-surface: #1D2932;
+  --siepang-field-outline: #708394;
+}
+/* :where keeps this rule low-specificity so explicitly styled controls win. */
+:where(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]), select, textarea) {
+  font-size: max(16px, 1em);
+  color: var(--siepang-field-ink);
+  caret-color: currentColor;
+}
+:where(input, textarea)::placeholder {
+  color: var(--siepang-field-placeholder);
+  opacity: 1;
+}
+/* Override old globally-forced light ink on native fields in dark theme. */
+html.dark input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),
+html.dark select, html.dark textarea {
+  color: var(--siepang-field-ink);
+  caret-color: var(--siepang-field-ink);
+}
+html.dark input::placeholder, html.dark textarea::placeholder {
+  color: var(--siepang-field-placeholder);
+}
+/* Keep CSS controls readable when their background is not explicitly themed. */
+html.dark input:not([class*="bg-"]):not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]),
+html.dark select:not([class*="bg-"]), html.dark textarea:not([class*="bg-"]) {
+  background-color: var(--siepang-field-surface);
+  border-color: var(--siepang-field-outline);
+}
+html.dark select option, html.dark select optgroup {
+  background: #1D2932 !important;
+  color: #F8FAFC !important;
+}
+html:not(.dark) select option, html:not(.dark) select optgroup {
+  background: #FFFFFF !important;
+  color: #172B26 !important;
+}
+html.dark input:disabled, html.dark select:disabled, html.dark textarea:disabled {
+  color: #BDCAD3;
+  opacity: .74;
+}
+@media (max-width: 767px) {
+  :where(input:not([type=checkbox]):not([type=radio]), select, textarea) {
+    font-size: 16px;
+  }
+}
