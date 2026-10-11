@@ -6,6 +6,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, RefreshCw, School, Users, AlertCircle } from 'lucide-react';
 import { gudepRegistrationService, GudepRecord, GudepRegu } from '../../services/gudepRegistrationService';
+import { GudepQrPanel } from './GudepQrPanel';
 
 const newKey = (): string => `form_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
 const inputClass = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-emerald-500 dark:border-white/15 dark:bg-white/5 dark:text-white';
@@ -209,6 +210,7 @@ export const GudepReguManager: React.FC = () => {
       {selected.verification_status === 'REJECTED' && <p className="rounded-xl bg-rose-50 p-3 text-xs text-rose-900 dark:bg-rose-950/20 dark:text-rose-200">Pengajuan ditolak. Data tidak dihapus.</p>}
       {selected.verification_status === 'REVISION' && <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">Pengajuan dikembalikan ke DRAFT untuk perbaikan. Fungsi edit data memerlukan endpoint update GAS yang belum tersedia.</p>}
     </section>}
+    {selected && <GudepQrPanel key={selected.gudep_id} gudepId={selected.gudep_id} gudepName={selected.gudep_name} />}
     {selected && <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#141418] space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white"><Users className="w-5 h-5 text-emerald-600"/> Regu pada {selected.gudep_name}</div><p className="text-xs text-slate-500">Regu terhubung dengan Gudep yang dipilih. Kuota ditentukan per regu.</p></div><button type="button" onClick={() => setAddRegu(v => !v)} disabled={busy || locked} className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Plus className="inline w-4 h-4 mr-1" /> Tambah Regu</button></div>
       {locked && <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">Gudep sudah diajukan atau diverifikasi. Perubahan regu terkunci oleh aturan backend.</p>}
