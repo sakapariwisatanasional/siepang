@@ -26,6 +26,7 @@ export const GudepReguManager: React.FC = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [decisionNotes, setDecisionNotes] = useState('');
   const gudepKey = useRef(newKey());
   const reguKey = useRef(newKey());
   const detailRequest = useRef(0);
@@ -80,6 +81,34 @@ export const GudepReguManager: React.FC = () => {
     } catch (err: any) { setError(err?.message || 'Penyimpanan regu gagal.'); }
     finally { setBusy(false); }
   };
+  const submitGudep = async () => {
+    if (busy || !selectedId) return;
+    if (!window.confirm('Ajukan Gudep ini ke Admin untuk verifikasi? Setelah diajukan, data terkunci sampai keputusan Admin.')) return;
+    setBusy(true); setError(''); setMessage('');
+    try {
+      await gudepRegistrationService.submit(selectedId);
+      await load(selectedId);
+      setMessage('Pengajuan Gudep berhasil disimpan ke GAS. Status: SUBMITTED.');
+    } catch (e: any) { setError(e?.message || 'Gagal mengajukan Gudep.'); }
+    finally { setBusy(false); }
+  };
+
+  const decideGudep = async (decision: 'VERIFIED' | 'REVISION' | 'REJECTED') => {
+    if (busy || !selectedId) return;
+    const note = decisionNotes.trim();
+    if (decision !== 'VERIFIED' && !note) { setError('Alasan perbaikan atau penolakan wajib diisi.'); return; }
+    const label = decision === 'VERIFIED' ? 'Setujui' : decision === 'REVISION' ? 'Minta revisi' : 'Tolak';
+    if (!window.confirm(`${label} pendaftaran Gudep ini?`)) return;
+    setBusy(true); setError(''); setMessage('');
+    try {
+      await gudepRegistrationService.verify(selectedId, decision, note);
+      setDecisionNotes('');
+      await load(selectedId);
+      setMessage(`Keputusan ${decision} berhasil disimpan ke GAS.`);
+    } catch (e: any) { setError(e?.message || 'Gagal menyimpan keputusan verifikasi.'); }
+    finally { setBusy(false); }
+  };
+
   const selected = gudep.find(g => g.gudep_id === selectedId);
   const locked = selected?.registration_status === 'SUBMITTED' || selected?.verification_status === 'VERIFIED';
 
@@ -111,6 +140,26 @@ export const GudepReguManager: React.FC = () => {
       </form>}
       {loading ? <p className="text-sm text-slate-500">Memuat Gugus Depan dari GAS…</p> : gudep.length === 0 ? <p className="text-sm text-slate-500">Belum ada Gudep yang dapat diakses akun ini. Buat Gudep sebagai Admin berwenang.</p> : <div className="grid gap-2 sm:grid-cols-2">{gudep.map(g => <button key={g.gudep_id} type="button" onClick={() => {setSelectedId(g.gudep_id);setAddRegu(false);}} className={`rounded-xl border p-3 text-left transition ${selectedId === g.gudep_id ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/20' : 'border-slate-200 dark:border-white/10'}`}><span className="block font-bold text-sm text-slate-900 dark:text-white">{g.gudep_name}</span><span className="block text-xs text-slate-600 dark:text-slate-300">{g.gudep_number} · {g.institution_name || 'Pangkalan belum diisi'}</span><span className="block text-[11px] text-slate-500 mt-1">{g.registration_status} · {g.verification_status}</span></button>)}</div>}
     </div>
+    {selected && <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#141418] space-y-3" aria-label="Persetujuan pendaftaran Gudep">
+      <h3 className="text-sm font-bold text-slate-900 dark:text-white">Pengajuan & Persetujuan Gudep</h3>
+      <p className="text-xs text-slate-600 dark:text-slate-300">Status pengajuan: <strong>{selected.registration_status}</strong> · Verifikasi: <strong>{selected.verification_status}</strong></p>
+      {selected.registration_status === 'DRAFT' && selected.verification_status !== 'VERIFIED' && selected.verification_status !== 'REJECTED' && <div className="space-y-2">
+        <p className="text-xs text-slate-600 dark:text-slate-300">Selesaikan minimal satu regu, kemudian kirim untuk diperiksa Admin.</p>
+        <button type="button" disabled={busy || regu.length === 0 || detailLoading} onClick={() => void submitGudep()} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-40">{busy ? 'Memproses…' : 'Ajukan ke Admin'}</button>
+      </div>}
+      {selected.registration_status === 'SUBMITTED' && selected.verification_status !== 'VERIFIED' && selected.verification_status !== 'REJECTED' && <div className="space-y-3">
+        <p className="text-xs text-slate-600 dark:text-slate-300">Keputusan hanya akan diterima jika akun memiliki izin Admin di backend GAS.</p>
+        <div><label className={labelClass}>Catatan verifikasi (wajib untuk Revisi/Tolak)</label><textarea rows={2} maxLength={1000} className={inputClass} value={decisionNotes} onChange={e => setDecisionNotes(e.target.value)} placeholder="Contoh: Nomor Gudep perlu diperbaiki" /></div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={busy} onClick={() => void decideGudep('VERIFIED')} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-40">Setujui / Verifikasi</button>
+          <button type="button" disabled={busy || !decisionNotes.trim()} onClick={() => void decideGudep('REVISION')} className="rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-slate-950 disabled:opacity-40">Minta Revisi</button>
+          <button type="button" disabled={busy || !decisionNotes.trim()} onClick={() => void decideGudep('REJECTED')} className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-40">Tolak</button>
+        </div>
+      </div>}
+      {selected.verification_status === 'VERIFIED' && <p className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-200">Gudep telah diverifikasi. Aktivasi operasional terpisah belum tersedia pada skema GAS sekarang; verifikasi bukan bukti bahwa aktivasi sudah dilakukan.</p>}
+      {selected.verification_status === 'REJECTED' && <p className="rounded-xl bg-rose-50 p-3 text-xs text-rose-900 dark:bg-rose-950/20 dark:text-rose-200">Pengajuan ditolak. Data tidak dihapus.</p>}
+      {selected.verification_status === 'REVISION' && <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">Pengajuan dikembalikan ke DRAFT untuk perbaikan. Fungsi edit data memerlukan endpoint update GAS yang belum tersedia.</p>}
+    </section>}
     {selected && <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#141418] space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white"><Users className="w-5 h-5 text-emerald-600"/> Regu pada {selected.gudep_name}</div><p className="text-xs text-slate-500">Regu terhubung dengan Gudep yang dipilih. Kuota ditentukan per regu.</p></div><button type="button" onClick={() => setAddRegu(v => !v)} disabled={busy || locked} className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Plus className="inline w-4 h-4 mr-1" /> Tambah Regu</button></div>
       {locked && <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">Gudep sudah diajukan atau diverifikasi. Perubahan regu terkunci oleh aturan backend.</p>}
