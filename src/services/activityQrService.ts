@@ -29,6 +29,7 @@ import { attendanceService } from './attendanceService';
 import { participantService } from './participantService';
 import { eventStudioService } from './eventStudioService';
 import { authService } from './authService';
+import { agendaAttendanceService } from './agendaAttendanceService';
 
 export interface ScanResult {
   success: boolean;
@@ -318,13 +319,22 @@ class ActivityQrService {
   /**
    * Helper scan method defaulting to active logged-in participant
    */
-  public async scanActivityQr(
-    tokenInput: string,
-    participantIdOrCode?: string
-  ): Promise<ScanResult> {
-    const user = authService.getCurrentUser();
-    const effectiveCode = participantIdOrCode || user?.participantCode || user?.id || '';
-    return this.processActivityScan(tokenInput, effectiveCode);
+  public async scanActivityQr(tokenInput: string, _participantIdOrCode?: string): Promise<ScanResult> {
+    // Production agenda attendance: ignore browser-supplied participant IDs.
+    // Legacy ACT_ / CP_ sample tokens do not authorize attendance or XP.
+    if (!/^AGENDA_[a-f0-9]{64}$/i.test(tokenInput.trim())) {
+      throw new Error('Gunakan QR agenda resmi yang diterbitkan panitia dari GAS.');
+    }
+    const result = await agendaAttendanceService.scan(tokenInput);
+    return {
+      success: true,
+      message: result.duplicate ? 'Kehadiran sudah tercatat. XP tidak ditambahkan lagi.' :
+        `Presensi berhasil. Anda memperoleh ${result.xp_awarded} XP.`,
+      activityTitle: result.activity_title,
+      xpAwarded: result.xp_awarded,
+      isDuplicate: result.duplicate,
+      attendanceRecorded: result.attendance_recorded,
+    };
   }
 
   /**
