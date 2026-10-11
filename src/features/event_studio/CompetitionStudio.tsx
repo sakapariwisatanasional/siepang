@@ -6,7 +6,7 @@
  * and comprehensive digital voting configuration.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Trophy,
   Sliders,
@@ -99,6 +99,24 @@ export const CompetitionStudio: React.FC = () => {
     isLocked: false,
   });
 
+  const [editingCompetitionId, setEditingCompetitionId] = useState<string | null>(null);
+  const [editingJudgeId, setEditingJudgeId] = useState<string | null>(null);
+  const [savingRecord, setSavingRecord] = useState(false);
+  const [loadingRecords, setLoadingRecords] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    eventStudioService.refreshCompetitionManagement()
+      .then(() => {
+        if (cancelled) return;
+        setCompetitions([...eventStudioService.getCompetitions()]);
+        setJudges([...eventStudioService.getJudges()]);
+      })
+      .catch(error => { if (!cancelled) showToast(`❌ Data GAS belum dimuat: ${error.message}`); })
+      .finally(() => { if (!cancelled) setLoadingRecords(false); });
+    return () => { cancelled = true; };
+  }, []);
+
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -134,30 +152,56 @@ export const CompetitionStudio: React.FC = () => {
     await eventStudioService.configureCriteria(updated);
   };
 
+  const refreshLists = async () => {
+    await eventStudioService.refreshCompetitionManagement();
+    setCompetitions([...eventStudioService.getCompetitions()]);
+    setJudges([...eventStudioService.getJudges()]);
+  };
+
   const handleSaveComp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!compForm.title) return;
+    if (!compForm.title.trim() || savingRecord) return;
+    setSavingRecord(true);
     try {
-      await eventStudioService.createCompetition(compForm);
-      setCompetitions([...eventStudioService.getCompetitions()]);
+      if (editingCompetitionId) await eventStudioService.updateCompetition(editingCompetitionId, compForm);
+      else await eventStudioService.createCompetition(compForm);
+      await refreshLists();
       setShowAddCompModal(false);
-      showToast('🏆 Cabang lomba baru berhasil diterbitkan!');
-    } catch (err: any) {
-      showToast(`❌ Gagal: ${err.message}`);
-    }
+      setEditingCompetitionId(null);
+      showToast('✅ Data lomba tersimpan dan terbaca kembali dari GAS.');
+    } catch (err: any) { showToast(`❌ Gagal: ${err.message}`); }
+    finally { setSavingRecord(false); }
   };
 
   const handleSaveJudge = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!judgeForm.name) return;
+    if (!judgeForm.name.trim() || savingRecord) return;
+    setSavingRecord(true);
     try {
-      await eventStudioService.assignJudges(judgeForm);
-      setJudges([...eventStudioService.getJudges()]);
+      if (editingJudgeId) await eventStudioService.updateJudge(editingJudgeId, judgeForm);
+      else await eventStudioService.assignJudges(judgeForm);
+      await refreshLists();
       setShowAddJudgeModal(false);
-      showToast('👨‍⚖️ Juri lomba resmi berhasil ditugaskan!');
-    } catch (err: any) {
-      showToast(`❌ Gagal: ${err.message}`);
-    }
+      setEditingJudgeId(null);
+      showToast('✅ Data juri tersimpan dan terbaca kembali dari GAS.');
+    } catch (err: any) { showToast(`❌ Gagal: ${err.message}`); }
+    finally { setSavingRecord(false); }
+  };
+
+  const handleArchiveCompetition = async (comp: Competition) => {
+    if (savingRecord || !window.confirm(`Arsipkan lomba "${comp.title}"? Data riwayat tidak dihapus secara fisik.`)) return;
+    setSavingRecord(true);
+    try { await eventStudioService.deleteCompetition(comp.id); await refreshLists(); showToast('✅ Lomba berhasil diarsipkan di GAS.'); }
+    catch (err: any) { showToast(`❌ Gagal arsip: ${err.message}`); }
+    finally { setSavingRecord(false); }
+  };
+
+  const handleArchiveJudge = async (judge: CompetitionJudge) => {
+    if (savingRecord || !window.confirm(`Arsipkan juri "${judge.name}"?`)) return;
+    setSavingRecord(true);
+    try { await eventStudioService.deleteJudge(judge.id); await refreshLists(); showToast('✅ Juri diarsipkan di GAS.'); }
+    catch (err: any) { showToast(`❌ Gagal arsip: ${err.message}`); }
+    finally { setSavingRecord(false); }
   };
 
   const handleToggleLock = async (judgeId: string) => {
@@ -220,7 +264,7 @@ export const CompetitionStudio: React.FC = () => {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowAddCompModal(true)}
+              onClick={() => { setEditingCompetitionId(null); setShowAddCompModal(true); }}
               className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-amber-500 hover:from-emerald-500 hover:to-amber-400 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
@@ -274,6 +318,14 @@ export const CompetitionStudio: React.FC = () => {
         </div>
       </div>
 
+      <div className="flex items-center justify-between px-2 pb-2 text-xs text-slate-500 dark:text-slate-400">
+        <span>{loadingRecords ? 'Memuat lomba dan juri dari GAS…' : 'Data lomba & juri dari GAS'}</span>
+        <button type="button" disabled={savingRecord || loadingRecords} onClick={() => {
+          setLoadingRecords(true);
+          void refreshLists().then(() => showToast('Data terbaru berhasil dimuat dari GAS.')).catch((e:any) => showToast(`❌ ${e.message}`)).finally(() => setLoadingRecords(false));
+        }} className="font-bold text-emerald-600 dark:text-emerald-400 disabled:opacity-50">Muat Ulang</button>
+      </div>
+
       {/* TAB 1: COMPETITION LIST */}
       {activeTab === 'competitions' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
@@ -295,6 +347,15 @@ export const CompetitionStudio: React.FC = () => {
                   <span>·</span>
                   <span>⏰ {comp.scheduleTime}</span>
                 </div>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button type="button" disabled={savingRecord} onClick={() => {
+                  setEditingCompetitionId(comp.id);
+                  setCompForm({ title: comp.title, category: comp.category, type: comp.type, scheduleTime: comp.scheduleTime, location: comp.location, maxEntriesPerContingent: comp.maxEntriesPerContingent, votingEnabled: comp.votingEnabled, juryWeight: comp.juryWeight, publicWeight: comp.publicWeight, status: comp.status });
+                  setShowAddCompModal(true);
+                }} className="px-3 py-2 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 text-xs font-bold flex items-center gap-1"><Edit2 className="w-3.5 h-3.5"/> Edit</button>
+                <button type="button" disabled={savingRecord} onClick={() => void handleArchiveCompetition(comp)} className="px-3 py-2 rounded-lg bg-rose-500/15 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center gap-1"><Trash2 className="w-3.5 h-3.5"/> Arsipkan</button>
               </div>
 
               <div className="p-2.5 rounded-2xl bg-[#FAFAFA] dark:bg-black/30 border border-[#ECECEF] dark:border-white/5 text-[11px] space-y-1.5">
@@ -443,7 +504,7 @@ export const CompetitionStudio: React.FC = () => {
               Daftar dewan juri resmi, penugasan cabang lomba, dan kontrol kunci skor akhir.
             </p>
             <button
-              onClick={() => setShowAddJudgeModal(true)}
+              onClick={() => { setEditingJudgeId(null); setShowAddJudgeModal(true); }}
               className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -470,6 +531,12 @@ export const CompetitionStudio: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <button type="button" disabled={savingRecord} onClick={() => {
+                    setEditingJudgeId(j.id);
+                    setJudgeForm({ name: j.name, email: j.email, phone: j.phone, assignedCompetitions: [...j.assignedCompetitions], categories: [...j.categories], isLocked: j.isLocked });
+                    setShowAddJudgeModal(true);
+                  }} className="px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-300 text-xs font-bold flex gap-1 items-center"><Edit2 className="w-3.5 h-3.5"/> Edit</button>
+                  <button type="button" disabled={savingRecord} onClick={() => void handleArchiveJudge(j)} className="px-3 py-1.5 rounded-xl bg-rose-500/15 text-rose-700 dark:text-rose-300 text-xs font-bold flex gap-1 items-center"><Trash2 className="w-3.5 h-3.5"/> Arsipkan</button>
                   <button
                     onClick={() => handleToggleLock(j.id)}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
@@ -938,7 +1005,7 @@ export const CompetitionStudio: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="w-full max-w-lg bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-[#171717] dark:text-white">+ Buat Cabang Lomba Baru</h3>
+              <h3 className="text-base font-bold text-[#171717] dark:text-white">{editingCompetitionId ? "Edit Cabang Lomba" : "+ Buat Cabang Lomba Baru"}</h3>
               <button onClick={() => setShowAddCompModal(false)} className="w-7 h-7 rounded-full bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 flex items-center justify-center">✕</button>
             </div>
 
@@ -1040,7 +1107,7 @@ export const CompetitionStudio: React.FC = () => {
 
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setShowAddCompModal(false)} className="px-4 py-2 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 rounded-xl font-semibold">Batal</button>
-                <button type="submit" className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold cursor-pointer">Simpan Lomba</button>
+                <button type="submit" className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold cursor-pointer">{savingRecord ? "Menyimpan…" : editingCompetitionId ? "Simpan Perubahan" : "Simpan Lomba"}</button>
               </div>
             </form>
           </div>
@@ -1052,7 +1119,7 @@ export const CompetitionStudio: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="w-full max-w-lg bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-[#171717] dark:text-white">+ Tambah Penilai / Juri Resmi</h3>
+              <h3 className="text-base font-bold text-[#171717] dark:text-white">{editingJudgeId ? "Edit Juri" : "+ Tambah Penilai / Juri Resmi"}</h3>
               <button onClick={() => setShowAddJudgeModal(false)} className="w-7 h-7 rounded-full bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 flex items-center justify-center">✕</button>
             </div>
 
@@ -1106,7 +1173,7 @@ export const CompetitionStudio: React.FC = () => {
 
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setShowAddJudgeModal(false)} className="px-4 py-2 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 rounded-xl font-semibold">Batal</button>
-                <button type="submit" className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold cursor-pointer">Simpan Juri</button>
+                <button type="submit" className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold cursor-pointer">{savingRecord ? "Menyimpan…" : editingJudgeId ? "Simpan Perubahan" : "Simpan Juri"}</button>
               </div>
             </form>
           </div>
