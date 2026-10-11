@@ -188,6 +188,17 @@ export const CompetitionStudio: React.FC = () => {
     finally { setSavingRecord(false); }
   };
 
+  const handleOfficializeCompetition = async (comp: Competition) => {
+    if (savingRecord || !window.confirm(`Resmikan mata lomba "${comp.title}"? Sesudah resmi, informasi lomba langsung muncul di Beranda publik dan pengaturannya terkunci.`)) return;
+    setSavingRecord(true);
+    try {
+      await eventStudioService.officializeCompetition(comp.id);
+      await refreshLists();
+      showToast('✅ Mata lomba resmi, disimpan di GAS, dan siap ditampilkan di Beranda.');
+    } catch (err: any) { showToast(`❌ Gagal meresmikan: ${err.message}`); }
+    finally { setSavingRecord(false); }
+  };
+
   const handleArchiveCompetition = async (comp: Competition) => {
     if (savingRecord || !window.confirm(`Arsipkan lomba "${comp.title}"? Data riwayat tidak dihapus secara fisik.`)) return;
     setSavingRecord(true);
@@ -349,8 +360,13 @@ export const CompetitionStudio: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2">
-                <button type="button" disabled={savingRecord} onClick={() => {
+              <div className="flex flex-wrap justify-end gap-2">
+                {(comp as Competition & {publicationStatus?:string}).publicationStatus === 'OFFICIAL' ? (
+                  <span className="px-3 py-2 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-bold">✓ RESMI · Tampil di Beranda</span>
+                ) : (
+                  <button type="button" disabled={savingRecord} onClick={() => void handleOfficializeCompetition(comp)} className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold">Resmikan Mata Lomba</button>
+                )}
+                <button type="button" disabled={savingRecord || (comp as Competition & {publicationStatus?:string}).publicationStatus === 'OFFICIAL'} onClick={() => {
                   setEditingCompetitionId(comp.id);
                   setCompForm({ title: comp.title, category: comp.category, type: comp.type, scheduleTime: comp.scheduleTime, location: comp.location, maxEntriesPerContingent: comp.maxEntriesPerContingent, votingEnabled: comp.votingEnabled, juryWeight: comp.juryWeight, publicWeight: comp.publicWeight, status: comp.status });
                   setShowAddCompModal(true);
