@@ -1,443 +1,112 @@
-/**
- * @license
- * SiEpang - Judge / Penjurian Lomba Interface (RC1 Global Design System)
- * Dedicated focused UI for contest judges with scoring rubrics, sliders, and lock mechanism.
- * Standardized to Light-First, Instagram-inspired accent system, and 44px touch targets.
- */
+/** SiEpang — Judging interface: real CompetitionEntries and confirmed GAS persistence. */
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, CheckCircle2, RefreshCw, Save, Trophy, Lock, ScanLine } from 'lucide-react';
+import { judgeCloudService, type Criteria, type EntryRecord, type ScoreRecord } from '../../services/judgeCloudService';
 
-import React, { useState } from 'react';
-import {
-  Medal,
-  Award,
-  CheckCircle2,
-  Lock,
-  Unlock,
-  Sliders,
-  Save,
-  ChevronRight,
-  Sparkles,
-  WifiOff,
-  Cloud,
-  HardDrive,
-  RefreshCw,
-  AlertTriangle,
-} from 'lucide-react';
-import { competitionService, JudgeScoreSubmission } from '../../services/competitionService';
-import { participantService } from '../../services/participantService';
-import { syncQueueService } from '../../offline/syncQueueService';
-import { localCampServerService } from '../../services/localCampServerService';
-import { JudgeScoreStatus } from '../../offline/types';
-
+const DEFAULT: Criteria = { kreativitas: 0, kesesuaianTema: 0, teknikPramuka: 0, kerapian: 0 };
+const RUBRIC: { key: keyof Criteria; label: string; weight: string }[] = [
+  { key: 'kreativitas', label: 'Kreativitas & Inovasi', weight: '30%' },
+  { key: 'kesesuaianTema', label: 'Kesesuaian Tema', weight: '25%' },
+  { key: 'teknikPramuka', label: 'Teknik Kepramukaan', weight: '30%' },
+  { key: 'kerapian', label: 'Kerapian & Keindahan', weight: '15%' },
+];
+const decode = (value: unknown): Criteria => {
+  try {
+    const source = typeof value === 'string' ? JSON.parse(value) : value;
+    if (!source || typeof source !== 'object') return { ...DEFAULT };
+    return Object.fromEntries((Object.keys(DEFAULT) as (keyof Criteria)[]).map(k => [k, Number((source as any)[k] || 0)])) as Criteria;
+  } catch { return { ...DEFAULT }; }
+};
+const memberIds = (entry: EntryRecord): string[] => {
+  try {
+    const raw = typeof entry.team_members_json === 'string' ? JSON.parse(entry.team_members_json) : entry.team_members_json;
+    return Array.isArray(raw) ? raw.map(v => typeof v === 'string' ? v : String(v?.participant_id || v?.id || '')) : [];
+  } catch { return []; }
+};
+const getQrId = (text: string) => {
+  const trimmed = text.trim();
+  try {
+    if (/^https?:\/\//i.test(trimmed)) {
+      const url = new URL(trimmed);
+      return url.searchParams.get('p') || url.searchParams.get('participant_id') || trimmed;
+    }
+  } catch { /* use raw code */ }
+  return trimmed;
+};
 export const JudgeScoringInterface: React.FC = () => {
-  const competitions = competitionService.getCompetitions();
-  const contingents = participantService.getContingents();
-
-  const [selectedCompId, setSelectedCompId] = useState(competitions[0].id);
-  const [selectedContingentId, setSelectedContingentId] = useState(contingents[0].id);
-  const [entityVersion, setEntityVersion] = useState<number>(104);
-  const [scoreStatus, setScoreStatus] = useState<JudgeScoreStatus>('DRAFT_LOCAL');
-
-  // Scoring rubric
-  const [scores, setScores] = useState({
-    kreativitas: 85,
-    kesesuaianTema: 90,
-    teknikPramuka: 88,
-    kerapian: 82,
-  });
-
-  const [notes, setNotes] = useState('Pionering simpul kuat dan rapi, bendera terpasang kokoh.');
-  const [isLocked, setIsLocked] = useState(false);
-  const [feedback, setFeedback] = useState<{
-    type: 'saved_device' | 'saved_buper' | 'synced_cloud' | 'conflict' | 'locked';
-    message: string;
-    txId?: string;
-  } | null>(null);
-
-  const selectedComp = competitions.find(c => c.id === selectedCompId) || competitions[0];
-  const selectedContingent = contingents.find(c => c.id === selectedContingentId) || contingents[0];
-
-  const totalScore = Math.round(
-    scores.kreativitas * 0.3 +
-      scores.kesesuaianTema * 0.25 +
-      scores.teknikPramuka * 0.3 +
-      scores.kerapian * 0.15
-  );
-
-  const isOffline = syncQueueService.getConnectionState() === 'offline';
-
-  const handleSaveScore = () => {
-    if (isLocked) {
-      setFeedback({
-        type: 'locked',
-        message: 'SCORE_LOCKED: Nilai lomba tidak dapat diubah karena telah dikunci oleh Ketua Dewan Juri.',
-      });
-      return;
-    }
-
-    const tx = syncQueueService.enqueueTransaction({
-      entity: 'scoring',
-      action: 'SCORE',
-      record_id: `score_${selectedCompId}_${selectedContingentId}`,
-      expected_version: entityVersion,
-      payload: {
-        competitionId: selectedCompId,
-        entryId: `entry_${selectedContingentId}`,
-        contingentName: selectedContingent.name,
-        scores,
-        totalScore,
-        notes,
-        isLocked,
-      },
-    });
-
-    competitionService.submitJudgeScore({
-      competitionId: selectedCompId,
-      entryId: `entry_${selectedContingentId}`,
-      contingentName: selectedContingent.name,
-      scores,
-      totalScore,
-      notes,
-    });
-
-    const operationalMode = localCampServerService.getOperationalMode();
-
-    if (isOffline) {
-      setScoreStatus('DRAFT_LOCAL');
-      setFeedback({
-        type: 'saved_device',
-        message: `Nilai ${selectedContingent.name} (${totalScore} Poin) disimpan di perangkat lokal (DRAFT_LOCAL).`,
-        txId: tx.transaction_id,
-      });
-    } else if (operationalMode === 'local' || operationalMode === 'hybrid') {
-      localCampServerService.receiveTransactionFromDevice(tx);
-      setScoreStatus('EDGE_SAVED');
-      setFeedback({
-        type: 'saved_buper',
-        message: `Nilai ${selectedContingent.name} (${totalScore} Poin) disimpan di Server Buper (EDGE_SAVED).`,
-        txId: tx.transaction_id,
-      });
-    } else {
-      setScoreStatus('CLOUD_SAVED');
-      setFeedback({
-        type: 'synced_cloud',
-        message: `Nilai ${selectedContingent.name} (${totalScore} Poin) resmi tersinkron ke Cloud (CLOUD_SAVED).`,
-        txId: tx.transaction_id,
-      });
-    }
-
-    setTimeout(() => {
-      setFeedback(null);
-    }, 4500);
+  const [entries, setEntries] = useState<EntryRecord[]>([]);
+  const [records, setRecords] = useState<ScoreRecord[]>([]);
+  const [competitionId, setCompetitionId] = useState('');
+  const [entryId, setEntryId] = useState('');
+  const [criteria, setCriteria] = useState<Criteria>({ ...DEFAULT });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const lockRef = useRef(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [qrCode, setQrCode] = useState('');
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const data = await judgeCloudService.load();
+      setEntries(data.entries); setRecords(data.scores);
+      setCompetitionId(prev => data.entries.some(e => e.competition_id === prev) ? prev : data.entries[0]?.competition_id || '');
+    } catch (e: any) { setError(e?.message || 'Gagal memuat data lomba.'); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+  const competitions = useMemo(() => [...new Set(entries.map(e => e.competition_id).filter(Boolean))], [entries]);
+  const available = useMemo(() => entries.filter(e => e.competition_id === competitionId), [entries, competitionId]);
+  useEffect(() => { setEntryId(prev => available.some(e => e.id === prev) ? prev : available[0]?.id || ''); }, [available]);
+  const entry = available.find(e => e.id === entryId);
+  const existing = useMemo(() => {
+    if (!entry) return undefined;
+    try { return judgeCloudService.getOwnScore(records, entry.competition_id, entry.id); } catch { return undefined; }
+  }, [records, entry]);
+  useEffect(() => { setCriteria(existing ? decode(existing.criteria_scores_json) : { ...DEFAULT }); setNotice(''); }, [existing?.id, entryId, existing?.submitted_at]);
+  const isLocked = existing?.is_locked === true || String(existing?.is_locked).toLowerCase() === 'true';
+  const total = Math.round(criteria.kreativitas * .3 + criteria.kesesuaianTema * .25 + criteria.teknikPramuka * .3 + criteria.kerapian * .15);
+  const save = async () => {
+    if (!entry || lockRef.current || isLocked) return;
+    lockRef.current = true; setSaving(true); setNotice(''); setError('');
+    try {
+      const saved = await judgeCloudService.save(entry, criteria, existing);
+      setRecords(prev => [saved, ...prev.filter(x => x.id !== saved.id)]);
+      setNotice(`Nilai ${saved.score} berhasil disimpan dan dikonfirmasi GAS untuk entri ${entry.id}.`);
+    } catch (e: any) { setError(e?.message || 'Penyimpanan belum terkonfirmasi. Periksa GAS sebelum mengulang.'); }
+    finally { lockRef.current = false; setSaving(false); }
   };
-
-  const handleReloadLatestVersion = () => {
-    setEntityVersion(prev => prev + 1);
-    setScores({
-      kreativitas: 88,
-      kesesuaianTema: 92,
-      teknikPramuka: 90,
-      kerapian: 85,
-    });
-    setFeedback(null);
+  const selectByQr = () => {
+    const id = getQrId(qrCode);
+    if (!id) return;
+    const matches = entries.filter(e => e.team_leader_id === id || memberIds(e).includes(id));
+    if (matches.length === 1) { setCompetitionId(matches[0].competition_id); setEntryId(matches[0].id); setNotice(`QR peserta cocok dengan entri ${matches[0].id}.`); setError(''); }
+    else if (matches.length > 1) setError('Peserta mengikuti beberapa lomba. Pilih cabang dan entri lomba secara manual.');
+    else setError('ID QR belum terhubung ke CompetitionEntries. Daftarkan entri lomba terlebih dahulu; jangan membuat nilai tanpa entri.');
   };
-
-  return (
-    <div className="space-y-5 max-w-2xl mx-auto pb-8">
-      {/* Header Card */}
-      <div className="bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 p-5 rounded-[28px] shadow-xs space-y-3">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#EFF6FF] border border-[#BFDBFE] text-xs font-semibold text-sky-700 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-500/30">
-          <Medal className="w-3.5 h-3.5" />
-          <span>Panel Juri Resmi Perkemahan</span>
-        </div>
-        <h1 className="text-xl font-bold text-[#171717] dark:text-white tracking-tight">
-          Lembar Penilaian Lomba
-        </h1>
-        <p className="text-xs text-[#6B7280] dark:text-slate-400">
-          Masukkan evaluasi berdasarkan rubrik penilaian teknis kepramukaan secara objektif dan transparan.
-        </p>
-
-        {/* Competition Selector */}
-        <div className="pt-2 space-y-1">
-          <label className="text-xs text-[#171717] dark:text-slate-300 font-semibold block">
-            Pilih Cabang Lomba:
-          </label>
-          <select
-            value={selectedCompId}
-            onChange={e => setSelectedCompId(e.target.value)}
-            className="w-full px-3.5 py-2.5 bg-[#FAFAFA] dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-xl text-base md:text-xs text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
-          >
-            {competitions.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.title} ({c.type === 'field' ? 'Lapangan' : 'Digital'})
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Contingent Entry Selector */}
-      <div className="rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 p-5 shadow-xs space-y-3">
-        <label className="text-xs text-[#171717] dark:text-slate-300 font-semibold block">
-          Pilih Kontingen Peserta:
-        </label>
-        <div className="grid grid-cols-2 gap-2">
-          {contingents.map(c => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => setSelectedContingentId(c.id)}
-              className={`p-3 rounded-2xl border text-left text-xs transition-all cursor-pointer ${
-                selectedContingentId === c.id
-                  ? 'bg-[#FFF0F4] text-[#F47743] border-[#F47743]/30 font-semibold shadow-xs'
-                  : 'bg-[#FAFAFA] dark:bg-white/5 text-[#6B7280] dark:text-slate-400 border-[#ECECEF] dark:border-white/5 hover:border-slate-300'
-              }`}
-            >
-              <div className="truncate font-semibold text-[#171717] dark:text-white">{c.name}</div>
-              <div className="text-[10px] text-[#9CA3AF] mt-0.5">{c.campZone.split(' ')[0]}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* SCORING RUBRIC SLIDERS */}
-      <div className="rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 p-5 sm:p-6 shadow-xs space-y-5">
-        <div className="flex items-center justify-between border-b border-[#ECECEF] dark:border-white/10 pb-3">
-          <div>
-            <h3 className="text-sm font-bold text-[#171717] dark:text-white">
-              Kriteria & Bobot Penilaian
-            </h3>
-            <p className="text-[11px] text-[#6B7280] dark:text-slate-400">Rentang nilai 0 s.d 100 per kriteria</p>
-          </div>
-
-          {/* Big Total Score Badge & Score Status */}
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <span
-                className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider border inline-block ${
-                  scoreStatus === 'LOCKED'
-                    ? 'bg-rose-50 text-rose-700 border-rose-200'
-                    : scoreStatus === 'CLOUD_SAVED'
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : scoreStatus === 'EDGE_SAVED'
-                    ? 'bg-purple-50 text-purple-700 border-purple-200'
-                    : 'bg-amber-50 text-amber-700 border-amber-200'
-                }`}
-              >
-                {scoreStatus === 'LOCKED'
-                  ? '🔒 LOCKED'
-                  : scoreStatus === 'CLOUD_SAVED'
-                  ? '☁ CLOUD_SAVED'
-                  : scoreStatus === 'EDGE_SAVED'
-                  ? '💻 EDGE_SAVED'
-                  : '💾 DRAFT_LOCAL'}
-              </span>
-              <div className="text-[10px] text-[#6B7280] uppercase tracking-wider mt-0.5 font-bold">Total Skor</div>
-              <div className="text-2xl font-black text-[#F47743] font-mono">{totalScore}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Rubric Sliders */}
-        <div className="space-y-4 pt-1">
-          {/* 1. Kreativitas */}
-          <div className="space-y-1.5 p-3 rounded-2xl bg-[#FAFAFA] dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/5">
-            <div className="flex justify-between text-xs">
-              <span className="font-semibold text-[#171717] dark:text-slate-200">
-                1. Kreativitas & Inovasi (30%)
-              </span>
-              <span className="font-mono font-bold text-[#F47743]">{scores.kreativitas}</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              disabled={isLocked}
-              value={scores.kreativitas}
-              onChange={e => setScores({ ...scores, kreativitas: Number(e.target.value) })}
-              className="w-full accent-[#F47743] cursor-pointer"
-            />
-          </div>
-
-          {/* 2. Kesesuaian Tema */}
-          <div className="space-y-1.5 p-3 rounded-2xl bg-[#FAFAFA] dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/5">
-            <div className="flex justify-between text-xs">
-              <span className="font-semibold text-[#171717] dark:text-slate-200">
-                2. Kesesuaian Tema Pramuka (25%)
-              </span>
-              <span className="font-mono font-bold text-[#F47743]">{scores.kesesuaianTema}</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              disabled={isLocked}
-              value={scores.kesesuaianTema}
-              onChange={e => setScores({ ...scores, kesesuaianTema: Number(e.target.value) })}
-              className="w-full accent-[#F47743] cursor-pointer"
-            />
-          </div>
-
-          {/* 3. Teknik Kepramukaan */}
-          <div className="space-y-1.5 p-3 rounded-2xl bg-[#FAFAFA] dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/5">
-            <div className="flex justify-between text-xs">
-              <span className="font-semibold text-[#171717] dark:text-slate-200">
-                3. Ketepatan Teknik / Simpul (30%)
-              </span>
-              <span className="font-mono font-bold text-[#F47743]">{scores.teknikPramuka}</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              disabled={isLocked}
-              value={scores.teknikPramuka}
-              onChange={e => setScores({ ...scores, teknikPramuka: Number(e.target.value) })}
-              className="w-full accent-[#F47743] cursor-pointer"
-            />
-          </div>
-
-          {/* 4. Kerapian */}
-          <div className="space-y-1.5 p-3 rounded-2xl bg-[#FAFAFA] dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/5">
-            <div className="flex justify-between text-xs">
-              <span className="font-semibold text-[#171717] dark:text-slate-200">
-                4. Kerapian & Keindahan (15%)
-              </span>
-              <span className="font-mono font-bold text-[#F47743]">{scores.kerapian}</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              disabled={isLocked}
-              value={scores.kerapian}
-              onChange={e => setScores({ ...scores, kerapian: Number(e.target.value) })}
-              className="w-full accent-[#F47743] cursor-pointer"
-            />
-          </div>
-
-          {/* Judge Feedback Notes */}
-          <div className="pt-2 space-y-1">
-            <label className="text-xs text-[#171717] dark:text-slate-300 font-semibold block">
-              Catatan Dewan Juri:
-            </label>
-            <textarea
-              rows={3}
-              disabled={isLocked}
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              className="w-full p-3 bg-[#FAFAFA] dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-xl text-base md:text-xs text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
-            />
-          </div>
-        </div>
-
-        {/* Lock State Toggle & Save Button */}
-        <div className="pt-3 border-t border-[#ECECEF] dark:border-white/10 flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              const nextLocked = !isLocked;
-              setIsLocked(nextLocked);
-              if (nextLocked) {
-                setScoreStatus('LOCKED');
-                setFeedback({
-                  type: 'locked',
-                  message: 'Nilai resmi dikunci oleh Dewan Juri (LOCKED). Perubahan nilai tidak dapat dilakukan tanpa otorisasi pembukaan kunci.',
-                });
-              } else {
-                setScoreStatus('DRAFT_LOCAL');
-              }
-            }}
-            className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold border transition-colors min-h-[44px] cursor-pointer ${
-              isLocked
-                ? 'bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300'
-                : 'bg-white hover:bg-[#FAFAFA] text-[#6B7280] border-[#ECECEF] dark:bg-white/5 dark:text-slate-300'
-            }`}
-          >
-            {isLocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
-            <span>{isLocked ? 'Skor Terkunci' : 'Kunci Skor'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleSaveScore}
-            disabled={isLocked}
-            className="flex-1 py-3 px-4 bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-md shadow-pink-500/20 disabled:opacity-50 min-h-[44px] cursor-pointer"
-          >
-            <Save className="w-4 h-4" />
-            <span>Simpan Nilai Kontingen</span>
-          </button>
-        </div>
-      </div>
-
-      {feedback && (
-        <div
-          className={`p-4 rounded-2xl border shadow-xs text-xs space-y-2 animate-in fade-in ${
-            feedback.type === 'saved_device'
-              ? 'bg-[#FEFCE8] border-[#FEF08A] text-amber-900'
-              : feedback.type === 'saved_buper'
-              ? 'bg-[#F5F3FF] border-[#DDD6FE] text-purple-900'
-              : feedback.type === 'synced_cloud'
-              ? 'bg-[#ECFDF5] border-[#A7F3D0] text-emerald-900'
-              : 'bg-[#FFF1F2] border-[#FECDD3] text-rose-900'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="font-extrabold uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-              {feedback.type === 'saved_device' && (
-                <>
-                  <span>💾</span>
-                  <span>Saved on Device (Lokal Perangkat)</span>
-                </>
-              )}
-              {feedback.type === 'saved_buper' && (
-                <>
-                  <span>💻</span>
-                  <span>Saved on Server Buper (Wi-Fi LAN Buper)</span>
-                </>
-              )}
-              {feedback.type === 'synced_cloud' && (
-                <>
-                  <span>☁️</span>
-                  <span>Synced to Cloud (Canonical)</span>
-                </>
-              )}
-              {feedback.type === 'locked' && (
-                <>
-                  <span>🔒</span>
-                  <span>SCORE_LOCKED (Nilai Terkunci)</span>
-                </>
-              )}
-              {feedback.type === 'conflict' && (
-                <>
-                  <AlertTriangle className="w-4 h-4 text-rose-500" />
-                  <span>VERSION_CONFLICT (Konflik Versi Data)</span>
-                </>
-              )}
-            </span>
-
-            {feedback.txId && (
-              <span className="text-[10px] font-mono text-[#6B7280]">
-                UUID: {feedback.txId.substring(0, 8)}...
-              </span>
-            )}
-          </div>
-
-          <p className="text-[11px] leading-relaxed">{feedback.message}</p>
-
-          {feedback.type === 'conflict' && (
-            <div className="pt-2 flex justify-end">
-              <button
-                type="button"
-                onClick={handleReloadLatestVersion}
-                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold text-[10px] flex items-center gap-1 cursor-pointer"
-              >
-                <RefreshCw className="w-3 h-3" />
-                <span>Muat Ulang Versi Terbaru</span>
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+  const inputClass = 'w-full rounded-xl border border-slate-300 dark:border-white/20 bg-white dark:bg-[#222228] p-3 text-sm text-slate-900 dark:text-white';
+  return <div className="max-w-2xl mx-auto space-y-4 pb-10 text-slate-900 dark:text-white">
+    <div className="rounded-3xl bg-white dark:bg-[#141418] border border-slate-200 dark:border-white/10 p-5 space-y-2">
+      <div className="flex items-center gap-2"><Trophy className="text-amber-600"/><h1 className="text-xl font-bold">Penilaian Lomba</h1></div>
+      <p className="text-xs text-slate-600 dark:text-slate-300">Nilai hanya dinyatakan tersimpan setelah dikonfirmasi Google Apps Script.</p>
+      <button type="button" onClick={() => void load()} disabled={loading || saving} className="flex items-center gap-2 min-h-11 text-sm font-semibold text-emerald-700 dark:text-emerald-400"><RefreshCw size={16}/>{loading ? 'Memuat dari GAS…' : 'Muat ulang dari GAS'}</button>
     </div>
-  );
+    {error && <div role="alert" className="rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-300 p-3 text-sm text-red-700 dark:text-red-200 flex gap-2"><AlertTriangle size={18}/>{error}</div>}
+    {notice && <div role="status" className="rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 p-3 text-sm text-emerald-700 dark:text-emerald-200 flex gap-2"><CheckCircle2 size={18}/>{notice}</div>}
+    {!loading && entries.length === 0 && <div className="rounded-2xl border p-5 text-sm">Belum ada entri lomba yang dapat dinilai pada event ini. Siapkan data di <strong>CompetitionEntries</strong> lebih dahulu.</div>}
+    {entries.length > 0 && <>
+      <div className="rounded-3xl bg-white dark:bg-[#141418] border border-slate-200 dark:border-white/10 p-5 space-y-4">
+        <div><label className="text-sm font-semibold">Cabang lomba</label><select className={inputClass} value={competitionId} onChange={e => setCompetitionId(e.target.value)}>{competitions.map(id => <option key={id} value={id}>{id}</option>)}</select></div>
+        <div><label className="text-sm font-semibold">Entri lomba</label><select className={inputClass} value={entryId} onChange={e => setEntryId(e.target.value)}>{available.map(e => <option key={e.id} value={e.id}>{e.team_name || e.entry_title || e.id} — {e.id}</option>)}</select></div>
+        <div className="space-y-2"><label className="text-sm font-semibold flex items-center gap-2"><ScanLine size={16}/> ID dari QR peserta (opsional)</label><div className="flex gap-2"><input className={inputClass} value={qrCode} placeholder="p_... atau URL /scan?p=..." onChange={e => setQrCode(e.target.value)} /><button className="rounded-xl px-4 bg-slate-800 text-white text-sm font-bold min-h-11" type="button" onClick={selectByQr}>Cari</button></div><p className="text-xs text-slate-500">QR dipakai untuk mencari entri yang sudah terhubung; tidak membuat entri baru. Kamera scanner global tetap terpisah.</p></div>
+      </div>
+      {entry && <div className="rounded-3xl bg-white dark:bg-[#141418] border border-slate-200 dark:border-white/10 p-5 space-y-5">
+        <div className="flex justify-between items-center"><h2 className="font-bold">Rubrik Penilaian</h2><div className="text-2xl font-black text-orange-600">{total}<span className="text-xs"> /100</span></div></div>
+        {RUBRIC.map(item => <div key={item.key} className="space-y-2"><div className="flex justify-between text-sm font-medium"><span>{item.label} ({item.weight})</span><span>{criteria[item.key]}</span></div><input type="range" min="0" max="100" step="1" disabled={saving || isLocked} className="w-full accent-orange-600" value={criteria[item.key]} onChange={e => setCriteria(prev => ({ ...prev, [item.key]: Number(e.target.value) }))}/></div>)}
+        {existing && <p className="text-xs text-slate-500">Nilai juri saat ini dari database: {existing.score} · ID {existing.id}</p>}
+        {isLocked && <p className="text-sm flex gap-2 text-amber-600"><Lock size={18}/>Nilai terkunci. Hubungi admin lomba untuk revisi.</p>}
+        <button type="button" disabled={saving || loading || isLocked} onClick={() => void save()} className="w-full min-h-12 rounded-2xl bg-emerald-700 text-white font-bold text-sm disabled:opacity-50 flex gap-2 items-center justify-center"><Save size={18}/>{saving ? 'Menyimpan ke GAS…' : 'Simpan Nilai ke Spreadsheet'}</button>
+      </div>}
+    </>}
+  </div>;
 };
