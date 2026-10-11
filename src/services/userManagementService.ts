@@ -440,7 +440,11 @@ export class UserManagementService {
     return [...this.users];
   }
 
-  public async addUser(data: {
+  /**
+   * Pembuatan akun memerlukan endpoint GAS berizin yang belum tersedia pada Code.gs terverifikasi.
+   * Jangan menciptakan akun palsu pada cache atau memberikan role dari browser.
+   */
+  public async addUser(_data: {
     name: string;
     email: string;
     role: UserRole;
@@ -448,141 +452,57 @@ export class UserManagementService {
     organizationName?: string;
     status?: 'active' | 'inactive';
   }): Promise<ManagedUser> {
-    const cleanEmail = data.email.toLowerCase().trim();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      throw new Error('Alamat email tidak valid.');
-    }
-
-    // Unique email validation (Requirement 42 TEST 7)
-    const emailExists = this.users.some(u => u.email && u.email.toLowerCase().trim() === cleanEmail);
-    if (emailExists) {
-      throw new Error(`Email '${cleanEmail}' sudah terdaftar. Duplikasi email tidak diizinkan.`);
-    }
-
-    const newUser: ManagedUser = {
-      id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      name: data.name.trim(),
-      email: cleanEmail,
-      role: data.role,
-      workspaceId: data.workspaceId,
-      avatar: '',
-      organizationName: data.organizationName || 'Gerakan Pramuka',
-      status: data.status || 'active',
-      lastLogin: 'Belum pernah',
-      createdAt: new Date().toISOString().split('T')[0],
-    };
-
-    // Optimistic local update
-    this.users.unshift(newUser);
-    this.notify();
-
-    // Persist to Google Apps Script / Spreadsheet
-    try {
-      const res = await apiTransport.send('users.create', {
-        name: data.name,
-        email: cleanEmail,
-        role: data.role,
-        workspace_id: data.workspaceId,
-        organization_id: data.organizationName,
-        permissions: ROLE_PERMISSION_MAP[data.role] || [],
-      });
-      if (res.ok && res.data?.id) {
-        newUser.id = res.data.id;
-        this.notify();
-      }
-    } catch (e) {
-      console.warn('Error saving user to backend:', e);
-    }
-
-    return newUser;
+    throw new Error('Pembuatan akun melalui dashboard belum tersedia di backend GAS aktif. Gunakan alur undangan/OTP yang sudah terotorisasi sampai endpoint admin dibuat.');
   }
 
-  public async updateUser(userId: string, updates: Partial<ManagedUser>): Promise<ManagedUser> {
-    const user = this.users.find(u => u.id === userId);
-    if (!user) throw new Error('Pengguna tidak ditemukan.');
-
-    if (updates.email) {
-      const cleanEmail = updates.email.toLowerCase().trim();
-      if (!cleanEmail || !cleanEmail.includes('@')) {
-        throw new Error('Alamat email tidak valid.');
-      }
-      // Unique email validation on update (Requirement 42 TEST 7)
-      const duplicateExists = this.users.some(
-        u => u.id !== userId && u.email && u.email.toLowerCase().trim() === cleanEmail
-      );
-      if (duplicateExists) {
-        throw new Error(`Email '${cleanEmail}' sudah digunakan oleh pengguna lain. Duplikasi email ditolak.`);
-      }
-      updates.email = cleanEmail;
-    }
-
-    Object.assign(user, updates);
-    this.notify();
-
-    try {
-      await apiTransport.send('users.update', {
-        user_id: userId,
-        updates,
-      });
-    } catch (e) {
-      console.warn('Error updating user in backend:', e);
-    }
-
-    return user;
+  /** Jangan mengubah cache untuk operasi yang backend-nya belum ada. */
+  public async updateUser(_userId: string, _updates: Partial<ManagedUser>): Promise<ManagedUser> {
+    throw new Error('users.update belum tersedia di router GAS aktif. Data user tidak diubah.');
   }
 
+  /** Role diberikan server-side, kemudian daftar dibaca ulang. */
   public async updateUserRole(userId: string, newRole: UserRole): Promise<ManagedUser> {
     const user = this.users.find(u => u.id === userId);
     if (!user) throw new Error('Pengguna tidak ditemukan.');
-    user.role = newRole;
-    this.notify();
-
-    try {
-      await apiTransport.send('users.assignRole', {
-        user_id: userId,
-        role: newRole,
-        permissions: ROLE_PERMISSION_MAP[newRole] || [],
-      });
-    } catch (e) {
-      console.warn('Error assigning role in backend:', e);
+    const res = await apiTransport.send<{ assignment_id: string; user_id: string; role: UserRole }>('users.assignRole', {
+      user_id: userId,
+      role: newRole,
+      permissions: ROLE_PERMISSION_MAP[newRole] || [],
+    });
+    if (!res.ok || res.data?.user_id !== userId || res.data?.role !== newRole || !res.data?.assignment_id) {
+      throw new Error(res.error?.message || 'Backend tidak mengonfirmasi penugasan role.');
     }
-
-    return user;
+    await this.refreshUsers();
+    const confirmed = this.users.find(u => u.id === userId);
+    if (!confirmed) throw new Error('Role tersimpan tetapi pembacaan ulang akun gagal. Muat ulang halaman.');
+    return confirmed;
   }
 
+  /** Status akun hanya berubah sesudah GAS mengonfirmasi enable/disable. */
   public async toggleUserStatus(userId: string): Promise<ManagedUser> {
     const user = this.users.find(u => u.id === userId);
     if (!user) throw new Error('Pengguna tidak ditemukan.');
-    user.status = user.status === 'active' ? 'inactive' : 'active';
-    this.notify();
-
-    try {
-      await apiTransport.send('users.update', {
-        user_id: userId,
-        status: user.status,
-      });
-    } catch (e) {
-      console.warn('Error updating user status in backend:', e);
+    const target = user.status === 'active' ? 'inactive' : 'active';
+    const action = target === 'active' ? 'users.enable' : 'users.disable';
+    const res = await apiTransport.send<{ user_id: string; status: string }>(action, { user_id: userId });
+    if (!res.ok || res.data?.user_id !== userId || res.data?.status !== target) {
+      throw new Error(res.error?.message || 'Backend tidak mengonfirmasi perubahan status user.');
     }
-
+    user.status = target;
+    this.notify();
     return user;
   }
 
+  /** Mencabut semua role yang aktif (bukan mengubah label lokal saja). */
   public async revokeUserRole(userId: string): Promise<ManagedUser> {
     const user = this.users.find(u => u.id === userId);
     if (!user) throw new Error('Pengguna tidak ditemukan.');
-    user.role = 'viewer';
-    this.notify();
-
-    try {
-      await apiTransport.send('users.revokeRole', {
-        user_id: userId,
-      });
-    } catch (e) {
-      console.warn('Error revoking role in backend:', e);
+    const res = await apiTransport.send<{ user_id: string; revoked: boolean }>('users.revokeRole', { user_id: userId });
+    if (!res.ok || res.data?.user_id !== userId || res.data?.revoked !== true) {
+      throw new Error(res.error?.message || 'Backend tidak mengonfirmasi pencabutan role.');
     }
-
-    return user;
+    await this.refreshUsers();
+    return this.users.find(u => u.id === userId) || { ...user, role: 'viewer' };
   }
 
   public async logoutUserFromAllDevices(userId: string): Promise<boolean> {
@@ -612,15 +532,16 @@ export class UserManagementService {
     }
   }
 
+  /** Nonaktifkan akun, jangan pernah menghapus record Users dari daftar lokal sebelum konfirmasi GAS. */
   public async removeUser(userId: string): Promise<void> {
-    this.users = this.users.filter(u => u.id !== userId);
-    this.notify();
-
-    try {
-      await apiTransport.send('users.disable', { user_id: userId });
-    } catch (e) {
-      console.warn('Error disabling user in backend:', e);
+    const user = this.users.find(u => u.id === userId);
+    if (!user) throw new Error('Pengguna tidak ditemukan.');
+    const res = await apiTransport.send<{ user_id: string; status: string }>('users.disable', { user_id: userId });
+    if (!res.ok || res.data?.user_id !== userId || res.data?.status !== 'inactive') {
+      throw new Error(res.error?.message || 'GAS gagal menonaktifkan akun. Data tetap dipertahankan.');
     }
+    user.status = 'inactive';
+    this.notify();
   }
 
   public getPermissionGroups(): PermissionGroup[] {
