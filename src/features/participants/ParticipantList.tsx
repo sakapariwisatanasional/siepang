@@ -46,6 +46,7 @@ import { authService } from '../../services/authService';
 import { profilePhotoService } from '../../services/profilePhotoService';
 import { Participant, ParticipantStatus, Contingent, ProfilePhotoStatus, PhotoRequiredConfig, PhotoReplacementPolicy } from '../../types';
 import { PersonalQrModal } from './PersonalQrModal';
+import { ParticipantAdminDialog } from './ParticipantAdminDialog';
 import { ProfilePhotoUploader } from '../../components/media/ProfilePhotoUploader';
 
 function makeRequestKey(): string {
@@ -67,7 +68,7 @@ export const ParticipantList: React.FC = () => {
     label: string;
     impactDescription: string;
   } | null>(null);
-  const [bulkTargetContingent, setBulkTargetContingent] = useState('');
+  const [adminDialog, setAdminDialog] = useState<{mode:'assign'|'edit'|'archive'; participants:Participant[]} | null>(null);
   const [bulkTargetCategory, setBulkTargetCategory] = useState<Participant['role']>('Penggalang');
 
   // Modals
@@ -231,29 +232,16 @@ export const ParticipantList: React.FC = () => {
     }
   };
 
-  // Bulk Actions (Requirement 13)
+  // Admin participant mutations now use persistent GAS endpoints only.
+  // The previous local-only bulk helpers must never claim a successful write.
   const handleExecuteBulkAction = () => {
     if (!bulkActionConfirm) return;
-    const actor = currentActorName;
-
-    if (bulkActionConfirm.action === 'approve') {
-      const count = participantService.bulkApprove(selectedIds, actor);
-      showToast(`✅ ${count} peserta berhasil disetujui massal.`);
-    } else if (bulkActionConfirm.action === 'archive') {
-      const count = participantService.bulkArchive(selectedIds);
-      showToast(`📦 ${count} peserta berhasil diarsipkan.`);
-    } else if (bulkActionConfirm.action === 'assign_contingent') {
-      const ctg = contingents.find(c => c.id === bulkTargetContingent);
-      if (ctg) {
-        participantService.bulkAssignContingent(selectedIds, ctg.id, ctg.name);
-        showToast(`✅ ${selectedIds.length} peserta dialokasikan ke ${ctg.name}.`);
-      }
-    } else if (bulkActionConfirm.action === 'assign_category') {
-      participantService.bulkAssignCategory(selectedIds, bulkTargetCategory);
-      showToast(`✅ ${selectedIds.length} peserta diubah ke tingkatan ${bulkTargetCategory}.`);
+    if (bulkActionConfirm.action === 'assign_contingent' || bulkActionConfirm.action === 'archive') {
+      const picked = participants.filter(p => selectedIds.includes(p.id));
+      if (picked.length) setAdminDialog({mode:bulkActionConfirm.action === 'archive'?'archive':'assign',participants:picked});
+    } else {
+      showToast('Aksi massal ini belum memiliki endpoint GAS resmi; perubahan tidak dijalankan.');
     }
-
-    setSelectedIds([]);
     setBulkActionConfirm(null);
   };
 
@@ -499,7 +487,7 @@ export const ParticipantList: React.FC = () => {
               <Search className="w-4 h-4 text-[#9CA3AF] absolute left-3.5 top-3" />
               <input
                 type="text"
-                placeholder="Cari nama, nomor NTA, kode peserta (cth: PST-2026), atau kontingen..."
+                placeholder="Cari nama, nomor NTA, kode peserta, atau Gugus Depan..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-2xl text-base sm:text-xs text-[#171717] dark:text-white placeholder-[#9CA3AF] focus:outline-none focus:border-[#F47743]"
@@ -511,10 +499,8 @@ export const ParticipantList: React.FC = () => {
               onChange={e => setContingentFilter(e.target.value)}
               className="bg-white dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-2xl px-3 py-2 text-base sm:text-xs text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
             >
-              <option value="all">Semua Kontingen ({contingents.length})</option>
-              {contingents.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
+              <option value="all">Semua Gugus Depan</option>
+              {[...new Map(participants.map(p=>[p.contingentId,{id:p.contingentId,name:p.contingentName}])).values()].filter(c=>c.id).map(c=>(<option key={c.id} value={c.id}>{c.name}</option>))}
             </select>
 
             <select
@@ -564,16 +550,16 @@ export const ParticipantList: React.FC = () => {
                   onClick={() =>
                     setBulkActionConfirm({
                       action: 'assign_contingent',
-                      label: 'Alokasikan Kontingen Massal',
-                      impactDescription: `Pindahkan ${selectedIds.length} peserta ke kontingen yang ditentukan di bawah ini.`,
+                      label: 'Alokasikan Gudep & Regu Massal',
+                      impactDescription: `Pindahkan ${selectedIds.length} peserta ke Gudep dan Regu aktif setelah validasi GAS.`,
                     })
                   }
                   className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 font-semibold border border-white/10 flex items-center gap-1.5 min-h-[44px] cursor-pointer"
-                  title="Alokasikan Kontingen"
-                  aria-label="Alokasikan Kontingen"
+                  title="Alokasikan Gudep dan Regu"
+                  aria-label="Alokasikan Gudep dan Regu"
                 >
                   <Users className="w-4 h-4" />
-                  <span className="hidden sm:inline">Atur Kontingen</span>
+                  <span className="hidden sm:inline">Atur Gudep/Regu</span>
                 </button>
 
                 <button
@@ -737,6 +723,10 @@ export const ParticipantList: React.FC = () => {
                             >
                               <History className="w-4 h-4" />
                             </button>
+                            <button type="button" onClick={() => setAdminDialog({mode:'edit', participants:[p]})}
+                              className="p-2 rounded-xl bg-white/5 text-emerald-500 border border-white/10 text-[10px] font-bold" title="Edit Peserta">Edit</button>
+                            <button type="button" onClick={() => setAdminDialog({mode:'archive', participants:[p]})}
+                              className="p-2 rounded-xl bg-white/5 text-rose-400 border border-white/10 text-[10px] font-bold" title="Arsipkan Peserta">Arsip</button>
                             <button
                               type="button"
                               onClick={() => setSelectedDetail(p)}
@@ -999,6 +989,9 @@ export const ParticipantList: React.FC = () => {
         </div>
       )}
 
+      {adminDialog && <ParticipantAdminDialog mode={adminDialog.mode} participants={adminDialog.participants}
+        onClose={() => setAdminDialog(null)} onSaved={message => { setSelectedIds([]); showToast(message); }} />}
+
       {/* BULK ACTION IMPACT CONFIRMATION MODAL (Requirement 13 & 57) */}
       {bulkActionConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
@@ -1011,22 +1004,6 @@ export const ParticipantList: React.FC = () => {
             <p className="text-xs text-[#6B7280] dark:text-slate-300 leading-relaxed">
               {bulkActionConfirm.impactDescription}
             </p>
-
-            {bulkActionConfirm.action === 'assign_contingent' && (
-              <div>
-                <label className="text-xs text-[#171717] dark:text-slate-400 block mb-1 font-semibold">Pilih Kontingen Tujuan:</label>
-                <select
-                  value={bulkTargetContingent}
-                  onChange={e => setBulkTargetContingent(e.target.value)}
-                  className="w-full p-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white text-xs"
-                >
-                  <option value="">-- Pilih Kontingen --</option>
-                  {contingents.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
 
             {bulkActionConfirm.action === 'assign_category' && (
               <div>
