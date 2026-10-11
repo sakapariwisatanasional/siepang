@@ -67,6 +67,10 @@ export const VisitorManagementStudio: React.FC = () => {
   const [selectedGateId, setSelectedGateId] = useState<string>(gates[0]?.id || 'gate_utama');
   const [scanInput, setScanInput] = useState('');
   const [scanDirection, setScanDirection] = useState<'CHECK_IN' | 'CHECK_OUT'>('CHECK_IN');
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraRetry, setCameraRetry] = useState(0);
+  const [cameraError, setCameraError] = useState('');
+  const cameraVideoRef = useRef<HTMLVideoElement>(null);
   const scanInputRef = useRef<HTMLInputElement>(null);
   const [, refreshView] = useState(0);
   const [loadError, setLoadError] = useState('');
@@ -82,6 +86,68 @@ export const VisitorManagementStudio: React.FC = () => {
   const [isProcessingScan, setIsProcessingScan] = useState(false);
   const [lastScanResult, setLastScanResult] = useState<GateScanResult | null>(null);
   const [overrideHoursPrompt, setOverrideHoursPrompt] = useState<string | null>(null);
+
+  // Kamera hanya membaca token. Petugas tetap harus memilih MASUK/KELUAR dan
+  // menekan Validasi: tidak ada transaksi gerbang otomatis saat kamera mendeteksi QR.
+  useEffect(() => {
+    if (!cameraOpen || activeTab !== 'gate') return;
+    let stopped = false;
+    let stream: MediaStream | null = null;
+    let polling: ReturnType<typeof setTimeout> | undefined;
+    const stop = () => {
+      stopped = true;
+      if (polling) clearTimeout(polling);
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      if (cameraVideoRef.current) cameraVideoRef.current.srcObject = null;
+    };
+    const start = async () => {
+      setCameraError('');
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        setCameraError('Kamera memerlukan HTTPS dan izin kamera. Gunakan input manual atau scanner eksternal.');
+        return;
+      }
+      try {
+        type QRHit = { rawValue: string };
+        type QRDetector = { detect: (source: HTMLVideoElement) => Promise<QRHit[]> };
+        type QRDetectorConstructor = new (options: { formats: string[] }) => QRDetector;
+        const Detector = (window as Window & { BarcodeDetector?: QRDetectorConstructor }).BarcodeDetector;
+        if (!Detector) {
+          setCameraError('Pembaca QR kamera belum didukung browser ini. Gunakan browser dengan BarcodeDetector, atau scanner eksternal/input manual.');
+          return;
+        }
+        const detector = new Detector({ formats: ['qr_code'] });
+        stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' } } });
+        if (stopped) { stream.getTracks().forEach(t => t.stop()); return; }
+        const video = cameraVideoRef.current;
+        if (!video) { stop(); return; }
+        video.srcObject = stream;
+        await video.play();
+        const poll = async () => {
+          if (stopped) return;
+          try {
+            if (video.readyState >= 2) {
+              const hits = await detector.detect(video);
+              const token = hits.find(h => typeof h.rawValue === 'string' && h.rawValue.trim())?.rawValue.trim();
+              if (token && !stopped) {
+                setScanInput(token);
+                setCameraOpen(false);
+                return;
+              }
+            }
+          } catch { /* Kamera bergerak / frame belum siap; coba frame berikutnya. */ }
+          if (!stopped) polling = setTimeout(() => { void poll(); }, 220);
+        };
+        void poll();
+      } catch (error) {
+        if (stopped) return;
+        const kind = error instanceof Error ? error.name : '';
+        setCameraError(kind === 'NotAllowedError' ? 'Izin kamera ditolak. Izinkan kamera di pengaturan browser.' : 'Tidak dapat mengaktifkan kamera. Periksa perangkat dan izinnya.');
+        if (stream) stream.getTracks().forEach(t => t.stop());
+      }
+    };
+    void start();
+    return stop;
+  }, [cameraOpen, cameraRetry, activeTab]);
 
   // Modals state
   const [inspectedVisitor, setInspectedVisitor] = useState<VisitorRegistration | null>(null);
@@ -582,14 +648,27 @@ export const VisitorManagementStudio: React.FC = () => {
           </div>
           {/* QR scanner wedge / manual code input. Never fabricate a scan. */}
           <div className="space-y-3">
-            <button
-              type="button"
-              onClick={() => scanInputRef.current?.focus()}
-              className="w-full py-4 px-6 rounded-2xl bg-slate-900 hover:bg-black dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-black text-sm flex items-center justify-center gap-2.5 shadow-md active:scale-95 transition-transform cursor-pointer"
-            >
-              <QrCode className="w-5 h-5 stroke-[2.5]" />
-              <span>FOKUS INPUT QR / SCANNER EKSTERNAL</span>
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" disabled={isProcessingScan} onClick={() => { setCameraRetry(r => r + 1); setCameraOpen(true); }}
+                className="py-4 px-3 rounded-2xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-50">
+                <QrCode className="w-5 h-5" /> BUKA KAMERA QR
+              </button>
+              <button type="button" onClick={() => scanInputRef.current?.focus()}
+                className="py-4 px-3 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold text-xs">
+                INPUT / SCANNER EKSTERNAL
+              </button>
+            </div>
+            {cameraOpen && (
+              <div className="rounded-2xl border border-emerald-500/40 p-3 space-y-2 bg-black text-white">
+                <div className="flex items-center justify-between gap-2">
+                  <strong className="text-xs">Arahkan kamera ke QR Visitor</strong>
+                  <button type="button" onClick={() => setCameraOpen(false)} className="text-xs rounded-lg px-3 py-2 bg-white/20">Tutup</button>
+                </div>
+                <video ref={cameraVideoRef} autoPlay muted playsInline className="w-full max-h-72 object-cover rounded-xl bg-slate-900" aria-label="Pratinjau kamera scanner Visitor" />
+                {cameraError && <p role="alert" className="text-xs text-amber-300">{cameraError}</p>}
+                <p className="text-[11px] text-slate-300">Setelah QR terbaca, periksa arah MASUK/KELUAR dan tekan Validasi. Tidak ada check-in otomatis.</p>
+              </div>
+            )}
 
             {/* Manual Code Input Bar */}
             <div className="flex gap-2">
