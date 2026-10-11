@@ -82,7 +82,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       items: [
         {
           id: 'home',
-          label: 'Beranda',
+          label: 'Dashboard Event',
           icon: LayoutDashboard,
           roles: ['all'],
         },
@@ -155,7 +155,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       items: [
         {
           id: 'event_studio',
-          label: 'Studio Buper',
+          label: 'Pengaturan Event',
           icon: Sliders,
           roles: ['workspace_admin', 'event_admin', 'superadmin'],
         },
@@ -194,7 +194,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       items: [
         {
           id: 'templates',
-          label: 'ID Card & Piagam',
+          label: 'ID Card & Sertifikat',
           icon: CreditCard,
           roles: ['workspace_admin', 'event_admin', 'registration_officer', 'superadmin'],
           featureKey: 'ID_CARD',
@@ -219,15 +219,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         },
         {
           id: 'users',
-          label: 'Pengguna & Hak Akses',
+          label: 'Akses Panitia',
           icon: UserCheck,
           roles: ['superadmin', 'workspace_admin'],
-        },
-        {
-          id: 'organizations',
-          label: 'Struktur Kwartir',
-          icon: FolderTree,
-          roles: ['superadmin', 'workspace_admin', 'event_admin'],
         },
         {
           id: 'installation',

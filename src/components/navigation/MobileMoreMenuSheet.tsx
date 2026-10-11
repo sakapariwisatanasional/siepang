@@ -119,7 +119,7 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
     {
       title: 'Operasional',
       items: [
-        { id: 'event_studio', label: 'Studio Kavling & Buper', icon: Sliders },
+        { id: 'event_studio', label: 'Pengaturan Event', icon: Sliders },
         { id: 'health', label: 'Posko Medis & P3K', icon: Stethoscope, feature: 'HEALTH' },
         { id: 'logistics', label: 'Gudang Logistik', icon: Boxes, feature: 'LOGISTICS' },
       ],
@@ -128,17 +128,17 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
       title: 'Publikasi & Dokumen',
       items: [
         { id: 'public_gallery', label: 'Galeri Liputan', icon: ImageIcon, feature: 'PUBLIC_DOCUMENTATION' },
-        { id: 'templates', label: 'ID Card & Piagam', icon: CreditCard, feature: 'ID_CARD' },
+        { id: 'templates', label: 'ID Card & Sertifikat', icon: CreditCard, feature: 'ID_CARD' },
       ],
     },
     {
       title: 'Sistem & Konfigurasi',
       items: [
-        { id: 'admin_dashboard', label: 'Dashboard Admin', icon: LayoutDashboard, adminOnly: true },
+        { id: 'admin_dashboard', label: 'Ringkasan Admin', icon: LayoutDashboard, adminOnly: true },
         { id: 'database_storage', label: 'Database Spreadsheet', icon: Database, adminOnly: true },
         { id: 'branding_settings', label: 'Branding & Tampilan', icon: Sparkles, adminOnly: true },
         { id: 'installation', label: 'Konfigurasi Sistem', icon: ShieldCheck, adminOnly: true },
-        { id: 'users', label: 'Pengguna & Hak Akses', icon: UserCheck, adminOnly: true },
+        { id: 'users', label: 'Akses Panitia', icon: UserCheck, adminOnly: true },
       ],
     },
   ];
