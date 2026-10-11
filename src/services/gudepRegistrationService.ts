@@ -9,15 +9,15 @@ import { apiTransport } from './apiTransport';
 
 export type GudepRecord = {
   gudep_id: string; event_id: string; gudep_name: string; gudep_number: string;
-  institution_name?: string; registration_status: string; verification_status: string;
+  institution_name?: string; registration_status: string; verification_status: string; activation_status?: 'ACTIVE' | 'INACTIVE';
 };
 export type GudepRegu = {
   regu_id: string; event_id: string; gudep_id: string; regu_name: string;
-  gender: 'PUTRA' | 'PUTRI'; quota: number; verification_status?: string;
+  gender: 'PUTRA' | 'PUTRI'; quota: number; verification_status?: string; activation_status?: 'ACTIVE' | 'INACTIVE';
 };
 export type GudepAdvisor = {
   advisor_id: string; gudep_id: string; full_name: string; gender?: string;
-  verification_status?: string;
+  verification_status?: string; activation_status?: 'ACTIVE' | 'INACTIVE';
 };
 export type GudepDetail = {
   gudep: GudepRecord; regu: GudepRegu[]; advisors: GudepAdvisor[];
@@ -59,6 +59,8 @@ export const gudepRegistrationService = {
       'gudep.participant.link', data),
   assignExistingUser: (data: { gudep_id: string; user_id: string }) =>
     send<{ assignment_id: string; status: string }>('gudep.operator.assign', data),
+  activateGudep: (gudep_id: string, activation_status: 'ACTIVE' | 'INACTIVE') => send<{gudep_id:string;activation_status:string;regu_updated:number}>('gudep.registration.activate',{gudep_id,activation_status}),
+  activateRegu: (gudep_id: string, regu_id: string, activation_status: 'ACTIVE' | 'INACTIVE') => send<{regu_id:string;activation_status:string}>('gudep.regu.setActivation',{gudep_id,regu_id,activation_status}),
   syncReguVerification: (gudep_id: string) => send<{ gudep_id: string; verification_status: string; regu_updated: number }>('gudep.registration.syncReguVerification', { gudep_id }),
   submit: (gudep_id: string) => send<unknown>('gudep.registration.submit', { gudep_id }),
   verify: (gudep_id: string, decision: 'VERIFIED' | 'REVISION' | 'REJECTED', notes = '') =>
