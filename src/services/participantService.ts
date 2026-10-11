@@ -515,44 +515,9 @@ class ParticipantService {
     }
   }
 
-  public async addParticipant(data: Omit<Participant, 'id' | 'code' | 'xp' | 'level' | 'rank' | 'attendanceCount' | 'badges'>): Promise<Participant> {
-    const result = await apiTransport.send<any>('participants.create', {
-      name: data.name,
-      gender: data.gender,
-      role: data.role,
-      contingentId: data.contingentId,
-      contingentName: data.contingentName,
-      subCamp: data.subCamp,
-      tentNumber: data.tentNumber,
-      membershipNumber: data.membershipNumber,
-      email: data.email,
-      phone: data.phone,
-      schoolPangkalan: data.schoolPangkalan,
-      photoUrl: data.photoUrl,
-      profile_photo_url: data.profile_photo_url,
-      profile_photo_file_id: data.profile_photo_file_id,
-      profile_photo_status: data.profile_photo_status,
-    });
-    if (!result.ok || !result.data?.participant?.id) {
-      throw new Error(result.error?.message || 'Pendaftaran tidak dikonfirmasi oleh GAS.');
-    }
-    const remote = result.data.participant;
-    const currentEvent = eventService.getCurrentEvent();
-    const participant: Participant = {
-      ...data,
-      id: remote.id,
-      code: remote.code || remote.participantCode || `PST-${remote.id}`,
-      eventId: remote.eventId || currentEvent.id,
-      xp: Number(remote.points || 0),
-      level: 1,
-      rank: Number(remote.rank || 0),
-      attendanceCount: 0,
-      badges: [],
-      status: 'submitted',
-    };
-    this.participants.unshift(participant);
-    this.notify();
-    return participant;
+  /** Jalur lama dimatikan agar pemanggil tidak mengirim participants.create yang tidak dikenal GAS. */
+  public async addParticipant(_data: Omit<Participant, 'id' | 'code' | 'xp' | 'level' | 'rank' | 'attendanceCount' | 'badges'>): Promise<Participant> {
+    throw new Error('Registrasi peserta harus melalui Gudep dan Regu. Gunakan gudepRegistrationService.registerParticipant(), bukan participants.create.');
   }
 
   public subscribe(cb: () => void) {
