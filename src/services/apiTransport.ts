@@ -64,6 +64,8 @@ interface StoredAuthContext {
 class ApiTransport {
   private defaultTimeoutMs = 20000;
   private clientVersion = '1.9.1';
+  // Hanya berbagi permintaan baca peserta yang masih berlangsung. Tidak menyimpan cache permanen.
+  private participantListInFlight = new Map<string, Promise<ApiResponseEnvelope<any>>>();
 
   private resolveBackendUrl(overrideUrl?: string): string {
     if (overrideUrl?.trim()) return overrideUrl.trim();
@@ -109,7 +111,48 @@ class ApiTransport {
     return { sessionToken, devicePublicId };
   }
 
-  public async send<T = any>(
+  public send<T = any>(
+    action: string,
+    payload: any = {},
+    options?: {
+      timeoutMs?: number;
+      overrideUrl?: string;
+      overrideInstallationId?: string;
+      overrideWorkspaceId?: string;
+      skipAuth?: boolean;
+    }
+  ): Promise<ApiResponseEnvelope<T>> {
+    // Jangan menggabungkan operasi tulis, autentikasi, maupun pembacaan yang berparameter.
+    if (action !== 'participants.list' ||
+        !payload || typeof payload !== 'object' || Array.isArray(payload) ||
+        Object.keys(payload).length > 0) {
+      return this.sendOnce<T>(action, payload, options);
+    }
+    const record = customerInstallationService.getInstallationRecord();
+    const storedAuth = this.readStoredAuthContext();
+    const key = JSON.stringify({
+      action,
+      url: this.resolveBackendUrl(options?.overrideUrl),
+      workspace: options?.overrideWorkspaceId || workspaceService.getCurrentWorkspace()?.id || record.workspace_id || null,
+      event: eventService.getCurrentEvent()?.id || record.active_event_id || null,
+      installation: options?.overrideInstallationId || record.installation_id || null,
+      session: options?.skipAuth ? '' : storedAuth.sessionToken || '',
+      timeout: options?.timeoutMs ?? this.defaultTimeoutMs,
+    });
+    const existing = this.participantListInFlight.get(key);
+    if (existing) return existing as Promise<ApiResponseEnvelope<T>>;
+    const pending = this.sendOnce<T>(action, payload, options);
+    this.participantListInFlight.set(key, pending);
+    // Bersihkan hasil sukses maupun gagal; refresh berikutnya harus mengambil data terbaru.
+    void pending.finally(() => {
+      if (this.participantListInFlight.get(key) === pending) {
+        this.participantListInFlight.delete(key);
+      }
+    });
+    return pending;
+  }
+
+  private async sendOnce<T = any>(
     action: string,
     payload: any = {},
     options?: {
