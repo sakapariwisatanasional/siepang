@@ -10,7 +10,7 @@
  * - Visiting hours, quotas, and rules configuration
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Users,
   ShieldCheck,
@@ -66,6 +66,19 @@ export const VisitorManagementStudio: React.FC = () => {
   const gates = visitorManagementService.getGates();
   const [selectedGateId, setSelectedGateId] = useState<string>(gates[0]?.id || 'gate_utama');
   const [scanInput, setScanInput] = useState('');
+  const [scanDirection, setScanDirection] = useState<'CHECK_IN' | 'CHECK_OUT'>('CHECK_IN');
+  const scanInputRef = useRef<HTMLInputElement>(null);
+  const [, refreshView] = useState(0);
+  const [loadError, setLoadError] = useState('');
+  const [isLoadingVisitors, setIsLoadingVisitors] = useState(true);
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = visitorManagementService.subscribe(() => { if (active) refreshView(x => x + 1); });
+    visitorManagementService.loadVisitors().then(() => { if (active) setLoadError(''); })
+      .catch(e => { if (active) setLoadError(e?.message || 'Gagal memuat pengunjung.'); })
+      .finally(() => { if (active) setIsLoadingVisitors(false); });
+    return () => { active = false; unsubscribe(); };
+  }, []);
   const [isProcessingScan, setIsProcessingScan] = useState(false);
   const [lastScanResult, setLastScanResult] = useState<GateScanResult | null>(null);
   const [overrideHoursPrompt, setOverrideHoursPrompt] = useState<string | null>(null);
@@ -105,7 +118,7 @@ export const VisitorManagementStudio: React.FC = () => {
       return (
         v.name.toLowerCase().includes(q) ||
         v.registrationCode.toLowerCase().includes(q) ||
-        v.personVisited.targetName.toLowerCase().includes(q) ||
+        (v.personVisited?.targetName || '').toLowerCase().includes(q) ||
         v.phone.includes(q)
       );
     }
@@ -114,7 +127,8 @@ export const VisitorManagementStudio: React.FC = () => {
 
   // 1. GATE OFFICER SCAN HANDLER (Req 31, 32)
   const handlePerformGateScan = async (overrideHours: boolean = false) => {
-    if (!scanInput.trim()) return;
+    if (!scanInput.trim() || isProcessingScan) return;
+    if (!currentUser) { showToast('Petugas wajib login sebelum mencatat gerbang.'); return; }
     setIsProcessingScan(true);
     setLastScanResult(null);
 
@@ -124,8 +138,7 @@ export const VisitorManagementStudio: React.FC = () => {
         selectedGateId,
         currentActorName,
         {
-          overrideHours,
-          overrideReason: overrideHours ? 'Disetujui oleh Petugas Keamanan Gerbang' : undefined,
+          forceCheckout: scanDirection === 'CHECK_OUT',
         }
       );
 
@@ -146,31 +159,31 @@ export const VisitorManagementStudio: React.FC = () => {
 
   // 2. APPROVE / REJECT / REVOKE HANDLERS
   const handleApprove = (v: VisitorRegistration) => {
-    visitorManagementService.approveVisitor(v.id, currentActorName);
-    showToast(`✅ Pendaftaran '${v.name}' (${v.registrationCode}) resmi disetujui!`);
+    showToast('Persetujuan manual belum tersedia di GAS. Status tidak diubah.');
   };
 
   const handleConfirmReject = () => {
     if (!rejectModalVisitor) return;
-    visitorManagementService.rejectVisitor(rejectModalVisitor.id, currentActorName, rejectReason);
+    showToast('Penolakan manual belum tersedia di GAS. Status tidak diubah.');
     setRejectModalVisitor(null);
-    showToast(`Pendaftaran '${rejectModalVisitor.name}' ditolak.`);
+
   };
 
   const handleConfirmRevoke = () => {
     if (!revokeModalVisitor) return;
-    visitorManagementService.revokeVisitor(revokeModalVisitor.id, currentActorName, revokeReason);
+    showToast('Pencabutan akses belum tersedia di GAS. Status tidak diubah.');
     setRevokeModalVisitor(null);
-    showToast(`🚫 Akses '${revokeModalVisitor.name}' berhasil dicabut (Revoked).`);
+
   };
 
   const handleCreateGate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGateForm.gateName) return;
 
-    visitorManagementService.addGate(
+    showToast('Penambahan gerbang belum tersedia di GAS. Data tidak diubah.');
+    /* visitorManagementService.addGate(
       {
-        eventId: 'ev_jamcab_bwi_2026',
+        eventId: '',
         gateName: newGateForm.gateName,
         location: newGateForm.location || 'Bumi Perkemahan',
         operatingHours: newGateForm.operatingHours,
@@ -180,8 +193,9 @@ export const VisitorManagementStudio: React.FC = () => {
       currentActorName
     );
 
+    */
     setShowAddGateModal(false);
-    showToast(`✅ Pos gerbang '${newGateForm.gateName}' berhasil ditambahkan!`);
+
   };
 
   return (
@@ -193,6 +207,7 @@ export const VisitorManagementStudio: React.FC = () => {
         </div>
       )}
 
+      {(isLoadingVisitors || loadError) && <div role="status" className="p-3 rounded-xl bg-amber-500/10 text-amber-300 text-xs">{isLoadingVisitors ? 'Memuat data pengunjung dari GAS…' : `Gagal memuat: ${loadError}`}</div>}
       {/* TOP HEADER & LIVE OCCUPANCY BANNER */}
       <div className="p-5 rounded-3xl bg-gradient-to-r from-[#200b0e] via-[#1c0c0f] to-[#14080a] border-2 border-red-500/30 space-y-4 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -415,7 +430,7 @@ export const VisitorManagementStudio: React.FC = () => {
                         <div className="text-[11px] text-slate-300 flex flex-wrap items-center gap-2">
                           <span>
                             Mengunjungi:{' '}
-                            <strong className="text-white">{v.personVisited.targetName}</strong>{' '}
+                            <strong className="text-white">{v.personVisited?.targetName || '-'}</strong>{' '}
                             ({v.relationship})
                           </span>
                           <span>·</span>
@@ -561,27 +576,25 @@ export const VisitorManagementStudio: React.FC = () => {
             </div>
           </div>
 
-          {/* LARGE SCAN BUTTON (Part 121 - Thumb-Zone Optimized) */}
+          <div className="flex gap-2 p-2 rounded-xl bg-white/5">
+            <button type="button" disabled={isProcessingScan} onClick={() => setScanDirection('CHECK_IN')} className={`flex-1 py-2 rounded-lg font-bold ${scanDirection === 'CHECK_IN' ? 'bg-emerald-600 text-white' : 'bg-white/10 text-slate-300'}`}>MASUK</button>
+            <button type="button" disabled={isProcessingScan} onClick={() => setScanDirection('CHECK_OUT')} className={`flex-1 py-2 rounded-lg font-bold ${scanDirection === 'CHECK_OUT' ? 'bg-amber-600 text-white' : 'bg-white/10 text-slate-300'}`}>KELUAR</button>
+          </div>
+          {/* QR scanner wedge / manual code input. Never fabricate a scan. */}
           <div className="space-y-3">
             <button
               type="button"
-              onClick={() => {
-                // Focus scanner or pick from registered visitor if available
-                const registered = visitorManagementService.getVisitors();
-                if (registered.length > 0) {
-                  const randomVisitor = registered[Math.floor(Math.random() * registered.length)];
-                  setScanInput(randomVisitor.registrationCode);
-                }
-              }}
+              onClick={() => scanInputRef.current?.focus()}
               className="w-full py-4 px-6 rounded-2xl bg-slate-900 hover:bg-black dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-black text-sm flex items-center justify-center gap-2.5 shadow-md active:scale-95 transition-transform cursor-pointer"
             >
               <QrCode className="w-5 h-5 stroke-[2.5]" />
-              <span>PINDAI QR VISITOR PASS</span>
+              <span>FOKUS INPUT QR / SCANNER EKSTERNAL</span>
             </button>
 
             {/* Manual Code Input Bar */}
             <div className="flex gap-2">
               <input
+                ref={scanInputRef}
                 type="text"
                 value={scanInput}
                 onChange={e => setScanInput(e.target.value)}
@@ -601,7 +614,7 @@ export const VisitorManagementStudio: React.FC = () => {
           </div>
 
           {/* Override prompt if outside hours (Req 35) */}
-          {overrideHoursPrompt && (
+          {false && overrideHoursPrompt && (
             <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2 animate-in fade-in">
               <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-bold text-xs">
                 <AlertTriangle className="w-4 h-4" />
@@ -653,7 +666,7 @@ export const VisitorManagementStudio: React.FC = () => {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">Mengunjungi:</span>
-                      <span className="text-slate-700 dark:text-slate-300">{lastScanResult.visitor.personVisited.targetName}</span>
+                      <span className="text-slate-700 dark:text-slate-300">{lastScanResult.visitor.personVisited?.targetName || '-'}</span>
                     </div>
                   </div>
                 )}
@@ -873,7 +886,7 @@ export const VisitorManagementStudio: React.FC = () => {
               <h3 className="text-xl font-black text-white">{inspectedVisitor.name}</h3>
               <p className="text-xs text-red-300 font-bold">{inspectedVisitor.category}</p>
               <div className="text-[11px] text-slate-400 mt-1">
-                Mengunjungi: <strong className="text-white">{inspectedVisitor.personVisited.targetName}</strong>
+                Mengunjungi: <strong className="text-white">{inspectedVisitor.personVisited?.targetName || '-'}</strong>
               </div>
             </div>
 
