@@ -42,6 +42,21 @@ class ParticipantService {
   private contingents: Contingent[] = [];
   private listeners: Set<() => void> = new Set();
   private participantsLoadInFlight: Promise<void> | null = null;
+  // Hanya mempercepat tampilan identitas QR. Operasi tulis tetap divalidasi GAS.
+  private scannerLastLoadedAt = 0;
+  private scannerLoadedEventId = '';
+
+  /** Gunakan hasil pembacaan baru untuk scanner; setelah TTL, periksa kembali GAS. */
+  public ensureScannerParticipantsFresh(maxAgeMs = 90000): Promise<void> {
+    const eventId = eventService.getCurrentEvent()?.id || '';
+    if (this.participantsLoadInFlight) return this.participantsLoadInFlight;
+    if (this.scannerLastLoadedAt > 0 &&
+        this.scannerLoadedEventId === eventId &&
+        Date.now() - this.scannerLastLoadedAt < maxAgeMs) {
+      return Promise.resolve();
+    }
+    return this.loadParticipants();
+  }
 
   /** Load daftar peserta dari GAS; jangan menganggap array lokal sebagai sumber data utama. */
   public loadParticipants(): Promise<void> {
@@ -100,6 +115,8 @@ class ParticipantService {
         schoolPangkalan: String(r.institution || ''),
       };
     });
+    this.scannerLastLoadedAt = Date.now();
+    this.scannerLoadedEventId = eventService.getCurrentEvent()?.id || '';
     this.notify();
   }
 
