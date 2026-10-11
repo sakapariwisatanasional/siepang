@@ -59,6 +59,7 @@ export const gudepRegistrationService = {
       'gudep.participant.link', data),
   assignExistingUser: (data: { gudep_id: string; user_id: string }) =>
     send<{ assignment_id: string; status: string }>('gudep.operator.assign', data),
+  syncReguVerification: (gudep_id: string) => send<{ gudep_id: string; verification_status: string; regu_updated: number }>('gudep.registration.syncReguVerification', { gudep_id }),
   submit: (gudep_id: string) => send<unknown>('gudep.registration.submit', { gudep_id }),
   verify: (gudep_id: string, decision: 'VERIFIED' | 'REVISION' | 'REJECTED', notes = '') =>
     send<unknown>('gudep.registration.verify', { gudep_id, decision, notes }),
