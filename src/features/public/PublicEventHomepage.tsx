@@ -1394,8 +1394,51 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
             </div>
           )}
 
+          {/* Mobile-first app launchpad: preserves all original public sections and actions. */}
+          <section aria-label="Akses cepat SiEpang" className="mb-7 space-y-5">
+            <div className="relative overflow-hidden rounded-[28px] bg-[#172E2B] px-5 py-6 sm:px-7 sm:py-8 text-white shadow-lg">
+              <div aria-hidden="true" className="absolute -top-12 -right-12 h-44 w-44 rounded-full bg-[#F4B62C]/20 blur-2xl" />
+              <div aria-hidden="true" className="absolute -bottom-20 right-20 h-44 w-44 rounded-full bg-[#EE6547]/15 blur-2xl" />
+              <div className="relative max-w-xl space-y-3">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-bold text-[#FFE2A1]"><Sparkles className="h-3.5 w-3.5"/> PORTAL PERKEMAHAN</span>
+                <h1 className="text-2xl sm:text-3xl font-black leading-tight tracking-tight">{isConfigured ? event.name : 'Selamat Datang di SiEpang'}</h1>
+                <p className="text-sm text-slate-200 leading-relaxed">Jelajahi kegiatan, informasi resmi, dan layanan perkemahan dengan mudah.</p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button type="button" onClick={() => scrollToSection('section-schedule')} className="min-h-11 inline-flex items-center gap-2 rounded-full bg-[#F7BD36] px-5 py-2.5 font-bold text-sm text-[#272019] hover:bg-[#FFD36A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"><Calendar className="h-4 w-4"/> Lihat Jadwal <ArrowRight className="h-4 w-4"/></button>
+                  {onNavigateToLogin && <button type="button" onClick={() => onNavigateToLogin()} className="min-h-11 inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-4 py-2.5 font-semibold text-sm text-white hover:bg-white/20"><LogIn className="h-4 w-4"/> Masuk</button>}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">Jelajahi SiEpang</h2>
+              <span className="text-xs text-slate-500 dark:text-slate-400">Akses cepat</span>
+            </div>
+            <div className="grid grid-cols-4 gap-x-2 gap-y-4 sm:grid-cols-4 lg:grid-cols-8">
+              {([
+                {label:'Jadwal',icon:Calendar,section:'section-schedule',color:'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200'},
+                {label:'Lomba',icon:Trophy,section:'section-official-competitions',color:'bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-200'},
+                {label:'Scan QR',icon:QrCode,section:'section-qr-scanner',color:'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200'},
+                {label:'Informasi',icon:Bell,section:'section-announcements',color:'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200'},
+                {label:'Ranking',icon:Medal,section:'section-leaderboard',color:'bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-200'},
+                {label:'Galeri',icon:ImageIcon,section:'section-photo-gallery',color:'bg-sky-100 text-sky-800 dark:bg-sky-500/20 dark:text-sky-200'},
+                {label:'Tamu',icon:Users,section:'section-visitor',color:'bg-purple-100 text-purple-800 dark:bg-purple-500/20 dark:text-purple-200'},
+                {label:'Verifikasi',icon:ShieldCheck,section:'section-verification',color:'bg-slate-200 text-slate-800 dark:bg-slate-500/20 dark:text-slate-200'},
+              ] as const).filter(item => {
+                const sections: Record<string, PortalSectionKey> = {'section-schedule':'schedule','section-qr-scanner':'qr_scanner','section-announcements':'announcements','section-leaderboard':'leaderboard','section-photo-gallery':'photo_gallery','section-visitor':'visitor','section-verification':'verification'};
+                const section = sections[item.section];
+                return !section || portalConfig.section_visibility[section];
+              }).map(item => {
+                const Icon = item.icon;
+                return <button key={item.label} type="button" onClick={() => item.label === 'Scan QR' && onOpenScanner ? onOpenScanner() : scrollToSection(item.section)} className="group flex min-h-[88px] flex-col items-center gap-2 rounded-2xl p-1.5 text-center hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#E9A929]" aria-label={`Buka ${item.label}`}>
+                  <span className={`flex h-14 w-14 items-center justify-center rounded-[19px] shadow-sm transition-transform group-active:scale-95 ${item.color}`}><Icon className="h-6 w-6"/></span>
+                  <span className="text-[11px] sm:text-xs font-semibold leading-tight text-slate-800 dark:text-slate-100">{item.label}</span>
+                </button>;
+              })}
+            </div>
+          </section>
+
           {/* Mata lomba hanya ditampilkan jika sudah disahkan panitia di Spreadsheet. */}
-          <section className="mb-8 rounded-3xl bg-white dark:bg-[#141418] border border-slate-200 dark:border-white/10 p-5 sm:p-6 space-y-4">
+          <section id="section-official-competitions" className="mb-8 scroll-mt-24 rounded-3xl bg-white dark:bg-[#141418] border border-slate-200 dark:border-white/10 p-5 sm:p-6 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="font-bold text-lg flex items-center gap-2"><Trophy className="w-5 h-5 text-amber-500"/> Mata Lomba Resmi</h2>
               <button type="button" onClick={() => void refreshOfficialCompetitions()} className="rounded-lg px-3 py-2 text-sm bg-slate-100 dark:bg-white/10">Muat Ulang</button>
