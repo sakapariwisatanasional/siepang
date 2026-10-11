@@ -451,29 +451,40 @@ class ParticipantService {
     return { checkedInCount, exceptionsCount };
   }
 
+  private checkInInFlight = new Set<string>();
+
+  /** Check-in is successful only after GAS confirms the updated Participants row. */
   public async checkIn(participantId: string): Promise<Participant> {
-    const participant = this.participants.find(p => p.id === participantId);
-    if (!participant) {
-      throw new Error('Peserta tidak ditemukan');
+    if (!participantId) throw new Error('ID peserta tidak valid.');
+    if (this.checkInInFlight.has(participantId)) throw new Error('Check-in peserta ini sedang diproses.');
+    this.checkInInFlight.add(participantId);
+    try {
+      // Never trust a potentially stale browser cache for a gate operation.
+      await this.loadParticipants();
+      const participant = this.participants.find(p => p.id === participantId);
+      if (!participant) throw new Error('Peserta tidak ditemukan di GAS.');
+      if (participant.checkedIn) throw new Error(`Peserta ${participant.name} sudah check-in sebelumnya.`);
+      const eventId = eventService.getCurrentEvent()?.id || participant.eventId;
+      if (!eventId || (participant.eventId && participant.eventId !== eventId)) {
+        throw new Error('Event aktif tidak sesuai dengan event peserta.');
+      }
+      const when = new Date().toISOString();
+      const response = await apiTransport.send<{ record: any }>('admin.entity.upsert', {
+        entity: 'participants',
+        record: { id: participantId, event_id: eventId, checked_in: true, checked_in_at: when },
+      });
+      if (!response.ok || !response.data?.record ||
+          String(response.data.record.id) !== participantId ||
+          !(['true','1'].includes(String(response.data.record.checked_in).toLowerCase()) || response.data.record.checked_in === true)) {
+        throw new Error(response.error?.message || 'GAS belum mengonfirmasi check-in peserta.');
+      }
+      participant.checkedIn = true;
+      participant.checkInTime = String(response.data.record.checked_in_at || when);
+      this.notify();
+      return participant;
+    } finally {
+      this.checkInInFlight.delete(participantId);
     }
-
-    if (participant.checkedIn) {
-      const timeStr = participant.checkInTime ? new Date(participant.checkInTime).toLocaleTimeString('id-ID') : 'sebelumnya';
-      throw new Error(`⚠️ Peserta '${participant.name}' (${participant.code}) sudah melakukan check-in kedatangan buper (${timeStr}). Check-in ganda dicegah.`);
-    }
-
-    participant.checkedIn = true;
-    participant.checkInTime = new Date().toISOString();
-
-    // Log offline action for persistent sync
-    await syncQueue.addAction('check_in', {
-      participantId,
-      participantCode: participant.code,
-      timestamp: participant.checkInTime,
-    });
-
-    this.notify();
-    return participant;
   }
 
   public async addParticipant(data: Omit<Participant, 'id' | 'code' | 'xp' | 'level' | 'rank' | 'attendanceCount' | 'badges'>): Promise<Participant> {
