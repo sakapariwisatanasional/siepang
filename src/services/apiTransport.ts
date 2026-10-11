@@ -214,7 +214,11 @@ class ApiTransport {
       timestamp: new Date().toISOString(),
     };
 
-    const timeout = options?.timeoutMs ?? this.defaultTimeoutMs;
+    // Beri waktu lebih panjang hanya untuk pembacaan daftar peserta.
+    // Jangan ubah batas waktu operasi tulis, OTP, maupun tindakan QR.
+    const timeout = options?.timeoutMs ?? (action === 'participants.list' ? 45000 : this.defaultTimeoutMs);
+    const requestStartedAt = Date.now();
+    let requestStage: 'fetch' | 'body' = 'fetch';
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
@@ -231,6 +235,7 @@ class ApiTransport {
 
       // Keep AbortController active until the redirected GAS response body is read.
       // A 200/302 header alone does not mean the request has finished.
+      requestStage = 'body';
       const text = await response.text();
       clearTimeout(timeoutId);
 
@@ -316,6 +321,9 @@ class ApiTransport {
       clearTimeout(timeoutId);
 
       if (err?.name === 'AbortError') {
+        if (action === 'participants.list') {
+          console.warn('[SiEpang] participants.list timeout', { request_id: requestId, stage: requestStage, elapsed_ms: Date.now() - requestStartedAt });
+        }
         return {
           ok: false,
           request_id: requestId,
@@ -323,10 +331,14 @@ class ApiTransport {
           error: {
             code: 'TIMEOUT',
             message: `Permintaan ke Google Apps Script melampaui batas waktu (${timeout / 1000} detik).`,
+            details: { action, stage: requestStage, elapsed_ms: Date.now() - requestStartedAt },
           },
         };
       }
 
+      if (action === 'participants.list') {
+        console.warn('[SiEpang] participants.list network error', { request_id: requestId, stage: requestStage, elapsed_ms: Date.now() - requestStartedAt, error: String(err) });
+      }
       return {
         ok: false,
         request_id: requestId,
