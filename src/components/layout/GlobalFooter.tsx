@@ -1,7 +1,7 @@
 /**
  * @license
  * SiEpang - Reusable Global Footer Component
- * Global footer: "SiEpang 2026 © Rohadi Wijaya | Dery Suwandi"
+ * Global footer: "SiEpang 2026 © Rohadi Wijaya | Dery Suandi"
  * Standardized across all views without hardcoding in individual page bodies.
  */
 
@@ -22,7 +22,7 @@ export const GlobalFooter: React.FC<GlobalFooterProps> = ({ className = '', vari
           <span>SiEpang Camp System</span>
         </div>
         <p className="text-slate-500 leading-tight">
-          SiEpang 2026 © Rohadi Wijaya | Dery Suwandi
+          SiEpang 2026 © Rohadi Wijaya | Dery Suandi
         </p>
       </footer>
     );
@@ -38,7 +38,7 @@ export const GlobalFooter: React.FC<GlobalFooterProps> = ({ className = '', vari
           <span className="font-normal text-slate-400">Sistem Informasi Perkemahan Pramuka</span>
         </div>
         <p className="text-[11px] text-slate-500 tracking-wide font-normal">
-          SiEpang 2026 © Rohadi Wijaya | Dery Suwandi
+          SiEpang 2026 © Rohadi Wijaya | Dery Suandi
         </p>
       </div>
     </footer>
