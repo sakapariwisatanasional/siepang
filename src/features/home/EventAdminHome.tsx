@@ -10,6 +10,7 @@ import {
   ShieldCheck, Trophy, Users, Zap, ArrowRight, Tent,
 } from 'lucide-react';
 import { eventService } from '../../services/eventService';
+import { EventCommitteeDirectory } from './EventCommitteeDirectory';
 import { NavTab } from '../../components/navigation/MobileNavigation';
 
 interface EventAdminHomeProps {
@@ -70,6 +71,8 @@ export const EventAdminHome: React.FC<EventAdminHomeProps> = ({
           ))}
         </div>
       </section>
+
+      {canManageUsers && <EventCommitteeDirectory onManageAccounts={() => onNavigate('users')} />}
 
       <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/20 dark:bg-amber-500/10">
         <div className="flex items-start gap-3">
