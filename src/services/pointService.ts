@@ -68,7 +68,17 @@ class PointService {
       throw new Error(res.error?.message || 'Gagal membaca PointTransactions dari GAS.');
     }
     const names = new Map(participantService.getParticipants().map(p => [p.id, p.name]));
-    this.transactions = res.data.records.map((r: any) => ({
+    const seen = new Set<string>();
+    const uniqueRows = res.data.records.filter((r: any) => {
+      if (String(r.source_type) !== 'peer_appreciation') return true;
+      const giver = String(r.created_by || '');
+      const reason = String(r.reason || '');
+      const key = `${r.event_id}|${giver}|${r.participant_id}|${reason}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    this.transactions = uniqueRows.map((r: any) => ({
       id: String(r.id || ''),
       participantId: String(r.participant_id || ''),
       participantName: names.get(String(r.participant_id || '')) || '',
@@ -100,16 +110,22 @@ class PointService {
     this.inFlight.add(key);
     try {
       const now = new Date().toISOString();
+      const peerKind = PEER_APPRECIATIONS.find(a => `Apresiasi Kawan: ${a.label}` === reason)?.type;
+      if (category === 'peer_appreciation' && !peerKind) throw new Error('Jenis apresiasi tidak dikenal.');
       const referenceId = category === 'peer_appreciation'
-        ? `peer:${actor.id}:${participantId}:${now.slice(0, 10)}` : '';
+        ? `peer:${eventService.getCurrentEvent()?.id}:${actor.id}:${participantId}:${peerKind}` : '';
       if (category === 'peer_appreciation') {
+        // List all transactions so legacy (date-scoped) references are checked too.
         const existing = await apiTransport.send<{ records: any[] }>('admin.entity.list', {
-          entity: 'pointTransactions', filters: { reference_id: referenceId },
+          entity: 'pointTransactions', filters: { participant_id: participantId },
         });
         if (!existing.ok || !Array.isArray(existing.data?.records)) {
           throw new Error(existing.error?.message || 'Tidak dapat memeriksa apresiasi sebelumnya.');
         }
-        if (existing.data.records.length) throw new Error('Anda sudah memberikan apresiasi kepada peserta ini hari ini.');
+        if (existing.data.records.some(r =>
+          r.source_type === 'peer_appreciation' && String(r.created_by) === actor.id &&
+          String(r.reason) === reason
+        )) throw new Error('Apresiasi ini sudah pernah Anda berikan kepada peserta tersebut.');
         if (actor.participantCode) {
           const target = participantService.getParticipants().find(p => p.id === participantId);
           if (target?.code === actor.participantCode) throw new Error('Tidak boleh memberikan apresiasi kepada diri sendiri.');
@@ -137,12 +153,27 @@ class PointService {
         amount: Number(row.amount), reason: String(row.reason || reason),
         category, timestamp: String(row.created_at || now),
       };
-      this.transactions.unshift(tx);
-      this.notify();
+      await this.refreshTransactions();
       return tx;
     } finally {
       this.inFlight.delete(key);
     }
+  }
+
+  /** Read the server ledger and return types already granted by the logged-in giver. */
+  public async getGivenAppreciationTypes(participantId: string): Promise<PeerAppreciationType[]> {
+    const actor = authService.getCurrentUser();
+    if (!actor?.id) throw new Error('Silakan login sebelum memberi apresiasi.');
+    const result = await apiTransport.send<{ records: any[] }>('admin.entity.list', {
+      entity: 'pointTransactions', filters: { participant_id: participantId },
+    });
+    if (!result.ok || !Array.isArray(result.data?.records)) {
+      throw new Error(result.error?.message || 'Riwayat apresiasi belum berhasil dibaca dari GAS.');
+    }
+    return PEER_APPRECIATIONS.filter(a => result.data!.records.some((r: any) =>
+      String(r.source_type) === 'peer_appreciation' && String(r.created_by) === actor.id &&
+      String(r.reason) === `Apresiasi Kawan: ${a.label}`
+    )).map(a => a.type);
   }
 
   public async givePeerAppreciation(
