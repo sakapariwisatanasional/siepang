@@ -66,8 +66,8 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   const [scanTypeFilter, setScanTypeFilter] = useState<'all' | 'participant' | 'activity' | 'visitor'>('all');
 
   // Anti-abuse state
-  const [appreciatedToday, setAppreciatedToday] = useState<Set<string>>(new Set());
-  const [dailyQuotaRemaining, setDailyQuotaRemaining] = useState<number>(4);
+  const [givenTypes, setGivenTypes] = useState<Set<PeerAppreciationType>>(new Set());
+  const [checkingAppreciations, setCheckingAppreciations] = useState(false);
 
   const currentUser = authService.getCurrentUser();
   const currentRole = currentUser?.role || 'viewer';
@@ -270,37 +270,35 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     }
   };
 
-  const handleOpenPeerModal = () => {
+  const handleOpenPeerModal = async () => {
     if (!scannedParticipant) return;
-
-    // Rule 1: No self-appreciation
     if (currentUser?.participantCode && scannedParticipant.code === currentUser.participantCode) {
-      setActionErrorMessage('⚠️ Anti-Abuse: Kamu tidak dapat memberikan apresiasi kepada diri sendiri!');
+      setActionErrorMessage('Tidak boleh memberikan apresiasi kepada diri sendiri.');
       return;
     }
-
-    // Rule 2: Daily limit reached
-    if (dailyQuotaRemaining <= 0) {
-      setActionErrorMessage('⚠️ Kuota apresiasi harianmu (5x per hari) telah habis.');
-      return;
+    setCheckingAppreciations(true);
+    try {
+      // Refresh from GAS: do not rely on an in-memory or daily quota.
+      await pointService.refreshTransactions();
+      // Backend remains authoritative; UI lets the user attempt only unused types.
+      // The ledger XPTransaction view does not expose giver ID, so only disable
+      // types already granted in this browser; GAS validates all historic grants.
+      const existingTypes = await pointService.getGivenAppreciationTypes(scannedParticipant.id);
+      setGivenTypes(new Set(existingTypes));
+      setActionErrorMessage(null);
+      setShowPeerModal(true);
+    } catch (err: any) {
+      setActionErrorMessage(err?.message || 'Gagal memeriksa riwayat apresiasi di GAS.');
+    } finally {
+      setCheckingAppreciations(false);
     }
-
-    // Rule 3: Duplicate recipient on the same day
-    if (appreciatedToday.has(scannedParticipant.id)) {
-      setActionErrorMessage(`⚠️ Kamu sudah memberikan apresiasi kepada ${scannedParticipant.name} hari ini.`);
-      return;
-    }
-
-    setActionErrorMessage(null);
-    setShowPeerModal(true);
   };
 
   const handlePeerAppreciation = async (type: PeerAppreciationType) => {
     if (!scannedParticipant) return;
     try {
       await pointService.givePeerAppreciation(scannedParticipant.id, scannedParticipant.name, type);
-      setAppreciatedToday(prev => new Set(prev).add(scannedParticipant.id));
-      setDailyQuotaRemaining(prev => Math.max(0, prev - 1));
+      setGivenTypes(prev => new Set(prev).add(type));
       setShowPeerModal(false);
       setActionSuccessMessage(`⚜️ Apresiasi "${type}" tersimpan di GAS (PointTransactions).`);
       setTimeout(() => {
@@ -451,7 +449,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                   <div className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center justify-between">
                     <span>Pilihan Tindakan Sesuai Hak Akses:</span>
                     <span className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">
-                      Kuota Apresiasi: {dailyQuotaRemaining}/5
+                      Apresiasi satu kali per jenis
                     </span>
                   </div>
 
@@ -487,6 +485,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
 
                   {/* 3. Peer Appreciation (With Anti-Abuse Rules) */}
                   <button
+                    disabled={checkingAppreciations}
                     onClick={handleOpenPeerModal}
                     className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-semibold text-xs transition-colors border border-amber-500/30 cursor-pointer"
                   >
@@ -543,7 +542,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                 Pilih karakter kepramukaan yang paling menonjol pada <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{scannedParticipant.name}</span>:
               </div>
               <div className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
-                Sisa kuota harian: {dailyQuotaRemaining} dari 5 apresiasi
+                Setiap jenis hanya sekali untuk peserta ini, tanpa reset harian
               </div>
             </div>
 
@@ -567,7 +566,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                       <div className="text-[10px] text-slate-500 dark:text-slate-400">{item.type}</div>
                     </div>
                   </div>
-                  <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400">+{item.xp} XP</div>
+                  <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{givenTypes.has(item.type) ? 'Sudah diberikan' : `+${item.xp} XP`}</div>
                 </button>
               ))}
             </div>
