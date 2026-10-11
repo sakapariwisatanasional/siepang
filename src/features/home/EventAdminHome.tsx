@@ -13,6 +13,8 @@ import { eventService } from '../../services/eventService';
 import { EventCommitteeDirectory } from './EventCommitteeDirectory';
 import { EventCommitteeManagement } from './EventCommitteeManagement';
 import { EventAccessAudit } from './EventAccessAudit';
+import { EventLifecyclePanel } from './EventLifecyclePanel';
+import { EventDatabaseManager } from './EventDatabaseManager';
 import { NavTab } from '../../components/navigation/MobileNavigation';
 
 interface EventAdminHomeProps {
@@ -74,6 +76,8 @@ export const EventAdminHome: React.FC<EventAdminHomeProps> = ({
         </div>
       </section>
 
+      {canManageUsers && <EventDatabaseManager />}
+      {canManageUsers && <EventLifecyclePanel onNavigate={onNavigate} />}
       {canManageUsers && <EventCommitteeManagement onManageAccounts={() => onNavigate('users')} />}
       {canManageUsers && <EventAccessAudit onManageAccounts={() => onNavigate('users')} />}
       {canManageUsers && <EventCommitteeDirectory onManageAccounts={() => onNavigate('users')} />}
