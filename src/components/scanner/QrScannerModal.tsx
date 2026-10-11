@@ -122,8 +122,9 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     //    whereas getParticipantByCode matches a separate code/NTA field.
     let found: Participant | undefined;
     try {
-      // Do not authorize actions from potentially stale in-memory participants.
-      await participantService.loadParticipants();
+      // Data baru hasil prefetch langsung dipakai; bila melewati TTL tetap membaca GAS.
+      // Validasi penulisan (check-in / XP) tetap dilakukan pada server.
+      await participantService.ensureScannerParticipantsFresh();
       found = participantService.getParticipants().find(p => p.id === code)
         || participantService.getParticipantByCode(code);
     } catch (error: any) {
@@ -137,6 +138,15 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     }
     } finally { setIsResolving(false); }
   };
+
+  // Mulai memuat peserta ketika scanner dibuka, paralel dengan aktivasi kamera.
+  // Tidak perlu menunggu jaringan sebelum kamera bisa memindai QR.
+  useEffect(() => {
+    if (!isOpen) return;
+    void participantService.ensureScannerParticipantsFresh().catch(() => {
+      // Jika prefetch gagal, saat QR dipindai tampilkan kegagalan yang sebenarnya.
+    });
+  }, [isOpen]);
 
   // Start each fresh opening with an active scanner, not the previous result state.
   useEffect(() => {
@@ -278,8 +288,8 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     }
     setCheckingAppreciations(true);
     try {
-      // Refresh from GAS: do not rely on an in-memory or daily quota.
-      await pointService.refreshTransactions();
+      // Langsung periksa riwayat pemberi + penerima di GAS, tanpa memuat
+      // seluruh buku besar transaksi XP lebih dulu (dua request berurutan).
       // Backend remains authoritative; UI lets the user attempt only unused types.
       // The ledger XPTransaction view does not expose giver ID, so only disable
       // types already granted in this browser; GAS validates all historic grants.
