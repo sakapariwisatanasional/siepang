@@ -104,8 +104,24 @@ export const GudepReguManager: React.FC = () => {
       await gudepRegistrationService.verify(selectedId, decision, note);
       setDecisionNotes('');
       await load(selectedId);
-      setMessage(`Keputusan ${decision} berhasil disimpan ke GAS.`);
+      const fresh = await gudepRegistrationService.detail(selectedId);
+      setRegu(fresh.regu || []);
+      setMessage(`Keputusan ${decision} berhasil disimpan ke GAS, termasuk status seluruh Regu.`);
     } catch (e: any) { setError(e?.message || 'Gagal menyimpan keputusan verifikasi.'); }
+    finally { setBusy(false); }
+  };
+
+  const syncVerifiedRegu = async () => {
+    if (busy || !selectedId) return;
+    if (!window.confirm('Samakan status Regu PENDING menjadi VERIFIED mengikuti Gudep yang sudah disetujui?')) return;
+    setBusy(true); setError(''); setMessage('');
+    try {
+      const result = await gudepRegistrationService.syncReguVerification(selectedId);
+      const fresh = await gudepRegistrationService.detail(selectedId);
+      setRegu(fresh.regu || []);
+      setMessage(`${result.regu_updated} Regu berhasil disinkronkan menjadi VERIFIED di GAS.`);
+      await load(selectedId);
+    } catch (e: any) { setError(e?.message || 'Gagal menyinkronkan status regu.'); }
     finally { setBusy(false); }
   };
 
@@ -156,7 +172,13 @@ export const GudepReguManager: React.FC = () => {
           <button type="button" disabled={busy || !decisionNotes.trim()} onClick={() => void decideGudep('REJECTED')} className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-40">Tolak</button>
         </div>
       </div>}
-      {selected.verification_status === 'VERIFIED' && <p className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-200">Gudep telah diverifikasi. Aktivasi operasional terpisah belum tersedia pada skema GAS sekarang; verifikasi bukan bukti bahwa aktivasi sudah dilakukan.</p>}
+      {selected.verification_status === 'VERIFIED' && <div className="space-y-2">
+        <p className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-200">Gudep telah diverifikasi. Verifikasi Gudep mencakup semua Regu yang diajukan. Aktivasi operasional terpisah belum tersedia pada skema GAS sekarang.</p>
+        {!detailLoading && regu.some(r => r.verification_status === 'PENDING') && <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/40 p-3">
+          <span className="text-xs text-amber-600 dark:text-amber-300">Ada Regu lama berstatus PENDING walaupun Gudep sudah VERIFIED.</span>
+          <button type="button" disabled={busy} onClick={() => void syncVerifiedRegu()} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-40">Sinkronkan Verifikasi Regu</button>
+        </div>}
+      </div>}
       {selected.verification_status === 'REJECTED' && <p className="rounded-xl bg-rose-50 p-3 text-xs text-rose-900 dark:bg-rose-950/20 dark:text-rose-200">Pengajuan ditolak. Data tidak dihapus.</p>}
       {selected.verification_status === 'REVISION' && <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">Pengajuan dikembalikan ke DRAFT untuk perbaikan. Fungsi edit data memerlukan endpoint update GAS yang belum tersedia.</p>}
     </section>}
