@@ -7,7 +7,7 @@
  * - Secure digital pass generation with dynamic QR
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Users,
   Search,
@@ -44,11 +44,18 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
   // Registration step state
   const [step, setStep] = useState<'form' | 'success'>('form');
   const [submittedVisitor, setSubmittedVisitor] = useState<VisitorRegistration | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const submitLock = useRef(false);
+  const requestKey = useRef('');
 
   // Form State
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [category, setCategory] = useState<VisitorCategory>('Orang Tua / Wali');
+  const [visitType, setVisitType] = useState<'VISITOR' | 'SPEAKER'>('VISITOR');
+  const [speakerAgenda, setSpeakerAgenda] = useState('');
+  const [speakerTopic, setSpeakerTopic] = useState('');
   const [identityType, setIdentityType] = useState<'KTP' | 'SIM' | 'Kartu Pegawai' | 'Paspor' | 'Lainnya'>('KTP');
   const [identityNumber, setIdentityNumber] = useState('');
   const [organization, setOrganization] = useState('');
@@ -71,18 +78,24 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
     setSearchResults(results);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !phone.trim() || !selectedPerson) return;
-
-    const registered = visitorManagementService.registerVisitor({
+    if (!name.trim() || !phone.trim() || submitLock.current) return;
+    if (visitType === 'SPEAKER' && !speakerAgenda.trim()) { setSubmitError('Agenda yang diisi narasumber wajib disebutkan.'); return; }
+    submitLock.current = true;
+    setIsSubmitting(true);
+    setSubmitError('');
+    if (!requestKey.current) requestKey.current = `visit_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    try {
+    const registered = await visitorManagementService.registerVisitor({
       name: name.trim(),
       phone: phone.trim(),
       category,
+      visitType, speakerAgenda, speakerTopic,
       identityType,
       identityNumber,
       organization,
-      personVisited: selectedPerson,
+      personVisited: selectedPerson || { type: 'unit', targetName: 'Kunjungan Umum', targetDetail: 'Area publik perkemahan' },
       relationship,
       visitDate,
       expectedArrival,
@@ -90,10 +103,16 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
       accompanyingPersonsCount: Number(accompanyingCount),
       vehicleInfo,
       purpose,
-    });
+    }, undefined, requestKey.current);
 
     setSubmittedVisitor(registered);
     setStep('success');
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : String(error));
+    } finally {
+      submitLock.current = false;
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -128,9 +147,21 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
                 <span>Ketentuan Kunjungan Resmi</span>
               </div>
               <p className="text-slate-600 dark:text-slate-400">
-                Buka pukul <strong>08:00 - 17:00 WIB</strong>. Seluruh pengunjung wajib memiliki Visitor Pass dan mematuhi tata tertib perkemahan.
+                Jam kunjungan mengikuti ketentuan panitia. Seluruh pengunjung wajib menunjukkan Visitor Pass dan mematuhi tata tertib perkemahan.
               </p>
             </div>
+
+            <fieldset className="space-y-2 rounded-2xl border border-slate-200 dark:border-white/10 p-3">
+              <legend className="px-1 font-bold">Jenis Registrasi</legend>
+              <label className="flex items-center gap-2"><input type="radio" name="visitType" checked={visitType === 'VISITOR'} onChange={() => setVisitType('VISITOR')} /> Pengunjung</label>
+              <label className="flex items-center gap-2"><input type="radio" name="visitType" checked={visitType === 'SPEAKER'} onChange={() => setVisitType('SPEAKER')} /> Narasumber / Pemateri</label>
+              {visitType === 'SPEAKER' && <div className="space-y-2 pt-2">
+                <label className="block">Agenda / sesi yang diisi *</label>
+                <input required value={speakerAgenda} onChange={e => setSpeakerAgenda(e.target.value)} placeholder="Contoh: Giat Wawasan Kebangsaan" className="w-full rounded-xl border border-slate-300 bg-transparent p-2 dark:border-white/20" />
+                <label className="block">Topik / judul materi</label>
+                <input value={speakerTopic} onChange={e => setSpeakerTopic(e.target.value)} placeholder="Judul materi" className="w-full rounded-xl border border-slate-300 bg-transparent p-2 dark:border-white/20" />
+              </div>}
+            </fieldset>
 
             {/* Step 1: Visitor Identity */}
             <div className="space-y-2.5">
@@ -197,7 +228,7 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
             {/* Step 2: Person Being Visited */}
             <div className="space-y-2.5 pt-2 border-t border-[#ECECEF] dark:border-white/10">
               <h4 className="font-bold text-[#171717] dark:text-white uppercase text-[11px] tracking-wider">
-                2. Siapa yang Dikunjungi di Perkemahan?
+                2. {visitType === 'SPEAKER' ? 'Pihak Koordinasi di Perkemahan (Opsional)' : 'Siapa yang Dikunjungi di Perkemahan? (Opsional)'}
               </h4>
 
               <div className="space-y-2">
@@ -343,7 +374,7 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
               </button>
               <button
                 type="submit"
-                disabled={!selectedPerson || !name.trim() || !phone.trim()}
+                disabled={isSubmitting || !name.trim() || !phone.trim()}
                 className="px-6 py-2.5 bg-[#171717] hover:bg-black dark:bg-white dark:hover:bg-slate-100 text-white dark:text-[#171717] rounded-xl font-bold shadow-sm disabled:opacity-50 cursor-pointer"
               >
                 Daftar & Terbitkan Pass
@@ -393,7 +424,7 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
                 {submittedVisitor?.name}
               </div>
               <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                {submittedVisitor?.category} · Izin: {submittedVisitor?.visitDate}
+                {visitType === 'SPEAKER' ? 'Narasumber / Pemateri' : submittedVisitor?.category} · Izin: {submittedVisitor?.visitDate}
               </div>
               <div className="text-[9px] text-slate-500 dark:text-slate-400 font-medium">
                 Tunjukkan QR ini kepada Petugas di Gerbang Masuk Buper
