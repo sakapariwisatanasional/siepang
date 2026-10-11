@@ -78,7 +78,7 @@ class ParticipantService {
     if (!Array.isArray(rows)) {
       throw new Error('Respons participants.list tidak memuat array participants.');
     }
-    this.participants = rows.map((r: any, index: number): Participant => {
+    this.participants = rows.filter((r:any) => String(r.active_status || r.activeStatus || '').toUpperCase() !== 'ARCHIVED').map((r: any, index: number): Participant => {
       const rawStatus = String(r.verification_status || r.verificationStatus || 'SUBMITTED').toUpperCase();
       const status: ParticipantStatus = rawStatus === 'APPROVED' ? 'approved'
         : rawStatus === 'VERIFIED' ? 'verified'
