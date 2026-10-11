@@ -30,7 +30,7 @@ export interface PermissionGroup {
 export const PERMISSION_GROUPS: PermissionGroup[] = [
   {
     id: 'grp_event',
-    title: 'Manajemen Event & Kwartir',
+    title: 'Pengelolaan Event Aktif',
     description: 'Pengaturan identitas event, siklus hidup, dan konfigurasi fitur.',
     permissions: [
       { code: 'event.view', label: 'Lihat Informasi Event', description: 'Melihat detail publik dan jadwal event' },
@@ -46,7 +46,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { code: 'participant.view', label: 'Lihat Daftar Peserta', description: 'Melihat data anggota kontingen' },
       { code: 'participant.verify', label: 'Verifikasi Berkas Peserta', description: 'Memeriksa keabsahan KTA dan surat izin' },
       { code: 'participant.approve', label: 'Persetujuan Akhir Peserta', description: 'Mengesahkan status kepesertaan' },
-      { code: 'contingent.manage', label: 'Kelola Kontingen', description: 'Menetapkan pimpinan kontingen dan kuota' },
+      { code: 'contingent.manage', label: 'Kelola Regu / Kontingen Event', description: 'Menetapkan pimpinan kontingen dan kuota' },
     ],
   },
   {
@@ -147,11 +147,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   },
   {
     id: 'grp_settings',
-    title: 'Pengaturan Kwartir & Domain',
-    description: 'Custom domain, branding logo, dan manajemen pengguna.',
+    title: 'Pengaturan Aplikasi & Akun',
+    description: 'Identitas penyelenggara, konfigurasi sistem, dan pengelolaan akun panitia.',
     permissions: [
-      { code: 'settings.workspace', label: 'Pengaturan Workspace', description: 'Mengubah identitas kwartir dan Google Drive' },
-      { code: 'settings.users', label: 'Kelola Hak Akses Pengguna', description: 'Menambah dan menetapkan peran panitia' },
+      { code: 'settings.workspace', label: 'Pengaturan Konteks Aplikasi', description: 'Mengelola konfigurasi sistem dan Google Drive yang digunakan event' },
+      { code: 'settings.users', label: 'Kelola Hak Akses Panitia', description: 'Menambah dan menetapkan peran panitia' },
     ],
   },
 ];
