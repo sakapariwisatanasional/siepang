@@ -52,14 +52,14 @@ import { ProfilePhotoUploader } from '../../components/media/ProfilePhotoUploade
 
 const ROLE_LABELS: Record<UserRole, { label: string; badge: string; desc: string }> = {
   superadmin: {
-    label: 'SuperAdmin Kwartir',
+    label: 'Administrator Sistem',
     badge: 'bg-red-950/80 text-red-300 border-red-500/30',
-    desc: 'Akses penuh platform multi-workspace & provisioning kwartir.',
+    desc: 'Pengelola tertinggi sistem SiEpang dan konfigurasi event aktif.',
   },
   workspace_admin: {
-    label: 'Admin Kwartir Daerah/Cabang',
+    label: 'Administrator Operasional',
     badge: 'bg-emerald-950/80 text-emerald-300 border-emerald-500/30',
-    desc: 'Pengelola penuh workspace, event, dan konfigurasi daerah.',
+    desc: 'Mengelola akun petugas dan operasional event aktif.',
   },
   event_admin: {
     label: 'Admin Event / Panitia Inti',
@@ -69,7 +69,7 @@ const ROLE_LABELS: Record<UserRole, { label: string; badge: string; desc: string
   kontingen_admin: {
     label: 'Pembina / Pinkon',
     badge: 'bg-amber-950/80 text-amber-300 border-amber-500/30',
-    desc: 'Pengelola anggota kontingen cabang atau ranting.',
+    desc: 'Mengelola peserta atau regu yang ditugaskan dalam event.',
   },
   registration_officer: {
     label: 'Petugas Verifikasi Berkas',
@@ -244,7 +244,7 @@ export const UserManagementView: React.FC = () => {
       email: '',
       role: 'event_admin',
       workspaceId: activeWs?.id || workspaces[0]?.id || '',
-      organizationName: activeWs?.organization || workspaces[0]?.organization || 'Kwartir Gerakan Pramuka',
+      organizationName: activeWs?.organization || workspaces[0]?.organization || 'Penyelenggara Event',
       status: 'active',
     });
     setIsModalOpen(true);
@@ -280,7 +280,7 @@ export const UserManagementView: React.FC = () => {
         email: editingUser.email,
         role: editingUser.role || 'committee',
         workspaceId: editingUser.workspaceId || activeWs?.id || workspaces[0]?.id || '',
-        organizationName: editingUser.organizationName || activeWs?.organization || workspaces[0]?.organization || 'Kwartir Gerakan Pramuka',
+        organizationName: editingUser.organizationName || activeWs?.organization || workspaces[0]?.organization || 'Penyelenggara Event',
         status: editingUser.status || 'active',
       });
     }
@@ -296,14 +296,14 @@ export const UserManagementView: React.FC = () => {
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFF0F4] border border-[#FFE0E8] text-xs font-semibold text-[#F47743] mb-2">
             <Shield className="w-3.5 h-3.5" />
-            <span>Manajemen Pengguna & RBAC Otoritatif</span>
+            <span>Akun dan Hak Akses Panitia</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-bold text-[#171717] dark:text-white tracking-tight">
-            Akses Pengguna & Matriks Hak Akses
+            Akses Panitia Event
           </h1>
           <p className="text-xs text-[#6B7280] dark:text-slate-400 mt-1 max-w-2xl leading-relaxed">
-            Kelola panitia, pembina kontingen, dewan juri, dan petugas posko dengan pembatasan
-            otorisasi berbasis backend (RBAC) pada 13 domain operasional kepramukaan.
+            Kelola akun panitia, petugas lapangan, juri, dan tim pendukung untuk satu event aktif.
+            Izin operasional tetap diperiksa oleh backend (RBAC).
           </p>
         </div>
 
@@ -322,7 +322,7 @@ export const UserManagementView: React.FC = () => {
       </div>
 
       {/* Tabs navigation */}
-      <div className="flex items-center gap-2 border-b border-[#ECECEF] dark:border-white/10 pb-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pb-2">
         <button
           onClick={() => setActiveTab('users')}
           className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 min-h-[40px] cursor-pointer ${
@@ -344,7 +344,7 @@ export const UserManagementView: React.FC = () => {
           }`}
         >
           <Key className="w-4 h-4" />
-          <span>Matriks Izin (13 Domain RBAC)</span>
+          <span>Matriks Izin Operasional</span>
         </button>
 
         <button
@@ -364,7 +364,7 @@ export const UserManagementView: React.FC = () => {
       {activeTab === 'users' && (
         <div className="space-y-4">
           {/* Sub-Tabs Navigation (Requirement 15) */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pb-1">
             {[
               { id: 'ALL' as UserSubTab, label: 'Semua Pengguna', count: users.length },
               { id: 'NEW' as UserSubTab, label: 'Baru Terdaftar', count: users.filter(u => u.lastLogin === 'Belum pernah' || u.lastLogin === 'Belum pernah login').length },
@@ -377,7 +377,7 @@ export const UserManagementView: React.FC = () => {
                 key={tab.id}
                 type="button"
                 onClick={() => setUserSubTab(tab.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex flex-wrap justify-center items-center gap-1.5 min-h-[44px] ${
                   userSubTab === tab.id
                     ? 'bg-[#F47743] text-white shadow-xs'
                     : 'bg-white dark:bg-[#141418] text-[#6B7280] dark:text-slate-400 hover:text-[#171717] dark:hover:text-white border border-[#ECECEF] dark:border-white/10'
@@ -399,7 +399,7 @@ export const UserManagementView: React.FC = () => {
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               <input
                 type="text"
-                placeholder="Cari berdasarkan nama, email, atau kwartir..."
+                placeholder="Cari nama, email, atau instansi..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 bg-[#FAFAFA] dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-xl text-base md:text-xs text-[#171717] dark:text-white placeholder-slate-400 focus:outline-none focus:border-[#F47743]"
@@ -482,9 +482,9 @@ export const UserManagementView: React.FC = () => {
                         </span>
                       </div>
                       <div className="flex justify-between text-[#6B7280] dark:text-slate-400">
-                        <span>Kwartir / Gudep:</span>
+                        <span>Asal / Instansi:</span>
                         <span className="text-[#171717] dark:text-slate-200 truncate max-w-[140px]">
-                          {user.organizationName || 'Pramuka Jatim'}
+                          {user.organizationName || 'Belum diisi'}
                         </span>
                       </div>
                       <div className="flex justify-between text-[#6B7280] dark:text-slate-400">
@@ -713,8 +713,8 @@ export const UserManagementView: React.FC = () => {
               </div>
 
               <div className="p-3.5 rounded-2xl bg-[#FAFAFA] dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/5 space-y-1">
-                <div className="text-[#6B7280] dark:text-slate-400 text-[11px]">Workspace Resolver</div>
-                <div className="text-[#171717] dark:text-white font-bold truncate">{workspaceService.getCurrentWorkspace()?.name || 'Workspace Aktif'}</div>
+                <div className="text-[#6B7280] dark:text-slate-400 text-[11px]">Konteks Data Aplikasi</div>
+                <div className="text-[#171717] dark:text-white font-bold truncate">{workspaceService.getCurrentWorkspace()?.name || 'Konteks Aktif'}</div>
                 <div className="text-[10px] text-slate-400 font-mono">{workspaceService.getCurrentWorkspace()?.id || 'GLOBAL_WS'}</div>
               </div>
 
@@ -742,7 +742,7 @@ export const UserManagementView: React.FC = () => {
                 <br />
                 1. <strong>Otentikasi Token</strong>: Memastikan identitas akun terverifikasi.
                 <br />
-                2. <strong>Workspace Guard</strong>: Memastikan pengguna terdaftar dalam workspace kwartir yang bersangkutan.
+                2. <strong>Workspace Guard</strong>: Memastikan pengguna terikat pada konteks sistem yang sesuai (kompatibilitas backend lama).
                 <br />
                 3. <strong>RBAC Guard</strong>: Memverifikasi hak akses spesifik terhadap entitas (misal: juri hanya bisa menilai lomba yang ditugaskan).
               </p>
@@ -848,10 +848,10 @@ export const UserManagementView: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#171717] dark:text-slate-300 mb-1">Kwartir / Pangkalan</label>
+                <label className="block text-xs font-semibold text-[#171717] dark:text-slate-300 mb-1">Asal Instansi / Unit</label>
                 <input
                   type="text"
-                  placeholder="Contoh: Kwartir Cabang / Ranting / Pangkalan"
+                  placeholder="Contoh: Sekolah, gugus depan, atau penyelenggara"
                   value={editingUser.organizationName || ''}
                   onChange={e => setEditingUser({ ...editingUser, organizationName: e.target.value })}
                   className="w-full p-2.5 bg-[#FAFAFA] dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-xl text-base sm:text-xs text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
@@ -859,7 +859,7 @@ export const UserManagementView: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#171717] dark:text-slate-300 mb-1">Penyelenggara / Workspace</label>
+                <label className="block text-xs font-semibold text-[#171717] dark:text-slate-300 mb-1">Konteks penyelenggara (internal)</label>
                 <div className="w-full p-2.5 bg-slate-50 dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-xs text-[#171717] dark:text-white font-medium">
                   {workspaceService.getCurrentWorkspace().name} ({workspaceService.getCurrentWorkspace().organization})
                 </div>
@@ -957,7 +957,7 @@ export const UserManagementView: React.FC = () => {
                   <h4 className="text-sm font-bold text-[#171717] dark:text-white">{detailUser.name}</h4>
                   <div className="text-xs text-[#6B7280] dark:text-slate-400">{detailUser.email}</div>
                   <div className="text-[11px] text-slate-500">
-                    Terdaftar sejak: {detailUser.createdAt || 'Tidak diketahui'} · Kwartir: {detailUser.organizationName || 'Pramuka'}
+                    Terdaftar sejak: {detailUser.createdAt || 'Tidak diketahui'} · Instansi: {detailUser.organizationName || 'Pramuka'}
                   </div>
                 </div>
               </div>
