@@ -1021,6 +1021,19 @@ class EventStudioService {
     throw new Error(res.error || 'Gagal membuat tipe kompetisi.');
   }
 
+  /** Reload authoritative competition & judge lists after mutations. */
+  public async refreshCompetitionManagement(): Promise<void> {
+    const [comps, judges] = await Promise.all([
+      this.request<Competition[]>('/api/competitions/list'),
+      this.request<CompetitionJudge[]>('/api/competitions/judges/list'),
+    ]);
+    if (!comps.success || !Array.isArray(comps.data)) throw new Error(comps.error || 'Gagal membaca ulang lomba dari GAS.');
+    if (!judges.success || !Array.isArray(judges.data)) throw new Error(judges.error || 'Gagal membaca ulang juri dari GAS.');
+    this.competitions = comps.data;
+    this.judges = judges.data;
+    this.notify();
+  }
+
   public listCompetitions(): Competition[] {
     return this.competitions;
   }
@@ -1035,6 +1048,8 @@ class EventStudioService {
     });
     if (res.success && res.data) {
       this.competitions.unshift(res.data);
+      await this.refreshCompetitionManagement();
+      if (!(this.competitions.some(c => c.id === res.data!.id))) throw new Error('GAS merespons sukses, tetapi data belum ditemukan pada pembacaan ulang.');
       await this.refreshAudit();
       this.notify();
       return res.data;
@@ -1052,6 +1067,8 @@ class EventStudioService {
     });
     if (res.success && res.data) {
       this.competitions = this.competitions.map(c => c.id === id ? res.data! : c);
+      await this.refreshCompetitionManagement();
+      if (!(this.competitions.some(c => c.id === id))) throw new Error('GAS merespons sukses, tetapi data belum ditemukan pada pembacaan ulang.');
       await this.refreshAudit();
       this.notify();
       return res.data;
@@ -1065,6 +1082,8 @@ class EventStudioService {
     });
     if (!res.success) throw new Error(res.error || 'Gagal mengarsipkan lomba.');
     this.competitions = this.competitions.filter(c => c.id !== id);
+    await this.refreshCompetitionManagement();
+    if (this.competitions.some(c => c.id === id)) throw new Error('Lomba masih ditemukan setelah pengarsipan.');
     await this.refreshAudit();
     this.notify();
   }
@@ -1123,11 +1142,26 @@ class EventStudioService {
     });
     if (res.success && res.data) {
       this.judges.push(res.data);
+      await this.refreshCompetitionManagement();
+      if (!(this.judges.some(j => j.id === res.data!.id))) throw new Error('GAS merespons sukses, tetapi data belum ditemukan pada pembacaan ulang.');
       await this.refreshAudit();
       this.notify();
       return res.data;
     }
     throw new Error(res.error || 'Gagal menugaskan juri.');
+  }
+
+  public async updateJudge(id: string, changes: Partial<CompetitionJudge>): Promise<CompetitionJudge> {
+    const existing = this.judges.find(j => j.id === id);
+    if (!existing) throw new Error('Juri belum ada dalam database yang dimuat.');
+    const response = await this.request<CompetitionJudge>('/api/competitions/judges/assign', {
+      data: { judge: { ...existing, ...changes, id } },
+    });
+    if (!response.success || !response.data) throw new Error(response.error || 'Gagal mengubah juri.');
+    await this.refreshCompetitionManagement();
+    const persisted = this.judges.find(j => j.id === id);
+    if (!persisted) throw new Error('Juri belum ditemukan pada pembacaan ulang GAS.');
+    return persisted;
   }
 
   public addJudge(judge: Omit<CompetitionJudge, 'id'>): Promise<CompetitionJudge> {
@@ -1153,6 +1187,8 @@ class EventStudioService {
     });
     if (!res.success) throw new Error(res.error || 'Gagal mengarsipkan juri.');
     this.judges = this.judges.filter(j => j.id !== judgeId);
+    await this.refreshCompetitionManagement();
+    if (this.judges.some(j => j.id === judgeId)) throw new Error('Juri masih ditemukan setelah pengarsipan.');
     await this.refreshAudit();
     this.notify();
   }
