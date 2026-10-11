@@ -48,6 +48,8 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraRetry, setCameraRetry] = useState(0);
+  const [isResolving, setIsResolving] = useState(false);
+  const [scanPaused, setScanPaused] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanHandlerRef = useRef<(code: string) => Promise<void>>(async () => {});
@@ -75,6 +77,9 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
 
   const handleScanCode = async (rawCode: string) => {
     setActionErrorMessage(null);
+    setIsResolving(true);
+    setScanPaused(true);
+    try {
     let code = rawCode.trim();
     // Kompatibel dengan QR yang berisi ID langsung maupun URL /scan?p=ID.
     try {
@@ -113,19 +118,42 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
       }
     }
 
-    // 3. Fallback to Participant Badge lookup
-    const found = participantService.getParticipantByCode(code) || participantService.getParticipants().find(p => p.id === code);
+    // 3. Resolve participant from the GAS-backed participant list. A QR contains Participants.id,
+    //    whereas getParticipantByCode matches a separate code/NTA field.
+    let found: Participant | undefined;
+    try {
+      // Do not authorize actions from potentially stale in-memory participants.
+      await participantService.loadParticipants();
+      found = participantService.getParticipants().find(p => p.id === code)
+        || participantService.getParticipantByCode(code);
+    } catch (error: any) {
+      setActionErrorMessage(`Gagal memeriksa peserta ke GAS: ${error?.message || 'Koneksi tidak tersedia'}. Silakan coba lagi.`);
+      return;
+    }
     if (found) {
       setScannedParticipant(found);
     } else {
-      setActionErrorMessage(`Kode QR / Token '${code}' tidak ditemukan atau tidak valid dalam sistem.`);
+      setActionErrorMessage(`ID peserta '${code}' belum ditemukan pada data Participants di GAS. Pastikan peserta terdaftar di event aktif.`);
     }
+    } finally { setIsResolving(false); }
   };
+
+  // Start each fresh opening with an active scanner, not the previous result state.
+  useEffect(() => {
+    if (!isOpen) {
+      setScanPaused(false);
+      setScannedParticipant(null);
+      setScannedActivityResult(null);
+      setScannedVisitor(null);
+      setActionErrorMessage(null);
+      setIsResolving(false);
+    }
+  }, [isOpen]);
 
   // Scanner global sebelumnya hanya simulasi. Hidupkan kamera asli saat modal terbuka.
   scanHandlerRef.current = handleScanCode;
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || scanPaused) return;
     let cancelled = false;
     let timer: number | undefined;
     let detector: { detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>> } | null = null;
@@ -197,7 +225,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     };
     void startCamera();
     return () => { cancelled = true; closeCamera(); };
-  }, [isOpen, cameraRetry]);
+  }, [isOpen, cameraRetry, scanPaused]);
 
   useEffect(() => {
     const track = streamRef.current?.getVideoTracks()[0];
@@ -323,12 +351,21 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
             <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-emerald-400 rounded-bl-2xl" />
             <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-emerald-400 rounded-br-2xl" />
           </div>
-          {!cameraReady && (
+          {isResolving && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/85 text-center px-6 text-sm text-white z-10" role="status">Mencari data peserta di GAS…</div>
+          )}
+          {!cameraReady && !isResolving && !scanPaused && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/85 text-center px-6 text-sm text-white">
               {cameraError ? 'Kamera belum aktif' : 'Mengaktifkan kamera…'}
             </div>
           )}
-          {cameraReady && !cameraError && (
+          {scanPaused && !isResolving && !scannedParticipant && !scannedActivityResult && !scannedVisitor && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 text-center px-6 gap-3 z-10">
+              <div className="text-sm">{actionErrorMessage ? 'Peserta belum dikenali' : 'Pemindaian selesai'}</div>
+              <button type="button" onClick={() => { setActionErrorMessage(null); setScanPaused(false); setCameraRetry(v => v + 1); }} className="rounded-lg bg-emerald-600 px-5 py-3 font-bold text-white">Scan Ulang</button>
+            </div>
+          )}
+          {cameraReady && !cameraError && !scanPaused && (
             <div className="absolute bottom-3 inset-x-3 text-center text-xs rounded-lg bg-black/70 px-3 py-2 text-white pointer-events-none">
               Arahkan QR ke dalam bingkai
             </div>
