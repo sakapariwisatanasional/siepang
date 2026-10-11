@@ -355,203 +355,67 @@ class VisitorManagementService {
   /**
    * High-frequency gate check-in & check-out processor
    */
-  public async processGateScan(
-    qrTokenOrCode: string,
-    gateId: string,
-    officerName: string,
-    options?: {
-      overrideHours?: boolean;
-      overrideReason?: string;
-      forceCheckout?: boolean;
-    }
-  ): Promise<GateScanResult> {
-    const cleaned = qrTokenOrCode.trim();
-
-    // 1. Resolve visitor
-    let visitor = this.getVisitorByToken(cleaned);
-    if (!visitor) {
-      visitor = this.getVisitorByCode(cleaned);
-    }
-    if (!visitor) {
-      // Check unified resolver
-      const resolution = qrResolverService.resolveToken(cleaned);
-      if (resolution.isValid && resolution.purpose === 'VISITOR' && resolution.token) {
-        visitor = this.getVisitorById(resolution.token.entityId);
-      }
-    }
-
-    if (!visitor) {
-      return {
-        success: false,
-        action: 'REJECTED',
-        errorCode: 'NOT_FOUND',
-        message: 'Kode Visitor Pass tidak terdaftar dalam sistem.',
-        insideCampCount: this.getInsideCampCount(),
+  /** Load data from GAS; memory is only a read-through cache. */
+  public async loadVisitors(): Promise<void> {
+    const res = await apiTransport.send<{ visitors: any[]; visits: any[]; gates: any[] }>('visitors.gate.list', {}, { timeoutMs: 45000 });
+    if (!res.ok || !res.data) throw new Error(res.error?.message || 'Gagal memuat Buku Tamu dari GAS.');
+    const result = res.data;
+    this.visitors.clear();
+    for (const v of result.visitors || []) {
+      const person = (() => { try { return JSON.parse(v.person_visited_json || '{}'); } catch { return {}; } })();
+      const mapped: VisitorRegistration = {
+        id: String(v.id), registrationCode: String(v.registration_code || ''),
+        name: String(v.full_name || ''), phone: String(v.phone || ''),
+        category: String(v.category || 'Umum') as VisitorCategory, identityType: 'Lainnya',
+        organization: String(v.institution || ''),
+        personVisited: { type: 'unit', targetName: String(person.targetName || (v.visit_type === 'SPEAKER' ? 'Narasumber / Pemateri' : 'Kunjungan umum')), targetDetail: String(person.targetDetail || '') },
+        relationship: '', visitDate: String(v.visit_date || ''), expectedArrival: '08:00',
+        expectedDeparture: '17:00', accompanyingPersonsCount: 0,
+        purpose: String(v.purpose || ''),
+        status: String(v.status || 'APPROVED') as VisitorStatus,
+        approvalMode: 'AUTO_APPROVED', qrToken: String(v.qr_token || ''),
+        entryType: String(v.entry_type || 'SINGLE_ENTRY') as 'SINGLE_ENTRY' | 'MULTIPLE_ENTRY',
+        allowedZones: ['PUBLIC_AREA','VISITOR_AREA'], createdAt: String(v.registered_at || ''),
       };
+      this.visitors.set(mapped.id, mapped);
     }
-
-    const gate = this.gates.get(gateId) || Array.from(this.gates.values())[0];
-
-    // 2. Check revocation / watchlist (Req 41)
-    if (visitor.status === 'REVOKED') {
-      return {
-        success: false,
-        action: 'REJECTED',
-        errorCode: 'REVOKED',
-        message: `AKSES DITOLAK: Izin kunjungan telah dicabut (Revoked). Alasan: ${visitor.revokedReason || 'Keamanan'}`,
-        visitor,
-        insideCampCount: this.getInsideCampCount(),
-      };
+    this.gates.clear();
+    for (const g of result.gates || []) {
+      this.gates.set(String(g.id), { id: String(g.id), eventId: String(g.event_id || ''), gateName: String(g.gate_name || ''),
+        location: String(g.gate_location || ''), operatingHours: '08:00 - 17:00', allowedCategories: [], status: 'active' });
     }
-
-    // 3. Check approval status (Req 26, 40)
-    if (visitor.status === 'PENDING') {
-      return {
-        success: false,
-        action: 'REJECTED',
-        errorCode: 'NOT_APPROVED',
-        message: 'Pendaftaran kunjungan masih menunggu persetujuan dari Panitia Posko Humas.',
-        visitor,
-        insideCampCount: this.getInsideCampCount(),
-      };
-    }
-
-    if (visitor.status === 'REJECTED') {
-      return {
-        success: false,
-        action: 'REJECTED',
-        errorCode: 'NOT_APPROVED',
-        message: `Pendaftaran kunjungan telah ditolak panitia. Alasan: ${visitor.rejectionReason || 'Tidak memenuhi syarat'}`,
-        visitor,
-        insideCampCount: this.getInsideCampCount(),
-      };
-    }
-
-    // 4. If visitor is CURRENTLY INSIDE, trigger CHECK-OUT (Req 32)
-    if (visitor.status === 'CHECKED_IN' || options?.forceCheckout) {
-      const exitTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-      visitor.status = 'CHECKED_OUT';
-
-      // Update visit log
-      const openLog = this.visitLogs.find(
-        l => l.visitorId === visitor!.id && l.status === 'CHECKED_IN'
-      );
-
-      if (openLog) {
-        openLog.status = 'CHECKED_OUT';
-        openLog.checkoutAt = new Date().toLocaleString('id-ID');
-      }
-
-      visitor.currentVisitSession = undefined;
-
-      eventStudioService.addAuditLogEntry(
-        'VISITOR_CHECKOUT',
-        `Tamu '${visitor.name}' (${visitor.registrationCode}) check-out keluar di ${gate.gateName} pukul ${exitTime}.`,
-        officerName
-      );
-
-      this.notify();
-
-      return {
-        success: true,
-        action: 'CHECKED_OUT',
-        message: `✅ Check-out Berhasil! Tamu '${visitor.name}' telah meninggalkan area bumi perkemahan.`,
-        visitor,
-        visitLog: openLog,
-        insideCampCount: this.getInsideCampCount(),
-      };
-    }
-
-    // 5. If visitor already checked out and is SINGLE_ENTRY (Req 34)
-    if (visitor.status === 'CHECKED_OUT' && visitor.entryType === 'SINGLE_ENTRY') {
-      return {
-        success: false,
-        action: 'REJECTED',
-        errorCode: 'ALREADY_CHECKED_IN',
-        message: 'Pass kunjungan bertipe Single Entry (sekali masuk) dan telah digunakan sebelumnya.',
-        visitor,
-        insideCampCount: this.getInsideCampCount(),
-      };
-    }
-
-    // 6. Validate visiting hours (Req 35)
-    if (!options?.overrideHours) {
-      const now = new Date();
-      const currentHourMin = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':');
-
-      // Check current day of week against configured visiting hours
-      const todayName = now.toLocaleDateString('id-ID', { weekday: 'long' });
-      const ruleDay = this.rules.visitingHours.find(h => h.dayName.toLowerCase() === todayName.toLowerCase());
-
-      if (ruleDay && ruleDay.enabled) {
-        if (currentHourMin < ruleDay.openTime) {
-          return {
-            success: false,
-            action: 'REJECTED',
-            errorCode: 'TOO_EARLY',
-            message: `Jam kunjungan hari ${todayName} belum dibuka (Buka pukul ${ruleDay.openTime} WIB).`,
-            visitor,
-            insideCampCount: this.getInsideCampCount(),
-          };
-        }
-        if (currentHourMin > ruleDay.closeTime) {
-          return {
-            success: false,
-            action: 'REJECTED',
-            errorCode: 'OUTSIDE_VISITING_HOURS',
-            message: `Jam kunjungan hari ${todayName} telah berakhir (Tutup pukul ${ruleDay.closeTime} WIB).`,
-            visitor,
-            insideCampCount: this.getInsideCampCount(),
-          };
-        }
-      }
-    }
-
-    // 7. PERFORM GATE CHECK-IN (Req 31)
-    const checkinTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-    const logId = `log_${Date.now()}`;
-
-    visitor.status = 'CHECKED_IN';
-    visitor.currentVisitSession = {
-      visitLogId: logId,
-      gateId: gate.id,
-      gateName: gate.gateName,
-      checkinAt: checkinTime,
-    };
-
-    const newLog: VisitorVisitLog = {
-      visitLogId: logId,
-      visitorId: visitor.id,
-      visitorName: visitor.name,
-      visitorCategory: visitor.category,
-      registrationCode: visitor.registrationCode,
-      eventId: eventService.getCurrentEvent().id || '',
-      gateId: gate.id,
-      gateName: gate.gateName,
-      checkinAt: new Date().toLocaleString('id-ID'),
-      verifiedBy: officerName,
-      deviceId: 'GATE_TERMINAL_MOBILE',
-      status: 'CHECKED_IN',
-    };
-
-    this.visitLogs.unshift(newLog);
-
-    eventStudioService.addAuditLogEntry(
-      'VISITOR_CHECKIN',
-      `Tamu '${visitor.name}' (${visitor.category}) berhasil check-in di ${gate.gateName} oleh ${officerName}. Mengunjungi: ${visitor.personVisited.targetName}`,
-      officerName
-    );
-
+    if (!this.gates.size) this.gates.set('gate_utama', { id: 'gate_utama', eventId: '', gateName: 'Gerbang Utama', location: 'Pos utama', operatingHours: '08:00 - 17:00', allowedCategories: [], status: 'active' });
+    this.visitLogs = (result.visits || []).map((l: any): VisitorVisitLog => ({
+      visitLogId: String(l.id), visitorId: String(l.visitor_id), visitorName: String(l.visitor_name || ''),
+      visitorCategory: String(l.visitor_category || 'Umum') as VisitorCategory,
+      registrationCode: String(l.registration_code || ''), eventId: String(l.event_id || ''),
+      gateId: String(l.gate_id || ''), gateName: String(l.gate_name || ''),
+      checkinAt: String(l.checkin_at || ''), checkoutAt: l.checkout_at ? String(l.checkout_at) : undefined,
+      verifiedBy: String(l.officer_name || ''), deviceId: 'GAS',
+      status: String(l.status || 'CHECKED_IN') as 'CHECKED_IN' | 'CHECKED_OUT',
+    }));
     this.notify();
+  }
 
-    return {
-      success: true,
-      action: 'CHECKED_IN',
-      message: `✅ Izin Masuk Diberikan! Selamat datang Kak ${visitor.name}.`,
-      visitor,
-      visitLog: newLog,
-      insideCampCount: this.getInsideCampCount(),
-    };
+  /** Explicit direction prevents accidental checkout when scanner retries a check-in. */
+  public async processGateScan(
+    qrTokenOrCode: string, gateId: string, officerName: string,
+    options?: { overrideHours?: boolean; overrideReason?: string; forceCheckout?: boolean }
+  ): Promise<GateScanResult> {
+    const res = await apiTransport.send<{ scan: any }>('visitors.gate.scan', {
+      token: qrTokenOrCode.trim(), gate_id: gateId,
+      direction: options?.forceCheckout ? 'CHECK_OUT' : 'CHECK_IN',
+    }, { timeoutMs: 45000 });
+    if (!res.ok || !res.data?.scan) {
+      return { success: false, action: 'REJECTED', message: res.error?.message || 'Scan gagal divalidasi oleh GAS.',
+        insideCampCount: this.getInsideCampCount(), errorCode: (res.error?.code || 'NOT_FOUND') as GateScanResult['errorCode'] };
+    }
+    const raw = res.data.scan;
+    await this.loadVisitors();
+    const visitor = this.getVisitorById(String(raw.visitor_id));
+    return { success: true, action: raw.action === 'CHECK_OUT' ? 'CHECKED_OUT' : 'CHECKED_IN',
+      message: String(raw.message || 'Pencatatan gerbang berhasil.'), visitor,
+      insideCampCount: this.getInsideCampCount() };
   }
 
   // ==================== CONFIGURATION UPDATES ====================
