@@ -1,7 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
-import { ScoutThemeToggle } from './components/layout/ScoutThemeToggle';
 import { dynamicManifestService } from './services/dynamicManifestService';
 import { authService } from './services/authService';
 import './index.css';
@@ -59,6 +58,5 @@ if (!rootElement) {
 createRoot(rootElement).render(
   <AppErrorBoundary>
     <App />
-    <ScoutThemeToggle />
   </AppErrorBoundary>
 );
