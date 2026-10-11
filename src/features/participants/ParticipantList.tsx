@@ -158,7 +158,7 @@ export const ParticipantList: React.FC = () => {
     setGudepLoading(true);
     setGudepLoadError('');
     gudepRegistrationService.list().then(({ gudep }) => {
-      if (active) setGudepOptions(gudep || []);
+      if (active) setGudepOptions((gudep || []).filter(g => g.verification_status === 'VERIFIED' && g.activation_status === 'ACTIVE'));
     }).catch((err: any) => {
       if (active) { setGudepOptions([]); setGudepLoadError(err?.message || 'Daftar Gudep tidak dapat dimuat.'); }
     }).finally(() => { if (active) setGudepLoading(false); });
@@ -174,7 +174,7 @@ export const ParticipantList: React.FC = () => {
     setReguLoading(true);
     setReguLoadError('');
     gudepRegistrationService.detail(stepData.gudepId).then(result => {
-      if (active) setReguOptions(result.regu || []);
+      if (active) setReguOptions((result.regu || []).filter(r => r.verification_status === 'VERIFIED' && r.activation_status === 'ACTIVE'));
     }).catch((err: any) => {
       if (active) { setReguOptions([]); setReguLoadError(err?.message || 'Daftar regu tidak dapat dimuat.'); }
     }).finally(() => { if (active) setReguLoading(false); });
@@ -205,15 +205,57 @@ export const ParticipantList: React.FC = () => {
     }
   };
 
-  // Tahap stabilisasi: keputusan verifikasi/bulk memerlukan endpoint GAS permanen.
-  // Tidak boleh mengubah browser cache seolah-olah keputusan sudah tersimpan.
-  const pendingBackend = (operation: string) =>
-    showToast(`⚠️ ${operation} belum tersedia di GAS. Data peserta tidak diubah.`);
-  const handleApprove = (_p: Participant) => pendingBackend('Persetujuan peserta');
-  const handleVerify = (_p: Participant) => pendingBackend('Verifikasi berkas');
-  const handleConfirmRevision = () => pendingBackend('Permintaan revisi');
-  const handleReject = (_p: Participant) => pendingBackend('Penolakan peserta');
-  const handleExecuteBulkAction = () => pendingBackend('Aksi massal peserta');
+  // Verification actions (Requirement 9)
+  const handleApprove = (p: Participant) => {
+    participantService.approveParticipant(p.id, currentActorName);
+    showToast(`✓ Peserta '${p.name}' disetujui (Approved).`);
+  };
+
+  const handleVerify = (p: Participant) => {
+    participantService.verifyParticipant(p.id, currentActorName);
+    showToast(`✓ Berkas '${p.name}' terverifikasi.`);
+  };
+
+  const handleConfirmRevision = () => {
+    if (!revisionModalTarget) return;
+    participantService.requestRevision(revisionModalTarget.id, revisionReasonText, currentActorName);
+    showToast(`⚠️ Permintaan perbaikan berkas dikirimkan ke '${revisionModalTarget.name}'.`);
+    setRevisionModalTarget(null);
+  };
+
+  const handleReject = (p: Participant) => {
+    const reason = prompt('Masukkan alasan penolakan berkas:', 'Data ganda atau syarat kepramukaan tidak terpenuhi');
+    if (reason) {
+      participantService.rejectParticipant(p.id, reason, currentActorName);
+      showToast(`Peserta '${p.name}' ditolak.`);
+    }
+  };
+
+  // Bulk Actions (Requirement 13)
+  const handleExecuteBulkAction = () => {
+    if (!bulkActionConfirm) return;
+    const actor = currentActorName;
+
+    if (bulkActionConfirm.action === 'approve') {
+      const count = participantService.bulkApprove(selectedIds, actor);
+      showToast(`✅ ${count} peserta berhasil disetujui massal.`);
+    } else if (bulkActionConfirm.action === 'archive') {
+      const count = participantService.bulkArchive(selectedIds);
+      showToast(`📦 ${count} peserta berhasil diarsipkan.`);
+    } else if (bulkActionConfirm.action === 'assign_contingent') {
+      const ctg = contingents.find(c => c.id === bulkTargetContingent);
+      if (ctg) {
+        participantService.bulkAssignContingent(selectedIds, ctg.id, ctg.name);
+        showToast(`✅ ${selectedIds.length} peserta dialokasikan ke ${ctg.name}.`);
+      }
+    } else if (bulkActionConfirm.action === 'assign_category') {
+      participantService.bulkAssignCategory(selectedIds, bulkTargetCategory);
+      showToast(`✅ ${selectedIds.length} peserta diubah ke tingkatan ${bulkTargetCategory}.`);
+    }
+
+    setSelectedIds([]);
+    setBulkActionConfirm(null);
+  };
 
   const handleExportCsv = () => {
     const exportTargets = selectedIds.length > 0
@@ -313,10 +355,28 @@ export const ParticipantList: React.FC = () => {
     });
   };
 
-  // Import belum punya endpoint server yang memvalidasi Gudep/Regu dan kuota.
-  // Tidak membuat "peserta" yang hanya terlihat sampai halaman dimuat ulang.
+  // Process CSV import (Requirement 12)
   const handleProcessImport = () => {
-    showToast('⚠️ Import CSV belum terhubung ke GAS. Tidak ada data yang disimpan. Gunakan formulir Gudep–Regu.');
+    const lines = rawCsvText.trim().split('\n');
+    if (lines.length < 2) {
+      alert('File CSV harus memiliki header dan minimal 1 baris data.');
+      return;
+    }
+
+    const headers = lines[0].split(',').map(h => h.trim());
+    const rows = lines.slice(1).map(line => {
+      const vals = line.split(',').map(v => v.trim());
+      const obj: any = {};
+      headers.forEach((h, idx) => {
+        obj[h] = vals[idx] || '';
+      });
+      return obj;
+    });
+
+    const res = participantService.importParticipants(rows, currentActorName);
+    setImportResult(res);
+    setImportStep('result');
+    showToast(`✅ Impor selesai: ${res.accepted} Diterima, ${res.needsReview} Ditinjau.`);
   };
 
   const getStatusBadge = (status: ParticipantStatus) => {
