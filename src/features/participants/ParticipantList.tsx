@@ -41,11 +41,16 @@ import {
   Users,
 } from 'lucide-react';
 import { participantService } from '../../services/participantService';
+import { gudepRegistrationService, GudepRecord, GudepRegu } from '../../services/gudepRegistrationService';
 import { authService } from '../../services/authService';
 import { profilePhotoService } from '../../services/profilePhotoService';
 import { Participant, ParticipantStatus, Contingent, ProfilePhotoStatus, PhotoRequiredConfig, PhotoReplacementPolicy } from '../../types';
 import { PersonalQrModal } from './PersonalQrModal';
 import { ProfilePhotoUploader } from '../../components/media/ProfilePhotoUploader';
+
+function makeRequestKey(): string {
+  return 'gudep-register-' + (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
+}
 
 export const ParticipantList: React.FC = () => {
   const currentUser = authService.getCurrentUser();
@@ -81,6 +86,13 @@ export const ParticipantList: React.FC = () => {
 
   // Step-based Registration State (Requirement 8, 25, 27)
   const [regStep, setRegStep] = useState<number>(1);
+  const [gudepOptions, setGudepOptions] = useState<GudepRecord[]>([]);
+  const [reguOptions, setReguOptions] = useState<GudepRegu[]>([]);
+  const [gudepLoading, setGudepLoading] = useState(false);
+  const [reguLoading, setReguLoading] = useState(false);
+  const [gudepLoadError, setGudepLoadError] = useState('');
+  const [reguLoadError, setReguLoadError] = useState('');
+  const [registrationRequestKey, setRegistrationRequestKey] = useState(() => makeRequestKey());
   const [stepData, setStepData] = useState({
     name: '',
     gender: 'M' as 'M' | 'F',
@@ -90,6 +102,8 @@ export const ParticipantList: React.FC = () => {
     phone: '',
     contingentId: '',
     contingentName: '',
+    gudepId: '',
+    reguId: '',
     schoolPangkalan: '',
     bloodType: 'O+',
     emergencyContact: '',
@@ -136,6 +150,40 @@ export const ParticipantList: React.FC = () => {
     });
     return () => { active = false; unsubscribe(); };
   }, []);
+
+  // Daftar disaring di GAS menurut hak akses akun aktif; jangan gunakan kontingen lokal.
+  useEffect(() => {
+    if (!showStepRegModal) return;
+    let active = true;
+    setGudepLoading(true);
+    setGudepLoadError('');
+    gudepRegistrationService.list().then(({ gudep }) => {
+      if (active) setGudepOptions(gudep || []);
+    }).catch((err: any) => {
+      if (active) { setGudepOptions([]); setGudepLoadError(err?.message || 'Daftar Gudep tidak dapat dimuat.'); }
+    }).finally(() => { if (active) setGudepLoading(false); });
+    return () => { active = false; };
+  }, [showStepRegModal]);
+
+  useEffect(() => {
+    if (!showStepRegModal || !stepData.gudepId) {
+      setReguOptions([]);
+      return;
+    }
+    let active = true;
+    setReguLoading(true);
+    setReguLoadError('');
+    gudepRegistrationService.detail(stepData.gudepId).then(result => {
+      if (active) setReguOptions(result.regu || []);
+    }).catch((err: any) => {
+      if (active) { setReguOptions([]); setReguLoadError(err?.message || 'Daftar regu tidak dapat dimuat.'); }
+    }).finally(() => { if (active) setReguLoading(false); });
+    return () => { active = false; };
+  }, [showStepRegModal, stepData.gudepId]);
+
+  const selectedGudep = gudepOptions.find(g => g.gudep_id === stepData.gudepId);
+  const matchingRegu = reguOptions.filter(r => r.gender === (stepData.gender === 'M' ? 'PUTRA' : 'PUTRI'));
+  const selectedRegu = matchingRegu.find(r => r.regu_id === stepData.reguId);
 
   const contingents = participantService.getContingents();
   const participants = participantService.getParticipants({
@@ -233,7 +281,12 @@ export const ParticipantList: React.FC = () => {
   const handleFinishStepReg = async (e: React.FormEvent) => {
     e.preventDefault();
     if (registrationSubmitLock.current) return;
-    if (!stepData.name) return;
+    if (!stepData.name.trim()) return;
+    if (!selectedGudep || !selectedRegu) {
+      showToast('Pilih Gugus Depan dan regu yang sesuai terlebih dahulu.');
+      setRegStep(2);
+      return;
+    }
 
     // Requirement 27: Final submission rule: if photo required, reject submission if no photo
     const entityType = (stepData.role === 'Pembina Pendamping' || stepData.role === 'Pimpinan Kontingen') ? 'OFFICIAL' : 'PARTICIPANT';
@@ -243,34 +296,29 @@ export const ParticipantList: React.FC = () => {
       return;
     }
 
-    const defaultPhoto = profilePhotoService.getPlaceholderUrl(stepData.name);
     registrationSubmitLock.current = true;
     setIsSubmittingRegistration(true);
 
     try {
-      await participantService.addParticipant({
-      name: stepData.name,
-      gender: stepData.gender,
-      role: stepData.role,
-      contingentId: stepData.contingentId,
-      contingentName: stepData.contingentName,
-      subCamp: 'Blambangan A-01',
-      tentNumber: 'Tenda Regu',
-      photoUrl: stepData.photoUrl || defaultPhoto,
-      status: 'submitted',
-      checkedIn: false,
-      bloodType: stepData.bloodType,
-      emergencyContact: stepData.emergencyContact,
-      medicalNotes: stepData.medicalNotes,
-      membershipNumber: stepData.membershipNumber,
-      email: stepData.email,
-      phone: stepData.phone,
-      schoolPangkalan: stepData.schoolPangkalan,
-      profile_photo_file_id: stepData.profile_photo_file_id || undefined,
-      profile_photo_url: stepData.photoUrl || defaultPhoto,
-      profile_photo_status: stepData.profile_photo_status,
-    });
-
+             const result = await gudepRegistrationService.registerParticipant({
+         request_key: registrationRequestKey,
+         gudep_id: selectedGudep.gudep_id,
+         regu_id: selectedRegu.regu_id,
+         name: stepData.name.trim(),
+         gender: stepData.gender,
+         role: stepData.role,
+         membershipNumber: stepData.membershipNumber,
+         email: stepData.email,
+         phone: stepData.phone,
+         profile_photo_file_id: stepData.profile_photo_file_id,
+         profile_photo_url: stepData.photoUrl,
+       });
+       if (!result.participant?.id || !result.link?.participant_id) {
+         throw new Error('GAS belum mengonfirmasi relasi Gudep–Regu peserta.');
+       }
+       try { await participantService.loadParticipants(); } catch (refreshError) {
+         console.warn('Peserta tersimpan, tetapi direktori belum berhasil diperbarui:', refreshError);
+       }
     } catch (err: any) {
       showToast(`❌ ${err?.message || 'Gagal menyimpan pendaftaran ke GAS.'}`);
       return;
@@ -282,6 +330,7 @@ export const ParticipantList: React.FC = () => {
     showToast(`✅ Pendaftaran berhasil! Berkas '${stepData.name}' masuk ke antrean verifikasi.`);
     setShowStepRegModal(false);
     setRegStep(1);
+    setRegistrationRequestKey(makeRequestKey());
     setStepData({
       name: '',
       gender: 'M',
@@ -291,6 +340,8 @@ export const ParticipantList: React.FC = () => {
       phone: '',
       contingentId: '',
       contingentName: '',
+      gudepId: '',
+      reguId: '',
       schoolPangkalan: '',
       bloodType: 'O+',
       emergencyContact: '',
@@ -426,6 +477,7 @@ export const ParticipantList: React.FC = () => {
             type="button"
             onClick={() => {
               setRegStep(1);
+              setRegistrationRequestKey(makeRequestKey());
               setShowStepRegModal(true);
             }}
             className="flex items-center justify-center p-2.5 sm:px-4 sm:py-2 bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-pink-500/20 shrink-0 min-w-[44px] min-h-[44px] cursor-pointer"
@@ -987,7 +1039,7 @@ export const ParticipantList: React.FC = () => {
                   <option value="Penggalang">Penggalang</option>
                   <option value="Penegak">Penegak</option>
                   <option value="Pandega">Pandega</option>
-                  <option value="Pembina Pendamping">Pembina Pendamping</option>
+                  {/* Pembina didaftarkan melalui menu Gudep → Pembina, bukan sebagai peserta regu. */}
                   <option value="Pimpinan Kontingen">Pimpinan Kontingen</option>
                 </select>
               </div>
@@ -1074,7 +1126,7 @@ export const ParticipantList: React.FC = () => {
                       <option value="Penggalang">Penggalang</option>
                       <option value="Penegak">Penegak</option>
                       <option value="Pandega">Pandega</option>
-                      <option value="Pembina Pendamping">Pembina Pendamping</option>
+                      {/* Pembina didaftarkan melalui menu Gudep → Pembina, bukan sebagai peserta regu. */}
                     </select>
                   </div>
                 </div>
@@ -1091,40 +1143,56 @@ export const ParticipantList: React.FC = () => {
               </div>
             )}
 
-            {/* STEP 2: ORGANIZATION / GUDEP */}
+            {/* STEP 2: GUGUS DEPAN & REGU — sumber tunggal dari GAS */}
             {regStep === 2 && (
               <div className="space-y-3 text-xs animate-in fade-in">
-                <div className="font-bold text-[#171717] dark:text-slate-200">2. Organisasi & Gugus Depan</div>
+                <div className="font-bold text-[#171717] dark:text-slate-200">2. Pilih Gugus Depan & Regu</div>
+                <p className="text-[#6B7280] dark:text-slate-400">Pilih Gudep terlebih dahulu. Regu akan disaring otomatis berdasarkan Putra/Putri pada langkah pertama.</p>
                 <div>
-                  <label className="text-[#6B7280] dark:text-slate-300 block mb-1 font-semibold">Kontingen Kwartir Ranting</label>
+                  <label className="text-[#6B7280] dark:text-slate-300 block mb-1 font-semibold">Gugus Depan *</label>
                   <select
-                    value={stepData.contingentId}
+                    required
+                    disabled={gudepLoading || !!gudepLoadError}
+                    value={stepData.gudepId}
                     onChange={e => {
-                      const found = contingents.find(c => c.id === e.target.value);
-                      setStepData({
-                        ...stepData,
-                        contingentId: e.target.value,
-                        contingentName: found?.name || '',
-                      });
+                      const g = gudepOptions.find(x => x.gudep_id === e.target.value);
+                      setStepData(prev => ({ ...prev,
+                        gudepId: e.target.value, reguId: '',
+                        contingentId: g?.gudep_id || '',
+                        contingentName: g?.gudep_name || '',
+                        schoolPangkalan: g?.institution_name || g?.gudep_name || '',
+                      }));
                     }}
-                    className="w-full p-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
+                    className="w-full p-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white"
                   >
-                    <option value="">-- Pilih Kontingen --</option>
-                    {contingents.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
+                    <option value="">{gudepLoading ? 'Memuat Gudep…' : '-- Pilih Gugus Depan --'}</option>
+                    {gudepOptions.map(g => (
+                      <option key={g.gudep_id} value={g.gudep_id}>{g.gudep_number} — {g.gudep_name}</option>
                     ))}
                   </select>
+                  {gudepLoadError && <p role="alert" className="text-rose-500 mt-2">{gudepLoadError}</p>}
+                  {!gudepLoading && !gudepLoadError && gudepOptions.length === 0 && (
+                    <p className="text-amber-500 mt-2">Belum ada Gudep yang dapat diakses akun ini. Hubungi admin untuk membuat Gudep atau menugaskan operator.</p>
+                  )}
                 </div>
                 <div>
-                  <label className="text-[#6B7280] dark:text-slate-300 block mb-1 font-semibold">Pangkalan / Asal Sekolah</label>
-                  <input
-                    type="text"
-                    placeholder="Contoh: SMP Negeri 1 Pangkalan / Gudep"
-                    value={stepData.schoolPangkalan}
-                    onChange={e => setStepData({ ...stepData, schoolPangkalan: e.target.value })}
-                    className="w-full p-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
-                  />
+                  <label className="text-[#6B7280] dark:text-slate-300 block mb-1 font-semibold">Regu {stepData.gender === 'M' ? 'Putra' : 'Putri'} *</label>
+                  <select
+                    required
+                    disabled={!stepData.gudepId || reguLoading || !!reguLoadError}
+                    value={stepData.reguId}
+                    onChange={e => setStepData(prev => ({ ...prev, reguId: e.target.value }))}
+                    className="w-full p-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white"
+                  >
+                    <option value="">{reguLoading ? 'Memuat regu…' : '-- Pilih Regu --'}</option>
+                    {matchingRegu.map(r => <option key={r.regu_id} value={r.regu_id}>{r.regu_name} (kuota {r.quota})</option>)}
+                  </select>
+                  {reguLoadError && <p role="alert" className="text-rose-500 mt-2">{reguLoadError}</p>}
+                  {stepData.gudepId && !reguLoading && !reguLoadError && matchingRegu.length === 0 && (
+                    <p className="text-amber-500 mt-2">Belum ada regu {stepData.gender === 'M' ? 'Putra' : 'Putri'} di Gudep ini. Buat regu terlebih dahulu pada pengelolaan Gudep.</p>
+                  )}
                 </div>
+                {selectedGudep && <p className="text-[#6B7280] dark:text-slate-400">Pangkalan: {selectedGudep.institution_name || selectedGudep.gudep_name}</p>}
               </div>
             )}
 
@@ -1261,7 +1329,8 @@ export const ParticipantList: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                  <div className="flex justify-between"><span className="text-[#6B7280] dark:text-slate-400">Kontingen:</span><span className="text-[#F47743] font-semibold">{stepData.contingentName}</span></div>
+                  <div className="flex justify-between"><span className="text-[#6B7280] dark:text-slate-400">Gugus Depan:</span><span className="text-[#F47743] font-semibold">{selectedGudep?.gudep_name || '-'}</span></div>
+                  <div className="flex justify-between"><span className="text-[#6B7280] dark:text-slate-400">Regu:</span><span className="text-[#171717] dark:text-white">{selectedRegu?.regu_name || '-'}</span></div>
                   <div className="flex justify-between"><span className="text-[#6B7280] dark:text-slate-400">Pangkalan:</span><span className="text-[#171717] dark:text-white">{stepData.schoolPangkalan}</span></div>
                   <div className="flex justify-between"><span className="text-[#6B7280] dark:text-slate-400">Gol. Darah:</span><span className="text-[#171717] dark:text-white">{stepData.bloodType}</span></div>
                   <div className="flex justify-between"><span className="text-[#6B7280] dark:text-slate-400">NTA / KTA:</span><span className="text-[#171717] dark:text-white font-mono">{stepData.membershipNumber || '-'}</span></div>
@@ -1301,7 +1370,7 @@ export const ParticipantList: React.FC = () => {
               {regStep < 6 ? (
                 <button
                   type="button"
-                  disabled={regStep === 1 && !stepData.name}
+                  disabled={(regStep === 1 && !stepData.name.trim()) || (regStep === 2 && (!selectedGudep || !selectedRegu || reguLoading || gudepLoading))}
                   onClick={() => setRegStep(regStep + 1)}
                   className="px-5 py-2.5 bg-[#F47743] hover:bg-[#E78B3C] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
                 >
