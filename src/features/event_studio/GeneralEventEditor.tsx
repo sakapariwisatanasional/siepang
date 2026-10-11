@@ -1,7 +1,7 @@
 /**
  * @license
  * SiEpang - General Event Settings Editor
- * Allows authorized admins to configure event identity, dates, organizational level,
+ * Allows authorized admins to configure event identity, dates, organizer,
  * capacity, venue, status, and contacts without spreadsheet edits.
  */
 
@@ -22,14 +22,11 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { eventStudioService } from '../../services/eventStudioService';
-import { EventCategory, EventStatus, OrganizationalLevel, ParticipationScope, Organization } from '../../types';
-import { CascadingOrgSelector } from './CascadingOrgSelector';
+import { EventCategory, EventStatus, OrganizationalLevel, ParticipationScope } from '../../types';
 
 export const GeneralEventEditor: React.FC = () => {
   const event = eventStudioService.getEvent();
   const [isSaving, setIsSaving] = useState(false);
-  const [allOrgs, setAllOrgs] = useState<Organization[]>(eventStudioService.listOrganizations());
-  const [orgSearch, setOrgSearch] = useState('');
   const [formData, setFormData] = useState({
     name: event.name,
     shortName: event.shortName,
@@ -80,7 +77,7 @@ export const GeneralEventEditor: React.FC = () => {
     { value: 'UPCOMING', label: 'AKAN DATANG', color: 'bg-amber-950 text-amber-300 border-amber-500/50', desc: 'Verifikasi berkas selesai, menunggu hari-H buper' },
     { value: 'ONGOING', label: 'SEDANG BERJALAN', color: 'bg-emerald-950 text-emerald-300 border-emerald-500/50', desc: 'Kemah aktif, operasional presensi, lomba & voting' },
     { value: 'COMPLETED', label: 'SELESAI', color: 'bg-purple-950 text-purple-300 border-purple-500/50', desc: 'Kegiatan usai, piagam dan pelaporan dapat diunduh' },
-    { value: 'ARCHIVED', label: 'DIARSIPKAN', color: 'bg-stone-900 text-stone-400 border-stone-700', desc: 'Arsip resmi kwartir, akses baca-saja' },
+    { value: 'ARCHIVED', label: 'DIARSIPKAN', color: 'bg-stone-900 text-stone-400 border-stone-700', desc: 'Arsip kegiatan, akses baca-saja' },
   ];
 
   const handleFieldChange = (updates: Partial<typeof formData>) => {
@@ -156,7 +153,7 @@ export const GeneralEventEditor: React.FC = () => {
       <div className="p-5 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-4 shadow-xs">
         <h2 className="text-sm font-bold text-[#171717] dark:text-white tracking-tight flex items-center gap-2">
           <Building2 className="w-4 h-4 text-[#F47743]" />
-          <span>Identitas & Tingkat Organisasi</span>
+          <span>Identitas Event & Penyelenggara</span>
         </h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
@@ -212,18 +209,23 @@ export const GeneralEventEditor: React.FC = () => {
             </select>
           </div>
 
-          <div className="sm:col-span-2 pt-2">
-            <CascadingOrgSelector
-              currentLevel={formData.organizationalLevel as any}
-              currentOrganizer={formData.organizer}
-              onSelect={data => {
-                setFormData(prev => ({
-                  ...prev,
-                  organizationalLevel: data.level,
-                  organizer: data.organizer,
-                }));
-              }}
+          <div className="sm:col-span-2 pt-2 space-y-2">
+            <label htmlFor="siepang-organizer" className="text-[#171717] dark:text-slate-300 font-semibold block mb-1.5">
+              Nama Penyelenggara Kegiatan:
+            </label>
+            <input
+              id="siepang-organizer"
+              type="text"
+              value={formData.organizer}
+              onChange={e => setFormData({ ...formData, organizer: e.target.value })}
+              maxLength={180}
+              className="w-full px-3.5 py-3 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-2xl text-[#171717] dark:text-white font-medium focus:border-[#F47743] focus:outline-none"
+              placeholder="Contoh: Kwartir Ranting Sawangan / Event Organizer / Sekolah"
             />
+            <p className="text-[11px] text-[#6B7280] dark:text-slate-400 leading-relaxed">
+              Nama penyelenggara dapat berupa organisasi Pramuka, sekolah, komunitas, atau Event Organizer.
+              Tidak perlu memilih tingkatan kwartir. Data organisasi lama tetap dipertahankan demi kompatibilitas.
+            </p>
           </div>
 
           <div className="sm:col-span-2">
@@ -250,155 +252,13 @@ export const GeneralEventEditor: React.FC = () => {
         </div>
       </div>
 
-      {/* 2b. Participation Scope & Hierarchical Selection (Section 5 Requirement) */}
-      <div className="p-5 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-4 shadow-xs">
-        <div>
-          <h2 className="text-sm font-bold text-[#171717] dark:text-white tracking-tight flex items-center gap-2">
-            <Users className="w-4 h-4 text-[#F47743]" />
-            <span>Cakupan Partisipasi & Organisasi Kepramukaan (Participation Scope)</span>
-          </h2>
-          <p className="text-[11px] text-[#6B7280] dark:text-slate-400 mt-0.5">
-            Tentukan hierarki kwartir dan pangkalan yang berhak mendaftarkan kontingen atau peserta ke perkemahan ini.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 text-xs">
-          {[
-            {
-              id: 'OWN_ORGANIZATION' as ParticipationScope,
-              label: 'Organisasi Sendiri',
-              desc: 'Hanya internal kwartir atau pangkalan gudep penyelenggara.',
-            },
-            {
-              id: 'CHILD_ORGANIZATIONS' as ParticipationScope,
-              label: 'Seluruh Kwartir Anak',
-              desc: 'Semua kwartir/gudep di bawah naungan (misal: semua Kwarran se-Kwarcab).',
-            },
-            {
-              id: 'SELECTED_ORGANIZATIONS' as ParticipationScope,
-              label: 'Kwartir Terpilih',
-              desc: 'Hanya kwartir/ranting yang dipilih secara spesifik oleh panitia.',
-            },
-            {
-              id: 'OPEN_INVITATION' as ParticipationScope,
-              label: 'Undangan Terbuka',
-              desc: 'Terbuka untuk kwartir dan gugus depan dari luar daerah / nasional.',
-            },
-            {
-              id: 'CUSTOM' as ParticipationScope,
-              label: 'Kustom / Khusus',
-              desc: 'Kombinasi khusus saka, pandega, atau wilayah tertentu.',
-            },
-          ].map(scope => (
-            <button
-              key={scope.id}
-              type="button"
-              onClick={() => setFormData({ ...formData, participation_scope: scope.id })}
-              className={`p-3 rounded-2xl border text-left transition-all flex flex-col justify-between cursor-pointer ${
-                formData.participation_scope === scope.id
-                  ? 'bg-pink-50 border-[#F47743] text-[#F47743] font-bold shadow-xs dark:bg-pink-950/40 dark:text-pink-300 dark:border-pink-800'
-                  : 'bg-[#FAFAFA] border-[#ECECEF] text-[#6B7280] hover:bg-gray-100 hover:text-[#171717] dark:bg-white/5 dark:border-white/5 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white'
-              }`}
-            >
-              <div className="flex items-center justify-between w-full mb-1">
-                <span className="text-xs">{scope.label}</span>
-                {formData.participation_scope === scope.id && (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-[#F47743] shrink-0" />
-                )}
-              </div>
-              <span className="text-[10px] font-normal opacity-75 leading-tight">{scope.desc}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Hierarchical Selection Box */}
-        {(formData.participation_scope === 'CHILD_ORGANIZATIONS' ||
-          formData.participation_scope === 'SELECTED_ORGANIZATIONS' ||
-          formData.participation_scope === 'CUSTOM') && (
-          <div className="p-4 rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 space-y-3 text-xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="font-semibold text-[#171717] dark:text-slate-300 flex items-center gap-1.5">
-                <span>Daftar Organisasi / Kwartir yang Memenuhi Syarat:</span>
-                <span className="px-2 py-0.5 rounded-full bg-pink-50 text-[#F47743] border border-pink-200 dark:bg-pink-950/40 dark:text-pink-300 font-mono text-[10px]">
-                  {formData.allowed_organization_ids.length} Dipilih
-                </span>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const allIds = allOrgs.map(o => o.organization_id);
-                    setFormData({ ...formData, allowed_organization_ids: allIds });
-                  }}
-                  className="px-2.5 py-1 rounded-lg bg-pink-50 hover:bg-pink-100 text-[#F47743] border border-pink-200 text-[10px] font-bold cursor-pointer"
-                >
-                  Pilih Semua ({allOrgs.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, allowed_organization_ids: [] })}
-                  className="px-2.5 py-1 rounded-lg bg-white hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 text-[#6B7280] dark:text-slate-400 text-[10px] border border-[#ECECEF] dark:border-white/10 cursor-pointer"
-                >
-                  Batal Pilih
-                </button>
-              </div>
-            </div>
-
-            {/* Search Input */}
-            <input
-              type="text"
-              placeholder="Cari nama kwartir ranting, pangkalan, atau kode organisasi..."
-              value={orgSearch}
-              onChange={e => setOrgSearch(e.target.value)}
-              className="w-full px-3 py-2 bg-white dark:bg-black/50 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white text-xs placeholder-slate-400 focus:outline-none focus:border-[#F47743]"
-            />
-
-            {/* List with Toggle Checkboxes */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
-              {allOrgs
-                .filter(o =>
-                  orgSearch
-                    ? o.organization_name.toLowerCase().includes(orgSearch.toLowerCase()) ||
-                      o.organization_code.toLowerCase().includes(orgSearch.toLowerCase())
-                    : true
-                )
-                .map(org => {
-                  const isChecked = formData.allowed_organization_ids.includes(org.organization_id);
-                  return (
-                    <label
-                      key={org.organization_id}
-                      className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-colors ${
-                        isChecked
-                          ? 'bg-pink-50/70 border-pink-200 text-[#171717] dark:bg-pink-950/40 dark:border-pink-800 dark:text-pink-200'
-                          : 'bg-white border-[#ECECEF] text-[#6B7280] hover:text-[#171717] dark:bg-white/5 dark:border-white/5 dark:text-slate-400 dark:hover:bg-white/8 dark:hover:text-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 truncate">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={e => {
-                            const nextIds = e.target.checked
-                              ? [...formData.allowed_organization_ids, org.organization_id]
-                              : formData.allowed_organization_ids.filter(id => id !== org.organization_id);
-                            setFormData({ ...formData, allowed_organization_ids: nextIds });
-                          }}
-                          className="accent-[#F47743] rounded"
-                        />
-                        <div className="truncate">
-                          <div className="font-semibold text-xs truncate">{org.organization_name}</div>
-                          <div className="text-[10px] text-[#6B7280] dark:text-slate-400 font-mono">
-                            {org.organization_code} · {org.organization_level}
-                          </div>
-                        </div>
-                      </div>
-                    </label>
-                  );
-                })}
-            </div>
-          </div>
-        )}
+      {/* Model A: legacy participation scope is retained silently for GAS compatibility.
+          Do not overwrite participation_scope or allowed_organization_ids while editing identity.
+          Existing server-side restrictions, if any, require separate backend migration. */}
+      <div className="p-4 rounded-2xl border border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-100 text-xs leading-relaxed">
+        <strong>Catatan kompatibilitas Model A:</strong> formulir hierarki kwartir disembunyikan.
+        Pengaturan cakupan pendaftaran lama tetap tersimpan dan mungkin masih diterapkan oleh backend.
+        Perubahan aturan siapa yang boleh mendaftar akan dilakukan secara terpisah setelah pemeriksaan GAS.
       </div>
 
       {/* 2c. Branding Media (Logo & Banner) */}
@@ -409,7 +269,7 @@ export const GeneralEventEditor: React.FC = () => {
             <span>Identitas Visual & Media Promosi (Logo & Banner)</span>
           </h2>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-            Terapkan logo resmi kwartir dan banner perkemahan untuk portal peserta dan kartu pengenal.
+            Terapkan logo penyelenggara atau event dan banner kegiatan untuk portal peserta dan kartu pengenal.
           </p>
         </div>
 

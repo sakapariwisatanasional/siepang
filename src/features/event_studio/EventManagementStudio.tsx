@@ -114,7 +114,7 @@ export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
       id: 'general' as StudioSection,
       title: 'Pengaturan Umum Event',
       badge: event.status,
-      desc: `${event.category} · ${event.organizationalLevel}`,
+      desc: `${event.category} · ${event.organizer || 'Penyelenggara belum diisi'}`,
       icon: Settings,
       color: 'from-emerald-700/40 to-emerald-900/40 border-emerald-500/30 text-emerald-300',
     },
@@ -201,7 +201,7 @@ export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
               </span>
 
               <span className="text-xs text-slate-500 dark:text-slate-400">
-                Tingkat: <strong className="text-slate-800 dark:text-white">{event.organizationalLevel}</strong>
+                Penyelenggara: <strong className="text-slate-800 dark:text-white">{event.organizer || 'Belum diisi'}</strong>
               </span>
             </div>
 
@@ -209,7 +209,7 @@ export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
               {event.name}
             </h1>
             <p className="text-xs text-[#6B7280] dark:text-slate-400 mt-1 max-w-2xl leading-relaxed">
-              Instalasi SiEpang ini terikat pada kegiatan <strong>{event.name}</strong>. Seluruh editor dan modul operasional otomatis bekerja terhadap kegiatan aktif ini.
+              Kelola panitia, peserta, kegiatan, lomba, publikasi, dan kebutuhan operasional untuk <strong>{event.name}</strong> dalam satu tempat.
             </p>
           </div>
 
