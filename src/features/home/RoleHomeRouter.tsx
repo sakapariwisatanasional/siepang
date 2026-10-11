@@ -23,8 +23,8 @@ import { RegistrationOfficerHome } from './RegistrationOfficerHome';
 import { AttendanceOfficerHome } from './AttendanceOfficerHome';
 import { HealthOfficerHome } from './HealthOfficerHome';
 import { LogisticsOfficerHome } from './LogisticsOfficerHome';
-import { AdminDaerahDashboard } from '../workspace/AdminDaerahDashboard';
-import { SuperAdminDashboard } from '../superadmin/SuperAdminDashboard';
+import { EventAdminHome } from './EventAdminHome';
+
 
 interface RoleHomeRouterProps {
   role: UserRole;
@@ -97,18 +97,15 @@ export const RoleHomeRouter: React.FC<RoleHomeRouterProps> = ({
       );
 
     case 'superadmin':
-      return (
-        <SuperAdminDashboard />
-      );
-
     case 'workspace_admin':
     case 'event_admin':
     default:
       return (
-        <AdminDaerahDashboard
+        <EventAdminHome
           onNavigate={onNavigate}
           onOpenScanner={onOpenScanner}
           onOpenSyncCenter={onOpenSyncCenter}
+          canManageUsers={role === 'superadmin' || role === 'workspace_admin'}
         />
       );
   }
