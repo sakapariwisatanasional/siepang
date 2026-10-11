@@ -8,6 +8,7 @@
  */
 
 import React, { useState } from 'react';
+import { GudepReguManager } from './GudepReguManager';
 import {
   Users,
   Shield,
@@ -45,7 +46,7 @@ import {
 
 export const RegistrationContingentEditor: React.FC = () => {
   const event = eventStudioService.getEvent();
-  const [activeTab, setActiveTab] = useState<'config' | 'fields' | 'contingents'>('config');
+  const [activeTab, setActiveTab] = useState<'gudep' | 'config' | 'fields' | 'contingents'>('gudep');
 
   // Registration Configuration state
   const [settings, setSettings] = useState<RegistrationSettings>(eventStudioService.getRegistrationSettings());
@@ -160,10 +161,35 @@ export const RegistrationContingentEditor: React.FC = () => {
     }
   };
 
-  // Kontingen lama bukan Gudep event. Pembuatan lokal tidak tersimpan di GAS.
   const handleCreateContingent = (e: React.FormEvent) => {
     e.preventDefault();
-    showToast('⚠️ Registrasi kontingen lama dinonaktifkan: tidak tersimpan di GAS. Buat Gudep melalui modul registrasi Gudep.');
+    if (!newContingentForm.name) return;
+    try {
+      const created = participantService.createContingent({
+        name: newContingentForm.name,
+        leaderName: newContingentForm.leaderName,
+        leaderPhone: newContingentForm.leaderPhone,
+        quota: newContingentForm.quota,
+        region: newContingentForm.region,
+        campZone: newContingentForm.campZone,
+        subCamp: newContingentForm.subCamp,
+        campsite_assignment: newContingentForm.subCamp,
+      });
+      setContingents([...participantService.getContingents()]);
+      setShowAddContingentModal(false);
+      setNewContingentForm({
+        name: '',
+        leaderName: '',
+        leaderPhone: '',
+        quota: 32,
+        region: '',
+        campZone: 'Zona A (Putra)',
+        subCamp: 'Kavling A-01',
+      });
+      showToast(`✅ Kontingen '${created.name}' berhasil didaftarkan!`);
+    } catch (err: any) {
+      showToast(`❌ Gagal: ${err.message}`);
+    }
   };
 
   return (
@@ -181,10 +207,10 @@ export const RegistrationContingentEditor: React.FC = () => {
           <div>
             <h2 className="text-base font-bold text-[#171717] dark:text-white tracking-tight flex items-center gap-2">
               <Users className="w-4 h-4 text-emerald-500" />
-              <span>Pendaftaran, Formulir Dinamis & Kontingen</span>
+              <span>Pendaftaran, Gugus Depan & Regu</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Kelola status registrasi online, kolom formulir dinamis, berkas wajib, dan entitas kontingen kwartir.
+              Kelola Gugus Depan dan Regu untuk pendaftaran peserta, serta konfigurasi formulir dan kuota.
             </p>
           </div>
 
@@ -211,7 +237,10 @@ export const RegistrationContingentEditor: React.FC = () => {
         </div>
 
         {/* Tab Switcher */}
-        <div className="grid grid-cols-3 gap-1.5 p-1 bg-[#F7F7F8] dark:bg-black/40 rounded-2xl border border-[#ECECEF] dark:border-white/5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-[#F7F7F8] dark:bg-black/40 rounded-2xl border border-[#ECECEF] dark:border-white/5">
+          <button type="button" onClick={() => setActiveTab('gudep')} className={`py-2 px-1 text-xs font-semibold rounded-xl transition-all cursor-pointer ${activeTab === 'gudep' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>
+            🏕️ Gugus Depan & Regu
+          </button>
           <button
             onClick={() => setActiveTab('config')}
             className={`py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
@@ -238,6 +267,8 @@ export const RegistrationContingentEditor: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {activeTab === 'gudep' && <GudepReguManager />}
 
       {/* TAB 1: REGISTRATION CONFIGURATION */}
       {activeTab === 'config' && (
