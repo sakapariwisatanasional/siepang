@@ -41,9 +41,20 @@ class ParticipantService {
   private participants: Participant[] = [];
   private contingents: Contingent[] = [];
   private listeners: Set<() => void> = new Set();
+  private participantsLoadInFlight: Promise<void> | null = null;
 
   /** Load daftar peserta dari GAS; jangan menganggap array lokal sebagai sumber data utama. */
-  public async loadParticipants(): Promise<void> {
+  public loadParticipants(): Promise<void> {
+    if (this.participantsLoadInFlight) return this.participantsLoadInFlight;
+    const pending = this.fetchParticipantsFromGas();
+    this.participantsLoadInFlight = pending;
+    void pending.finally(() => {
+      if (this.participantsLoadInFlight === pending) this.participantsLoadInFlight = null;
+    }).catch(() => {});
+    return pending;
+  }
+
+  private async fetchParticipantsFromGas(): Promise<void> {
     const result = await apiTransport.send<any>('participants.list', {});
     if (!result.ok) {
       throw new Error(result.error?.message || 'Gagal membaca peserta dari GAS.');
