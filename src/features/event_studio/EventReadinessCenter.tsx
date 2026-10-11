@@ -5,7 +5,7 @@
  * competition rubrics completion, and feature flag dependencies.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ShieldCheck,
   AlertTriangle,
@@ -342,9 +342,14 @@ export const EventReadinessCenter: React.FC<EventReadinessCenterProps> = ({ onNa
   const [compReadiness, setCompReadiness] = useState<CompetitionReadiness[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Do not launch another expensive readiness batch while one is running.
+  const loadingRef = useRef(false);
+  const mountedRef = useRef(true);
 
   const loadData = async () => {
-    setIsLoading(true);
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    if (mountedRef.current) setIsLoading(true);
     setLoadError(null);
 
     try {
@@ -389,16 +394,18 @@ export const EventReadinessCenter: React.FC<EventReadinessCenterProps> = ({ onNa
       console.error('Error loading readiness report:', e);
       setLoadError(e?.message || 'Gagal memuat pusat kesiapan event.');
     } finally {
-      setIsLoading(false);
+      loadingRef.current = false;
+      if (mountedRef.current) setIsLoading(false);
     }
   };
 
   useEffect(() => {
+    mountedRef.current = true;
     let mounted = true;
     let reloadTimer: ReturnType<typeof setTimeout> | null = null;
 
     const safeLoad = async () => {
-      if (!mounted) return;
+      if (!mounted || loadingRef.current) return;
       await loadData();
     };
 
@@ -407,15 +414,19 @@ export const EventReadinessCenter: React.FC<EventReadinessCenterProps> = ({ onNa
     // Debounce service notifications. Event Studio performs a large initial sync
     // and can notify several times in quick succession; readiness should not
     // fan those notifications into parallel GAS request storms.
+    // Ignore service notifications while a batch is in flight. These can
+    // otherwise create long queues against the same GAS deployment.
     const unsub = eventStudioService.subscribe(() => {
+      if (loadingRef.current) return;
       if (reloadTimer) clearTimeout(reloadTimer);
       reloadTimer = setTimeout(() => {
-        if (mounted) void safeLoad();
-      }, 350);
+        if (mounted && !loadingRef.current) void safeLoad();
+      }, 1500);
     });
 
     return () => {
       mounted = false;
+      mountedRef.current = false;
       if (reloadTimer) clearTimeout(reloadTimer);
       unsub();
     };
