@@ -25,6 +25,7 @@ import {
   PersonBeingVisited,
 } from '../types';
 import { qrResolverService } from './qrResolverService';
+import { apiTransport } from './apiTransport';
 import { eventStudioService } from './eventStudioService';
 import { eventService } from './eventService';
 import { workspaceService } from './workspaceService';
@@ -71,7 +72,7 @@ class VisitorManagementService {
         { dayName: 'Selasa', openTime: '09:00', closeTime: '16:00', enabled: true },
       ],
       dailyQuota: 500,
-      approvalMode: 'REQUIRE_APPROVAL',
+      approvalMode: 'AUTO_APPROVED',
       entryTypeDefault: 'SINGLE_ENTRY',
       allowedZonesDefault: ['PUBLIC_AREA', 'VISITOR_AREA', 'MAIN_STAGE'],
       rulesAndGuidelines: [
@@ -220,92 +221,65 @@ class VisitorManagementService {
   /**
    * Registers a new visitor (self or admin)
    */
-  public registerVisitor(
+  /** Registrasi publik: server menjadi satu-satunya sumber identitas QR. */
+  public async registerVisitor(
     data: {
-      name: string;
-      phone: string;
-      category: VisitorCategory;
+      name: string; phone: string; category: VisitorCategory;
+      visitType?: 'VISITOR' | 'SPEAKER'; speakerAgenda?: string; speakerTopic?: string;
       identityType: 'KTP' | 'SIM' | 'Kartu Pegawai' | 'Paspor' | 'Lainnya';
-      identityNumber?: string;
-      organization?: string;
-      personVisited: PersonBeingVisited;
-      relationship: string;
-      visitDate: string;
-      expectedArrival: string;
-      expectedDeparture: string;
-      accompanyingPersonsCount?: number;
-      vehicleInfo?: string;
-      purpose: string;
+      identityNumber?: string; organization?: string;
+      personVisited: PersonBeingVisited; relationship: string;
+      visitDate: string; expectedArrival: string; expectedDeparture: string;
+      accompanyingPersonsCount?: number; vehicleInfo?: string; purpose: string;
       emergencyContact?: string;
       entryType?: 'SINGLE_ENTRY' | 'MULTIPLE_ENTRY';
       allowedZones?: VisitorAccessZone[];
     },
-    registeredByAdmin?: string
-  ): VisitorRegistration {
-    // Generate clean unique registration code (e.g. VIS-xxx)
-    const randomNum = Math.floor(100 + Math.random() * 900);
-    const regCode = `VIS-${randomNum}`;
-    const id = `vis_${Date.now()}`;
-
-    // Auto-approve if rules say AUTO_APPROVED or if registered directly by admin
-    const isAutoApproved =
-      this.rules.approvalMode === 'AUTO_APPROVED' ||
-      Boolean(registeredByAdmin) ||
-      data.category === 'VIP' ||
-      data.category === 'VVIP';
-
-    const status: VisitorStatus = isAutoApproved ? 'APPROVED' : 'PENDING';
-
-    // Generate secure opaque QR token via unified resolver
-    const tokenObj = qrResolverService.generateSecureToken(
-      'VISITOR',
-      workspaceService.getCurrentWorkspace().id || '',
-      eventService.getCurrentEvent().id || '',
-      id,
+    registeredByAdmin?: string,
+    requestKey?: string
+  ): Promise<VisitorRegistration> {
+    // The public route must work without an SiEpang login; GAS enforces validation.
+    const res = await apiTransport.send<{ visitor: any }>(
+      'public.visitors.register',
       {
-        visitorName: data.name,
-        category: data.category,
-        registrationCode: regCode,
-      }
+        name: data.name.trim(), phone: data.phone.trim(), category: data.category,
+        visit_type: data.visitType || 'VISITOR', speaker_agenda: data.speakerAgenda || '', speaker_topic: data.speakerTopic || '',
+        identityType: data.identityType, id_number: data.identityNumber || '',
+        institution: data.organization || '', personVisited: data.personVisited,
+        relationship: data.relationship, visitDate: data.visitDate,
+        expectedArrival: data.expectedArrival, expectedDeparture: data.expectedDeparture,
+        accompanyingPersonsCount: data.accompanyingPersonsCount || 0,
+        vehicleInfo: data.vehicleInfo || '', purpose: data.purpose,
+        entryType: data.entryType || 'SINGLE_ENTRY',
+        allowedZones: data.allowedZones || this.rules.allowedZonesDefault,
+        request_key: requestKey || '',
+      },
+      { skipAuth: !registeredByAdmin, timeoutMs: 45000 }
     );
-
+    if (!res.ok || !res.data?.visitor) {
+      throw new Error(res.error?.message || 'Registrasi pengunjung belum dikonfirmasi oleh database.');
+    }
+    const raw = res.data.visitor;
+    if (!raw.id || !raw.qr_token || !raw.registration_code) {
+      throw new Error('Server belum mengembalikan QR pengunjung yang valid.');
+    }
     const visitor: VisitorRegistration = {
-      id,
-      registrationCode: regCode,
-      name: data.name,
-      phone: data.phone,
-      category: data.category,
-      identityType: data.identityType,
-      identityNumber: data.identityNumber,
-      organization: data.organization,
-      personVisited: data.personVisited,
-      relationship: data.relationship,
-      visitDate: data.visitDate || new Date().toISOString().split('T')[0],
-      expectedArrival: data.expectedArrival || '09:00',
-      expectedDeparture: data.expectedDeparture || '16:00',
+      id: String(raw.id), registrationCode: String(raw.registration_code),
+      name: String(raw.full_name || data.name), phone: data.phone,
+      category: data.category, identityType: data.identityType,
+      identityNumber: data.identityNumber, organization: data.organization,
+      personVisited: data.personVisited, relationship: data.relationship,
+      visitDate: data.visitDate, expectedArrival: data.expectedArrival,
+      expectedDeparture: data.expectedDeparture,
       accompanyingPersonsCount: data.accompanyingPersonsCount || 0,
-      vehicleInfo: data.vehicleInfo,
-      purpose: data.purpose,
-      emergencyContact: data.emergencyContact,
-      status,
-      approvalMode: this.rules.approvalMode,
-      approvedBy: isAutoApproved ? (registeredByAdmin || 'Sistem Auto-Approval') : undefined,
-      approvedAt: isAutoApproved ? new Date().toLocaleString('id-ID') : undefined,
-      qrToken: tokenObj.tokenString,
-      entryType: data.entryType || this.rules.entryTypeDefault,
+      vehicleInfo: data.vehicleInfo, purpose: data.purpose,
+      status: String(raw.status || 'PENDING') as VisitorStatus,
+      approvalMode: 'AUTO_APPROVED', qrToken: String(raw.qr_token),
+      entryType: data.entryType || 'SINGLE_ENTRY',
       allowedZones: data.allowedZones || this.rules.allowedZonesDefault,
-      createdAt: new Date().toLocaleString('id-ID'),
+      createdAt: String(raw.registered_at || new Date().toISOString()),
     };
-
-    this.visitors.set(id, visitor);
-
-    // Audit log
-    eventStudioService.addAuditLogEntry(
-      'VISITOR_REGISTRATION',
-      `Pendaftaran tamu '${visitor.name}' (${visitor.category}) berhasil. Status: ${status}`,
-      registeredByAdmin || 'Portal Mandiri Tamu'
-    );
-
+    this.visitors.set(visitor.id, visitor);
     this.notify();
     return visitor;
   }
