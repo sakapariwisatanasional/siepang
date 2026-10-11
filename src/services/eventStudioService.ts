@@ -301,6 +301,7 @@ class EventStudioService {
     '/api/competitions/list': 'competitions.list',
     '/api/competitions/create': 'competitions.create',
     '/api/competitions/update': 'competitions.update',
+    '/api/competitions/officialize': 'competitions.officialize',
     '/api/competitions/archive': 'competitions.archive',
     '/api/competitions/criteria/list': 'competitions.criteria.list',
     '/api/competitions/criteria/configure': 'competitions.criteria.configure',
@@ -1074,6 +1075,15 @@ class EventStudioService {
       return res.data;
     }
     throw new Error(res.error || 'Gagal memperbarui lomba.');
+  }
+
+  public async officializeCompetition(id: string): Promise<void> {
+    const res = await this.request<{id:string; publicationStatus:string}>('/api/competitions/officialize', {data:{id}});
+    if (!res.success || res.data?.publicationStatus !== 'OFFICIAL') throw new Error(res.error || 'GAS belum mengonfirmasi pengesahan.');
+    await this.refreshCompetitionManagement();
+    const verified = this.competitions.find(c => c.id === id) as (Competition & {publicationStatus?:string}) | undefined;
+    if (verified?.publicationStatus !== 'OFFICIAL') throw new Error('Status OFFICIAL belum terbaca kembali dari Spreadsheet.');
+    this.notify();
   }
 
   public async deleteCompetition(id: string): Promise<void> {
