@@ -285,36 +285,47 @@ export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
           </div>
         </div>
 
-        {/* Categorized Navigation Tabs with Progressive Disclosure */}
-        <div className="flex gap-1.5 overflow-x-auto pb-1 pt-2 border-t border-[#ECECEF] dark:border-white/5 scrollbar-thin">
-          {[
-            { id: 'overview' as StudioSection, label: 'Ikhtisar', icon: '📊' },
-            { id: 'readiness' as StudioSection, label: 'Kesiapan', icon: '🎯' },
-            { id: 'schedule' as StudioSection, label: 'Jadwal', icon: '📅' },
-            { id: 'campsite' as StudioSection, label: 'Kavling Buper', icon: '⛺' },
-            { id: 'competitions' as StudioSection, label: 'Lomba', icon: '🏆' },
-            { id: 'registration' as StudioSection, label: 'Peserta', icon: '👥' },
-            { id: 'points_badges' as StudioSection, label: 'Poin XP', icon: '⚡' },
-            { id: 'publication_media' as StudioSection, label: 'Publikasi', icon: '📢' },
-            { id: 'visitors' as StudioSection, label: 'Buku Tamu', icon: '👥' },
-            { id: 'general' as StudioSection, label: 'Pengaturan', icon: '⚙️' },
-            { id: 'features' as StudioSection, label: 'Sakelar Fitur', icon: '🎛' },
-            { id: 'pages_contacts' as StudioSection, label: 'Bantuan', icon: '📄' },
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveSection(tab.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeSection === tab.id
-                  ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5'
-              }`}
-            >
-              <span>{tab.icon}</span>
-              <span>{tab.label}</span>
-            </button>
-          ))}
-        </div>
+        {/* Menu kegiatan: grid kartu responsif, tanpa gulir horizontal. */}
+        <nav aria-label="Menu pengelolaan kegiatan" className="border-t border-[#ECECEF] dark:border-white/10 pt-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-extrabold text-[#234538] dark:text-white">Menu Pengelolaan Event</h2>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">Pilih kartu untuk membuka fitur</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 sm:gap-3">
+            {[
+              { id: 'overview' as StudioSection, label: 'Ikhtisar', icon: '📊' },
+              { id: 'readiness' as StudioSection, label: 'Kesiapan', icon: '🎯' },
+              { id: 'schedule' as StudioSection, label: 'Jadwal', icon: '📅' },
+              { id: 'campsite' as StudioSection, label: 'Kavling Buper', icon: '⛺' },
+              { id: 'competitions' as StudioSection, label: 'Lomba', icon: '🏆' },
+              { id: 'registration' as StudioSection, label: 'Peserta', icon: '👥' },
+              { id: 'points_badges' as StudioSection, label: 'Poin XP', icon: '⚡' },
+              { id: 'publication_media' as StudioSection, label: 'Publikasi', icon: '📢' },
+              { id: 'visitors' as StudioSection, label: 'Buku Tamu', icon: '📋' },
+              { id: 'general' as StudioSection, label: 'Pengaturan', icon: '⚙️' },
+              { id: 'features' as StudioSection, label: 'Sakelar Fitur', icon: '🎛️' },
+              { id: 'pages_contacts' as StudioSection, label: 'Bantuan', icon: '📄' },
+            ].map(tab => {
+              const selected = activeSection === tab.id;
+              return (
+                <button
+                  type="button"
+                  key={tab.id}
+                  onClick={() => setActiveSection(tab.id)}
+                  aria-current={selected ? 'page' : undefined}
+                  className={`group min-w-0 min-h-[76px] sm:min-h-[84px] rounded-2xl border px-2 py-3 flex flex-col items-center justify-center gap-1.5 text-center transition-colors duration-150 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 active:scale-[0.98] ${
+                    selected
+                      ? 'bg-[#234538] border-[#234538] text-white shadow-sm dark:bg-emerald-700 dark:border-emerald-600'
+                      : 'bg-[#FAFAF7] border-[#E3E9E4] text-[#234538] hover:bg-emerald-50 hover:border-emerald-300 dark:bg-white/5 dark:border-white/10 dark:text-slate-100 dark:hover:bg-white/10'
+                  }`}
+                >
+                  <span className="text-[23px] leading-none" aria-hidden="true">{tab.icon}</span>
+                  <span className="text-xs sm:text-[13px] font-bold leading-tight break-words">{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
       </div>
 
       {/* 2. Audit Log Drawer Modal / Dropdown */}
