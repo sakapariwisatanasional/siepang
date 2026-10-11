@@ -171,7 +171,7 @@ class ApiTransport {
       timestamp: new Date().toISOString(),
     };
 
-    const timeout = options?.timeoutMs || this.defaultTimeoutMs;
+    const timeout = options?.timeoutMs ?? this.defaultTimeoutMs;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
@@ -186,8 +186,10 @@ class ApiTransport {
         redirect: 'follow',
       });
 
-      clearTimeout(timeoutId);
+      // Keep AbortController active until the redirected GAS response body is read.
+      // A 200/302 header alone does not mean the request has finished.
       const text = await response.text();
+      clearTimeout(timeoutId);
 
       let parsed: any = null;
       try {
@@ -318,7 +320,7 @@ class ApiTransport {
       }
 
       const separator = url.includes('?') ? '&' : '?';
-      const getUrl = `${url}${separator}action=health&nonce=${encodeURIComponent(checkNonce)}`;
+      const getUrl = `${url}${separator}action=system.health&nonce=${encodeURIComponent(checkNonce)}`;
 
       const res = await fetch(getUrl, {
         method: 'GET',
