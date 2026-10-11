@@ -258,7 +258,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     try {
       const res = await attendanceService.recordAttendance(scannedParticipant.code);
       setActionSuccessMessage(
-        `✅ Presensi Tersimpan (+5 XP) ${res.offline ? '(Tersimpan Offline)' : ''}`
+        `✅ Presensi tersimpan di GAS untuk ${scannedParticipant.name}. XP hanya diberikan setelah transaksi poin tercatat.`
       );
       setTimeout(() => {
         setActionSuccessMessage(null);
@@ -302,7 +302,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
       setAppreciatedToday(prev => new Set(prev).add(scannedParticipant.id));
       setDailyQuotaRemaining(prev => Math.max(0, prev - 1));
       setShowPeerModal(false);
-      setActionSuccessMessage(`⚜️ Apresiasi "${type}" berhasil dikirim! (+XP Terverifikasi)`);
+      setActionSuccessMessage(`⚜️ Apresiasi "${type}" tersimpan di GAS (PointTransactions).`);
       setTimeout(() => {
         setActionSuccessMessage(null);
         setScannedParticipant(null);
@@ -463,7 +463,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                     >
                       <div className="flex items-center gap-2.5">
                         <CalendarCheck className="w-4 h-4" />
-                        <span>Catat Presensi Kegiatan Lapangan (+5 XP)</span>
+                        <span>Catat Presensi Kegiatan Lapangan</span>
                       </div>
                       <ChevronRight className="w-4 h-4" />
                     </button>
