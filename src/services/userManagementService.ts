@@ -292,9 +292,7 @@ export class UserManagementService {
   private isLoading = false;
 
   constructor() {
-    this.loadFromCache();
-    // Ensure initial superadmin scoutpreneur@gmail.com is seeded in memory & cache
-    this.ensureBootstrapSuperadmin();
+    // Daftar pengguna hanya dibaca dari GAS. Jangan gunakan cache atau seed lokal.
     // Fetch fresh authoritative user list from backend asynchronously after module imports resolve
     setTimeout(() => {
       this.refreshUsers().catch(() => {});
@@ -326,7 +324,6 @@ export class UserManagementService {
   }
 
   private notify(): void {
-    this.saveToCache();
     this.listeners.forEach(cb => cb());
   }
 
@@ -336,8 +333,7 @@ export class UserManagementService {
 
     try {
       if (typeof apiTransport === 'undefined' || !apiTransport?.send) {
-        this.ensureBootstrapSuperadmin();
-        return [...this.users];
+        throw new Error('Transport GAS tidak tersedia.');
       }
 
       const res = await apiTransport.send<ManagedUser[]>('users.list');
@@ -350,14 +346,12 @@ export class UserManagementService {
           lastLogin: u.lastLogin || 'Belum pernah login',
           createdAt: u.createdAt || new Date().toISOString().split('T')[0],
         }));
-        // Ensure initial superadmin scoutpreneur@gmail.com is present idempotently
-        this.ensureBootstrapSuperadmin();
+        // Jangan injeksikan akun bootstrap lokal ke daftar pengguna GAS.
         this.notify();
       }
     } catch (e) {
       console.warn('Failed to load users from backend:', e);
-      // Even if backend fails, ensure bootstrap superadmin is available
-      this.ensureBootstrapSuperadmin();
+      throw e;
     } finally {
       this.isLoading = false;
     }
@@ -474,7 +468,7 @@ export class UserManagementService {
     }
     await this.refreshUsers();
     const confirmed = this.users.find(u => u.id === userId);
-    if (!confirmed) throw new Error('Role tersimpan tetapi pembacaan ulang akun gagal. Muat ulang halaman.');
+    if (!confirmed || confirmed.role !== newRole) throw new Error('GAS mengonfirmasi penugasan, tetapi daftar pengguna belum mencerminkan role baru. Periksa UserRoleAssignments.');
     return confirmed;
   }
 
