@@ -21,7 +21,7 @@ import { LeaderboardView } from './features/leaderboard/LeaderboardView';
 import { DocumentTemplateStudio } from './features/documents/DocumentTemplateStudio';
 import { HealthAndIncidents } from './features/health/HealthAndIncidents';
 import { LogisticsInventory } from './features/logistics/LogisticsInventory';
-import { BadgesCollection } from './features/badges/BadgesCollection';
+import { MyProfile } from './features/profile/MyProfile';
 import { EventManagementStudio } from './features/event_studio/EventManagementStudio';
 import { PublicEventHomepage } from './features/public/PublicEventHomepage';
 import { PublicDocumentationGallery } from './features/documentation/PublicDocumentationGallery';
@@ -1218,7 +1218,7 @@ export default function App() {
 
           {activeTab === 'leaderboard' && <LeaderboardView />}
 
-          {activeTab === 'profile' && <BadgesCollection />}
+          {activeTab === 'profile' && <MyProfile />}
 
           {activeTab === 'templates' && <DocumentTemplateStudio />}
 
