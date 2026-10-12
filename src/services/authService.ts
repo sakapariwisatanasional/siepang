@@ -803,6 +803,24 @@ class AuthService {
     this.logout(false);
   }
 
+  /** Refresh the current user's display profile only after GAS confirms persistence. */
+  public applyConfirmedProfile(profile: { name: string; avatar?: string }): void {
+    if (!this.currentUser || this.authenticationMode !== 'CLOUD') return;
+    this.currentUser = { ...this.currentUser, name: profile.name, avatar: profile.avatar || '' };
+    try {
+      const raw = localStorage.getItem('siepang_auth_session');
+      if (raw) {
+        const stored: StoredSessionPayload = JSON.parse(raw);
+        if (stored.user_id === this.currentUser.id) {
+          stored.name = profile.name;
+          stored.avatar = profile.avatar || '';
+          localStorage.setItem('siepang_auth_session', JSON.stringify(stored));
+        }
+      }
+    } catch { /* Auth state is still updated from the confirmed GAS response. */ }
+    this.notify();
+  }
+
   public getCurrentUser(): User | null {
     return this.currentUser;
   }
