@@ -137,6 +137,7 @@ export const UserManagementView: React.FC = () => {
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSavingUser, setIsSavingUser] = useState(false);
   const [editingUser, setEditingUser] = useState<Partial<ManagedUser> | null>(null);
 
   // User Detail Modal State (Requirement 15)
@@ -220,8 +221,9 @@ export const UserManagementView: React.FC = () => {
     return result;
   }, [users, userSubTab, selectedRoleFilter, searchQuery]);
 
-  const handleToggleStatus = (userId: string) => {
-    userManagementService.toggleUserStatus(userId);
+  const handleToggleStatus = async (userId: string) => {
+    try { await userManagementService.toggleUserStatus(userId); await userManagementService.refreshUsers(); }
+    catch (e: any) { alert('Gagal mengubah status: ' + (e?.message || String(e))); }
   };
 
   const handleRevokeRole = async (userId: string) => {
@@ -255,38 +257,36 @@ export const UserManagementView: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingUser || !editingUser.name || !editingUser.email) {
-      alert('Nama dan Email wajib diisi!');
+    if (isSavingUser || !editingUser) return;
+    if (!editingUser.id) {
+      alert('Pembuatan akun belum tersedia pada endpoint GAS terverifikasi. Gunakan proses undangan/OTP; tidak ada akun lokal dibuat.');
       return;
     }
-
-    const entityType =
-      editingUser.role === 'judge' ? 'JUDGE' :
-      editingUser.role === 'kontingen_admin' ? 'OFFICIAL' : 'COMMITTEE';
-
-    if (!profilePhotoService.isSubmissionAllowed(entityType, editingUser.profile_photo_status)) {
-      alert(`⚠️ Foto profil resmi wajib diunggah untuk peran ${editingUser.role || 'pengguna'}!`);
+    const previous = users.find(u => u.id === editingUser.id);
+    if (!previous) { alert('Pengguna tidak ditemukan dalam daftar GAS.'); return; }
+    // Form ini khusus perubahan role; perubahan profil memerlukan endpoint sendiri.
+    if (editingUser.name !== previous.name || editingUser.email !== previous.email ||
+        editingUser.organizationName !== previous.organizationName ||
+        editingUser.status !== previous.status ||
+        (editingUser.profile_photo_file_id || '') !== (previous.profile_photo_file_id || '')) {
+      alert('Form Ubah Peran hanya menyimpan role. Nama, email, foto, instansi dan status akun jangan diubah di sini; perubahan profil belum mempunyai endpoint tersendiri.');
       return;
     }
-
-    const activeWs = workspaceService.getCurrentWorkspace();
-    if (editingUser.id) {
-      userManagementService.updateUser(editingUser.id, editingUser);
-    } else {
-      userManagementService.addUser({
-        name: editingUser.name,
-        email: editingUser.email,
-        role: editingUser.role || 'committee',
-        workspaceId: editingUser.workspaceId || activeWs?.id || workspaces[0]?.id || '',
-        organizationName: editingUser.organizationName || activeWs?.organization || workspaces[0]?.organization || 'Penyelenggara Event',
-        status: editingUser.status || 'active',
-      });
+    if (!editingUser.role) { alert('Pilih role yang valid.'); return; }
+    setIsSavingUser(true);
+    try {
+      const saved = await userManagementService.updateUserRole(previous.id, editingUser.role);
+      if (saved.role !== editingUser.role) throw new Error('Role hasil refresh berbeda dari yang dipilih.');
+      setIsModalOpen(false);
+      setEditingUser(null);
+      alert('Role berhasil disimpan di GAS dan dikonfirmasi setelah pembacaan ulang.');
+    } catch (error: any) {
+      alert('Gagal menyimpan role ke GAS: ' + (error?.message || String(error)));
+    } finally {
+      setIsSavingUser(false);
     }
-
-    setIsModalOpen(false);
-    setEditingUser(null);
   };
 
   return (
@@ -772,11 +772,13 @@ export const UserManagementView: React.FC = () => {
             </div>
 
             <form onSubmit={handleSaveUser} className="space-y-3.5 text-xs">
+              {editingUser?.id && <p className="text-amber-600 dark:text-amber-300">Mode Ubah Peran: hanya pilihan Role yang disimpan ke GAS. Data profil dan status akun dikelola melalui alur terpisah.</p>}
               <div>
                 <label className="block text-[#171717] dark:text-slate-200 font-semibold mb-1">Nama Lengkap & Gelar *</label>
                 <input
                   type="text"
                   required
+                  disabled={!!editingUser.id}
                   placeholder="Contoh: Kak Siti Aminah, S.Pd."
                   value={editingUser.name || ''}
                   onChange={e => setEditingUser({ ...editingUser, name: e.target.value })}
@@ -789,6 +791,7 @@ export const UserManagementView: React.FC = () => {
                 <input
                   type="email"
                   required
+                  disabled={!!editingUser.id}
                   placeholder="Contoh: siti.aminah@pramuka.or.id"
                   value={editingUser.email || ''}
                   onChange={e => setEditingUser({ ...editingUser, email: e.target.value })}
@@ -851,6 +854,7 @@ export const UserManagementView: React.FC = () => {
                 <label className="block text-xs font-semibold text-[#171717] dark:text-slate-300 mb-1">Asal Instansi / Unit</label>
                 <input
                   type="text"
+                  disabled={!!editingUser.id}
                   placeholder="Contoh: Sekolah, gugus depan, atau penyelenggara"
                   value={editingUser.organizationName || ''}
                   onChange={e => setEditingUser({ ...editingUser, organizationName: e.target.value })}
@@ -872,6 +876,7 @@ export const UserManagementView: React.FC = () => {
                     <input
                       type="radio"
                       name="user_status"
+                      disabled={!!editingUser.id}
                       checked={editingUser.status === 'active'}
                       onChange={() => setEditingUser({ ...editingUser, status: 'active' })}
                       className="accent-[#F47743]"
@@ -882,6 +887,7 @@ export const UserManagementView: React.FC = () => {
                     <input
                       type="radio"
                       name="user_status"
+                      disabled={!!editingUser.id}
                       checked={editingUser.status === 'inactive'}
                       onChange={() => setEditingUser({ ...editingUser, status: 'inactive' })}
                       className="accent-rose-500"
@@ -904,10 +910,11 @@ export const UserManagementView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
+                  disabled={isSavingUser}
                   className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white font-bold text-xs shadow-md shadow-pink-500/20 cursor-pointer min-h-[44px] flex items-center gap-1.5"
                 >
                   <Check className="w-4 h-4" />
-                  <span>{editingUser?.id ? 'Simpan Perubahan' : 'Tambahkan Pengguna'}</span>
+                  <span>{isSavingUser ? 'Menyimpan ke GAS…' : editingUser?.id ? 'Simpan Role ke GAS' : 'Tambahkan Pengguna'}</span>
                 </button>
               </div>
             </form>
