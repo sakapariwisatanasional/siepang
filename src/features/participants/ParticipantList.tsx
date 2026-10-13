@@ -2,7 +2,7 @@
  * @license
  * SiEpang - Participant Directory, Verification Workspace, Step-Registration & Import v1.1
  * Fully implements:
- * - Requirement 8: Mobile-friendly step-based participant registration experience (1. Identity, 2. Org, 3. Info, 4. Docs, 5. Review, 6. Submit)
+ * - Requirement 8: Single-page participant registration form (identity, Gudep/regu, medical info, photo, documents)
  * - Requirement 9: Participant Verification Workspace for Registration Officers (pending queue, preview, approve, request revision with reason, reject)
  * - Requirement 10: Participant Status History tracking & timeline viewer
  * - Requirement 11: Duplicate Participant Detection with review modal
@@ -272,7 +272,6 @@ export const ParticipantList: React.FC = () => {
     if (!stepData.name.trim()) return;
     if (!selectedGudep || !selectedRegu) {
       showToast('Pilih Gugus Depan dan regu yang sesuai terlebih dahulu.');
-      setRegStep(2);
       return;
     }
 
@@ -280,7 +279,11 @@ export const ParticipantList: React.FC = () => {
     const entityType = (stepData.role === 'Pembina Pendamping' || stepData.role === 'Pimpinan Kontingen') ? 'OFFICIAL' : 'PARTICIPANT';
     if (!profilePhotoService.isSubmissionAllowed(entityType, stepData.profile_photo_status)) {
       showToast('⚠️ Foto profil resmi wajib diunggah sebelum pendaftaran dapat diselesaikan.');
-      setRegStep(4);
+      return;
+    }
+
+    if (!stepData.docKta || !stepData.docIzin || !stepData.docSehat) {
+      showToast('Lengkapi konfirmasi tiga berkas pendukung wajib sebelum mengirim pendaftaran.');
       return;
     }
 
@@ -1045,29 +1048,20 @@ export const ParticipantList: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
           <form
             onSubmit={handleFinishStepReg}
-            className="siepang-participant-registration w-full max-w-lg bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
+            className="siepang-participant-registration w-full max-w-2xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between pb-3 border-b border-[#ECECEF] dark:border-white/10">
               <div>
-                <span className="text-[10px] text-[#F47743] font-bold font-mono">LANGKAH {regStep} DARI 6</span>
+                <span className="text-[10px] text-[#F47743] font-bold font-mono">FORMULIR LENGKAP · 1 HALAMAN</span>
                 <h3 className="text-base font-bold text-[#171717] dark:text-white">Formulir Pendaftaran Peserta</h3>
               </div>
               <button type="button" disabled={isSubmittingRegistration} onClick={() => setShowStepRegModal(false)} className="p-1 text-[#6B7280] hover:text-[#171717] dark:text-slate-400 dark:hover:text-white cursor-pointer">✕</button>
             </div>
 
-            {/* Stepper Progress Bar */}
-            <div className="w-full bg-gray-100 dark:bg-black/40 h-2 rounded-full overflow-hidden">
-              <div
-                className="h-full transition-all duration-300"
-                style={{
-                  width: `${(regStep / 6) * 100}%`,
-                  background: 'linear-gradient(135deg, #833AB4 0%, #C13584 30%, #E1306C 52%, #F77737 78%, #FCAF45 100%)',
-                }}
-              />
-            </div>
+            <p className="text-xs text-[#6B7280] dark:text-slate-400">Isi seluruh persyaratan dalam satu halaman. Kolom bertanda * wajib diisi; tinjau data sebelum menyimpan ke GAS.</p>
 
             {/* STEP 1: IDENTITY */}
-            {regStep === 1 && (
+            
               <div className="space-y-3 text-xs animate-in fade-in">
                 <div className="font-bold text-[#171717] dark:text-slate-200">1. Identitas Pribadi Peserta</div>
                 <div>
@@ -1118,13 +1112,13 @@ export const ParticipantList: React.FC = () => {
                   />
                 </div>
               </div>
-            )}
+
 
             {/* STEP 2: GUGUS DEPAN & REGU — sumber tunggal dari GAS */}
-            {regStep === 2 && (
+            
               <div className="space-y-3 text-xs animate-in fade-in">
                 <div className="font-bold text-[#171717] dark:text-slate-200">2. Pilih Gugus Depan & Regu</div>
-                <p className="text-[#6B7280] dark:text-slate-400">Pilih Gudep terlebih dahulu. Regu akan disaring otomatis berdasarkan Putra/Putri pada langkah pertama.</p>
+                <p className="text-[#6B7280] dark:text-slate-400">Pilih Gudep terlebih dahulu. Regu disaring otomatis berdasarkan pilihan Putra/Putri di bagian identitas.</p>
                 <div>
                   <label className="text-[#6B7280] dark:text-slate-300 block mb-1 font-semibold">Gugus Depan *</label>
                   <select
@@ -1171,10 +1165,10 @@ export const ParticipantList: React.FC = () => {
                 </div>
                 {selectedGudep && <p className="text-[#6B7280] dark:text-slate-400">Pangkalan: {selectedGudep.institution_name || selectedGudep.gudep_name}</p>}
               </div>
-            )}
+
 
             {/* STEP 3: PARTICIPANT INFORMATION */}
-            {regStep === 3 && (
+            
               <div className="space-y-3 text-xs animate-in fade-in">
                 <div className="font-bold text-[#171717] dark:text-slate-200">3. Informasi Tambahan & Medis</div>
                 <div className="grid grid-cols-2 gap-3">
@@ -1214,10 +1208,10 @@ export const ParticipantList: React.FC = () => {
                   />
                 </div>
               </div>
-            )}
+
 
             {/* STEP 4: PHOTO & REQUIRED DOCUMENTS (Requirements 25 - 34) */}
-            {regStep === 4 && (
+            
               <div className="space-y-4 text-xs animate-in fade-in">
                 <div className="space-y-1">
                   <div className="font-bold text-[#171717] dark:text-slate-200">4. Foto Profil Resmi & Kelengkapan Berkas</div>
@@ -1253,11 +1247,12 @@ export const ParticipantList: React.FC = () => {
                 />
 
                 <div className="space-y-2 pt-2 border-t border-[#ECECEF] dark:border-white/5">
-                  <div className="text-[11px] font-semibold text-[#171717] dark:text-slate-300">Berkas Pendukung Wajib:</div>
+                  <div className="text-[11px] font-semibold text-[#171717] dark:text-slate-300">Konfirmasi Berkas Pendukung Wajib (3/3 harus dicentang):</div>
                   <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/5 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={stepData.docKta}
+                      required
                       onChange={e => setStepData({ ...stepData, docKta: e.target.checked })}
                       className="accent-[#F47743] rounded"
                     />
@@ -1267,6 +1262,7 @@ export const ParticipantList: React.FC = () => {
                     <input
                       type="checkbox"
                       checked={stepData.docIzin}
+                      required
                       onChange={e => setStepData({ ...stepData, docIzin: e.target.checked })}
                       className="accent-[#F47743] rounded"
                     />
@@ -1276,6 +1272,7 @@ export const ParticipantList: React.FC = () => {
                     <input
                       type="checkbox"
                       checked={stepData.docSehat}
+                      required
                       onChange={e => setStepData({ ...stepData, docSehat: e.target.checked })}
                       className="accent-[#F47743] rounded"
                     />
@@ -1283,90 +1280,19 @@ export const ParticipantList: React.FC = () => {
                   </label>
                 </div>
               </div>
-            )}
 
-            {/* STEP 5: REVIEW */}
-            {regStep === 5 && (
-              <div className="space-y-3 text-xs animate-in fade-in">
-                <div className="font-bold text-[#171717] dark:text-slate-200">5. Tinjau Ringkasan Pendaftaran</div>
-                <div className="p-3.5 rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 space-y-2">
-                  <div className="flex items-center gap-3 pb-2 border-b border-[#ECECEF] dark:border-white/10">
-                    <img
-                      src={stepData.photoUrl || profilePhotoService.getPlaceholderUrl(stepData.name)}
-                      alt="Foto Profil"
-                      className="w-12 h-12 rounded-xl object-cover border border-[#ECECEF] dark:border-white/10 bg-slate-100 dark:bg-slate-900"
-                    />
-                    <div>
-                      <div className="font-bold text-[#171717] dark:text-white text-sm">{stepData.name || '-'}</div>
-                      <div className="text-[#F47743] font-mono text-[10px]">
-                        {stepData.role} · {stepData.gender === 'M' ? 'Putra' : 'Putri'}
-                      </div>
-                      <div className="text-[10px] text-[#6B7280] dark:text-slate-400">
-                        Status Foto: {stepData.photoUrl ? '✓ Terunggah' : 'Belum Ada Foto'}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex justify-between"><span className="text-[#6B7280] dark:text-slate-400">Gugus Depan:</span><span className="text-[#F47743] font-semibold">{selectedGudep?.gudep_name || '-'}</span></div>
-                  <div className="flex justify-between"><span className="text-[#6B7280] dark:text-slate-400">Regu:</span><span className="text-[#171717] dark:text-white">{selectedRegu?.regu_name || '-'}</span></div>
-                  <div className="flex justify-between"><span className="text-[#6B7280] dark:text-slate-400">Pangkalan:</span><span className="text-[#171717] dark:text-white">{stepData.schoolPangkalan}</span></div>
-                  <div className="flex justify-between"><span className="text-[#6B7280] dark:text-slate-400">Gol. Darah:</span><span className="text-[#171717] dark:text-white">{stepData.bloodType}</span></div>
-                  <div className="flex justify-between"><span className="text-[#6B7280] dark:text-slate-400">NTA / KTA:</span><span className="text-[#171717] dark:text-white font-mono">{stepData.membershipNumber || '-'}</span></div>
-                  <div className="flex justify-between"><span className="text-[#6B7280] dark:text-slate-400">Berkas:</span><span className="text-emerald-600 dark:text-emerald-300 font-semibold">Lengkap (3 Berkas)</span></div>
-                </div>
-              </div>
-            )}
 
-            {/* STEP 6: SUBMIT CONFIRMATION */}
-            {regStep === 6 && (
-              <div className="space-y-3 text-xs text-center animate-in fade-in py-3">
-                <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 flex items-center justify-center mx-auto border border-emerald-200 dark:border-emerald-500/30">
-                  <Check className="w-6 h-6 stroke-[3]" />
-                </div>
-                <h4 className="text-sm font-bold text-[#171717] dark:text-white">Siap Mengirimkan Pendaftaran?</h4>
-                <p className="text-[#6B7280] dark:text-slate-400 max-w-xs mx-auto">
-                  Data peserta akan dikirim ke antrean verifikasi panitia dan diterbitkan kode tiket peserta resmi.
-                </p>
-              </div>
-            )}
-
-            {/* Stepper Navigation Buttons */}
-            <div className="pt-3 border-t border-[#ECECEF] dark:border-white/10 flex items-center justify-between">
-              {regStep > 1 ? (
-                <button
-                  type="button"
-                  onClick={() => setRegStep(regStep - 1)}
-                  className="px-4 py-2 bg-[#FAFAFA] hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 text-[#6B7280] dark:text-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-[#ECECEF] dark:border-white/10 cursor-pointer"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Sebelumnya</span>
-                </button>
-              ) : (
-                <div />
-              )}
-
-              {regStep < 6 ? (
-                <button
-                  type="button"
-                  disabled={(regStep === 1 && !stepData.name.trim()) || (regStep === 2 && (!selectedGudep || !selectedRegu || reguLoading || gudepLoading))}
-                  onClick={() => setRegStep(regStep + 1)}
-                  className="px-5 py-2.5 bg-[#F47743] hover:bg-[#E78B3C] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
-                >
-                  <span>Lanjutkan</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={isSubmittingRegistration}
-                  aria-busy={isSubmittingRegistration}
-                  className="px-6 py-2.5 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-wait"
-                  style={{
-                    background: 'linear-gradient(135deg, #833AB4 0%, #C13584 30%, #E1306C 52%, #F77737 78%, #FCAF45 100%)',
-                  }}
-                >
-                  {isSubmittingRegistration ? 'Menyimpan ke GAS…' : 'Kirim & Daftarkan Peserta'}
-                </button>
-              )}
+            <div className="pt-4 border-t border-[#ECECEF] dark:border-white/10 space-y-3">
+              <p className="text-xs text-[#6B7280] dark:text-slate-400">Pastikan nama, Gudep, regu, foto profil, dan kelengkapan berkas sudah benar sebelum mengirimkan pendaftaran.</p>
+              <button
+                type="submit"
+                disabled={isSubmittingRegistration || gudepLoading || reguLoading || !selectedGudep || !selectedRegu}
+                aria-busy={isSubmittingRegistration}
+                className="w-full px-6 py-3 text-white rounded-xl text-sm font-bold shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ background: 'linear-gradient(135deg, #833AB4 0%, #C13584 30%, #E1306C 52%, #F77737 78%, #FCAF45 100%)' }}
+              >
+                {isSubmittingRegistration ? 'Menyimpan ke GAS…' : 'Kirim & Daftarkan Peserta'}
+              </button>
             </div>
           </form>
         </div>
