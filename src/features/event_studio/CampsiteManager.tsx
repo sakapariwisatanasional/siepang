@@ -27,6 +27,11 @@ import { CampsiteLot, CampFacility, FacilityCategory, Contingent } from '../../t
 import { participantService } from '../../services/participantService';
 import { apiTransport } from '../../services/apiTransport';
 
+type PlotShape = { width: number; height: number; rotation: number; locked: boolean; hidden?: boolean; zoneId?: string };
+type PlotZone = { id: string; name: string; gender: 'male' | 'female'; points: {x:number;y:number}[] };
+const DEFAULT_PLOT: PlotShape = { width: 5, height: 5, rotation: 0, locked: false };
+const clampPct = (n:number) => Math.max(1, Math.min(99, n));
+
 export const CampsiteManager: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'map' | 'lots' | 'assignment' | 'facilities'>('map');
   const [lots, setLots] = useState<CampsiteLot[]>(eventStudioService.getCampsiteLots());
@@ -90,6 +95,66 @@ export const CampsiteManager: React.FC = () => {
   const uploadRef = useRef<HTMLInputElement>(null);
   const [mapBusy, setMapBusy] = useState(false);
   const [mapError, setMapError] = useState('');
+  // Layout is persisted by campsite.layout.get/save (backend module added separately).
+  const [plotShapes, setPlotShapes] = useState<Record<string, PlotShape>>({});
+  const [plotZones, setPlotZones] = useState<PlotZone[]>([]);
+  const [layoutBusy, setLayoutBusy] = useState(false);
+  const [layoutDirty, setLayoutDirty] = useState(false);
+  const [layoutReady, setLayoutReady] = useState(false);
+  const [drawingZone, setDrawingZone] = useState<'male' | 'female' | null>(null);
+  const [zonePoints, setZonePoints] = useState<{x:number;y:number}[]>([]);
+  const [zoneLabel, setZoneLabel] = useState('');
+  const [layoutError, setLayoutError] = useState('');
+  const [removingLot, setRemovingLot] = useState(false);
+  const getShape = (id: string): PlotShape => plotShapes[id] || DEFAULT_PLOT;
+  const patchShape = (id: string, changes: Partial<PlotShape>) => {
+    setPlotShapes(old => ({...old, [id]: {...(old[id] || DEFAULT_PLOT), ...changes}}));
+    setLayoutDirty(true);
+  };
+  const loadLayout = async () => {
+    setLayoutReady(false);
+    setLayoutError('');
+    try {
+      const res = await apiTransport.send<{ shapes?: Record<string, PlotShape>; zones?: PlotZone[] }>('campsite.layout.get', {}, {timeoutMs:45000});
+      if (!res.ok) throw new Error(res.error?.message || 'Backend layout belum aktif.');
+      setPlotShapes(res.data?.shapes || {});
+      setPlotZones(res.data?.zones || []);
+      setLayoutDirty(false);
+      setLayoutReady(true);
+    } catch (e:any) {
+      setLayoutError(e?.message || 'Gagal membaca tata letak kavling.');
+    }
+  };
+  useEffect(() => { void loadLayout(); }, [eventId]);
+  const saveLayout = async (shapes = plotShapes, zones = plotZones) => {
+    setLayoutBusy(true);
+    try {
+      const res = await apiTransport.send('campsite.layout.save', {shapes, zones}, {timeoutMs:60000});
+      if (!res.ok) throw new Error(res.error?.message || 'Backend menolak penyimpanan layout.');
+      setLayoutDirty(false);
+      setLayoutError('');
+      showToast('Ukuran, rotasi, zona, dan kunci kavling tersimpan.');
+    } catch (e:any) {
+      setLayoutError(e?.message || 'Gagal menyimpan layout di GAS.');
+    } finally { setLayoutBusy(false); }
+  };
+  const mapPoint = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return {x:Math.round(clampPct(100*(e.clientX-rect.left)/rect.width)*100)/100,y:Math.round(clampPct(100*(e.clientY-rect.top)/rect.height)*100)/100};
+  };
+  const pointInPolygon = (p:{x:number;y:number}, poly:{x:number;y:number}[]) => {
+    let inside=false;
+    for(let i=0,j=poly.length-1;i<poly.length;j=i++) {
+      const a=poly[i], b=poly[j];
+      if (((a.y>p.y)!==(b.y>p.y)) && (p.x < (b.x-a.x)*(p.y-a.y)/(b.y-a.y)+a.x)) inside=!inside;
+    }
+    return inside;
+  };
+  const finishZone = () => {
+    if(zonePoints.length<3) {showToast('Zona memerlukan minimal 3 titik.');return;}
+    const zone:PlotZone={id:`zone_${Date.now()}`,name:zoneLabel.trim() || `Zona ${drawingZone==='male'?'Putra':'Putri'} ${plotZones.length+1}`,gender:drawingZone || 'male',points:zonePoints};
+    setPlotZones(z=>[...z,zone]);setLayoutDirty(true);setZonePoints([]);setDrawingZone(null);setZoneLabel('');
+  };
 
   useEffect(() => eventStudioService.subscribe(() => {
     setLots([...eventStudioService.listLots()]);
@@ -166,7 +231,7 @@ export const CampsiteManager: React.FC = () => {
   };
 
   const startDrag = (e: React.PointerEvent<HTMLButtonElement>, id: string, kind: 'lot' | 'facility') => {
-    if (!mapEditing || savingPosition) return;
+    if (!mapEditing || savingPosition || (kind === 'lot' && getShape(id).locked) || drawingZone) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     setDragging({ id, kind });
@@ -185,6 +250,13 @@ export const CampsiteManager: React.FC = () => {
     if (!dragging || !draftPoint || savingPosition) return;
     const moved = dragging;
     const point = draftPoint;
+    if (moved.kind === 'lot' && plotZones.length) {
+      const lot = lots.find(l => l.id === moved.id);
+      const shape = getShape(moved.id);
+      const matching = plotZones.find(z => z.gender === lot?.gender && pointInPolygon(point,z.points));
+      if (!matching) { setDragging(null);setDraftPoint(null);showToast('Kavling harus berada di dalam zona sesuai golongan.');return; }
+      if (shape.zoneId !== matching.id) patchShape(moved.id,{zoneId:matching.id});
+    }
     setDragging(null);
     setDraftPoint(null);
     setSavingPosition(true);
@@ -236,17 +308,47 @@ export const CampsiteManager: React.FC = () => {
     }
   };
 
-  const handleDeleteLot = async (id: string) => {
-    if (confirm('Hapus kavling tenda ini?')) {
-      try {
-        eventStudioService.deleteCampsiteLot(id);
-        setLots([...eventStudioService.listLots()]);
-        setSelectedLot(null);
-        showToast('Kavling telah dihapus.');
-      } catch (err: any) {
-        showToast(`❌ Gagal: ${err.message}`);
-      }
+  const handleHideLot = async (id: string, hidden: boolean) => {
+    if (!layoutReady || layoutBusy || layoutDirty) {
+      showToast('Simpan perubahan tata letak yang tertunda terlebih dahulu.');
+      return;
     }
+    const next = {...plotShapes, [id]: {...getShape(id), hidden}};
+    setLayoutBusy(true);
+    try {
+      const res = await apiTransport.send('campsite.layout.save', {shapes: next, zones: plotZones}, {timeoutMs:60000});
+      if (!res.ok) throw new Error(res.error?.message || 'Backend menolak perubahan pin.');
+      setPlotShapes(next);
+      setSelectedLot(null);
+      showToast(hidden ? 'Pin disembunyikan dari denah; data kavling tetap ada.' : 'Pin kavling kembali tampil di denah.');
+    } catch (err: any) {
+      showToast(`Gagal menyimpan tampilan pin: ${err?.message || 'Periksa GAS.'}`);
+    } finally { setLayoutBusy(false); }
+  };
+
+  const handleDeleteLot = async (id: string) => {
+    const lot = lots.find(l => l.id === id);
+    if (!lot) return;
+    if (lot.contingentId || lot.status === 'occupied') {
+      showToast('Tidak boleh mengarsipkan kavling yang sudah dialokasikan/terisi. Kosongkan alokasi terlebih dahulu.');
+      return;
+    }
+    if (!confirm(`Arsipkan kavling ${lot.lotNumber}? Data akan diproses melalui backend; tindakan ini berbeda dari menyembunyikan pin.`)) return;
+    setRemovingLot(true);
+    try {
+      await eventStudioService.deleteCampsiteLot(id);
+      setLots([...eventStudioService.listLots()]);
+      setSelectedLot(null);
+      if (plotShapes[id]) {
+        const next = {...plotShapes};
+        delete next[id];
+        setPlotShapes(next);
+        setLayoutDirty(true);
+      }
+      showToast('Permintaan arsip kavling berhasil diproses. Simpan Tata Letak untuk membersihkan geometri lama.');
+    } catch (err: any) {
+      showToast(`Gagal mengarsipkan kavling: ${err?.message || 'Endpoint backend mungkin belum tersedia.'}`);
+    } finally { setRemovingLot(false); }
   };
 
   const handleAssignContingent = async (lotId: string, contingentId: string) => {
@@ -453,22 +555,37 @@ export const CampsiteManager: React.FC = () => {
                   {mapEditing ? 'Selesai Atur Posisi' : 'Atur Posisi Pin'}
                 </button>
                 {mapImage && <button type="button" className="rounded-xl px-3 py-2 bg-rose-50 text-rose-700 font-bold" onClick={() => { void removeMap(); }} disabled={mapBusy}>Hapus Denah</button>}
+                <button type="button" disabled={!layoutReady || layoutBusy || !layoutDirty} onClick={() => void saveLayout()} className="rounded-xl px-3 py-2 bg-sky-700 text-white font-bold disabled:opacity-40">{layoutBusy?'Menyimpan...':'Simpan Tata Letak'}</button>
               </div>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">{mapEditing ? 'Tarik pin kavling atau fasilitas ke posisi yang sesuai pada denah. Posisi disimpan ke GAS saat dilepas.' : 'Unggah denah, lalu aktifkan Atur Posisi Pin. Klik pin untuk melihat informasi.'}</p>
             {mapError && <p role="alert" className="text-xs text-rose-700 dark:text-rose-300">{mapError}</p>}
-            <div ref={mapRef} className="relative w-full h-[400px] sm:h-[480px] rounded-3xl bg-slate-100 dark:bg-[#102318] border border-slate-200 dark:border-emerald-500/30 overflow-hidden select-none touch-none" style={mapImage ? { backgroundImage: `url(${mapImage})`, backgroundSize: '100% 100%', backgroundPosition: 'center' } : undefined}>
+            {layoutError && <p role="alert" className="text-xs text-rose-700 dark:text-rose-300">Penyimpanan area belum tersedia: {layoutError}. Pasang backend campsite.layout.get/save sebelum menggunakan editor area.</p>}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <button type="button" disabled={!layoutReady} onClick={() => {setDrawingZone('male');setZonePoints([]);}} className="px-3 py-2 rounded-lg bg-blue-100 text-blue-800 disabled:opacity-40">+ Gambar Zona Putra</button>
+              <button type="button" disabled={!layoutReady} onClick={() => {setDrawingZone('female');setZonePoints([]);}} className="px-3 py-2 rounded-lg bg-pink-100 text-pink-800 disabled:opacity-40">+ Gambar Zona Putri</button>
+              {drawingZone && <><input value={zoneLabel} onChange={e=>setZoneLabel(e.target.value)} placeholder="Nama zona" className="p-2 border rounded-lg text-slate-900" /><button type="button" onClick={finishZone} className="px-3 py-2 bg-emerald-700 text-white rounded-lg">Selesai Zona ({zonePoints.length} titik)</button><button type="button" onClick={()=>{setDrawingZone(null);setZonePoints([]);}} className="px-3 py-2 rounded-lg border">Batal</button></>}
+              {plotZones.map(z=><button key={z.id} type="button" onClick={()=>{setPlotZones(old=>old.filter(x=>x.id!==z.id));setLayoutDirty(true);}} className="px-2 py-1 border rounded-lg" title="Hapus zona">{z.name} ×</button>)}
+            </div>
+            {drawingZone && <p className="text-xs text-blue-800">Klik beberapa titik pada gambar denah untuk menggambar batas zona. Minimal tiga titik, lalu tekan Selesai Zona.</p>}
+            <div ref={mapRef} onClick={e=>{if(drawingZone){setZonePoints(pts=>[...pts,mapPoint(e)]);}}} className="relative w-full h-[400px] sm:h-[480px] rounded-3xl bg-slate-100 dark:bg-[#102318] border border-slate-200 dark:border-emerald-500/30 overflow-hidden select-none touch-none" style={mapImage ? { backgroundImage: `url(${mapImage})`, backgroundSize: '100% 100%', backgroundPosition: 'center' } : undefined}>
               {!mapImage && <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-500 dark:text-slate-300 text-sm pointer-events-none"><span className="text-3xl">🗺️</span><span>{mapBusy ? 'Memuat denah dari GAS...' : 'Belum ada denah lokasi'}</span><span className="text-xs">Admin dapat mengunggah denah JPG, PNG, atau WebP</span></div>}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none z-[5]" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                {plotZones.map(z=><polygon key={z.id} points={z.points.map(p=>`${p.x},${p.y}`).join(' ')} fill={z.gender==='male'?'rgba(37,99,235,.15)':'rgba(219,39,119,.15)'} stroke={z.gender==='male'?'#2563eb':'#db2777'} strokeWidth=".5" vectorEffect="non-scaling-stroke"/>)}
+                {zonePoints.length>0 && <polyline points={zonePoints.map(p=>`${p.x},${p.y}`).join(' ')} fill="none" stroke="#f97316" strokeWidth=".6" vectorEffect="non-scaling-stroke"/>}
+              </svg>
               {facilities.map(fac => {
                 const pos = dragging?.id === fac.id && dragging.kind === 'facility' ? draftPoint || fac.coordinates : fac.coordinates;
                 return <button key={fac.id} type="button" onPointerDown={e => startDrag(e, fac.id, 'facility')} onPointerMove={moveDrag} onPointerUp={() => void finishDrag()} onPointerCancel={() => { setDragging(null); setDraftPoint(null); }} onClick={() => { if (!mapEditing) { setSelectedFacility(fac); setSelectedLot(null); } }} className={`absolute -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full flex items-center justify-center shadow-lg z-20 bg-amber-400 border-2 border-white ${mapEditing ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`} style={{ left: `${pos?.x ?? 50}%`, top: `${pos?.y ?? 50}%`, touchAction: 'none' }} title={fac.name}>{fac.icon}</button>;
               })}
-              {lots.map(lot => {
+              {lots.filter(lot => !getShape(lot.id).hidden).map(lot => {
                 const pos = dragging?.id === lot.id && dragging.kind === 'lot' ? draftPoint || lot.coordinates : lot.coordinates;
-                return <button key={lot.id} type="button" onPointerDown={e => startDrag(e, lot.id, 'lot')} onPointerMove={moveDrag} onPointerUp={() => void finishDrag()} onPointerCancel={() => { setDragging(null); setDraftPoint(null); }} onClick={() => { if (!mapEditing) { setSelectedLot(lot); setSelectedFacility(null); } }} className={`absolute -translate-x-1/2 -translate-y-1/2 px-2 py-1 rounded-lg shadow-lg z-10 text-[11px] font-bold text-white border border-white/60 ${lot.gender === 'female' ? 'bg-pink-600' : 'bg-emerald-700'} ${mapEditing ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`} style={{ left: `${pos?.x ?? 50}%`, top: `${pos?.y ?? 50}%`, touchAction: 'none' }} title={lot.lotNumber}>⛺ {lot.lotNumber}</button>;
+                const shape = getShape(lot.id);
+                return <button key={lot.id} type="button" onPointerDown={e => startDrag(e, lot.id, 'lot')} onPointerMove={moveDrag} onPointerUp={() => void finishDrag()} onPointerCancel={() => { setDragging(null); setDraftPoint(null); }} onClick={e => {e.stopPropagation(); if (!mapEditing) { setSelectedLot(lot); setSelectedFacility(null); } }} className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-md shadow-lg z-10 text-[10px] font-bold text-white border-2 ${shape.locked?'border-yellow-400':'border-white/70'} ${lot.gender === 'female' ? 'bg-pink-600/80' : 'bg-blue-700/80'} ${mapEditing && !shape.locked ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`} style={{ left: `${pos?.x ?? 50}%`, top: `${pos?.y ?? 50}%`, width:`${shape.width}%`,height:`${shape.height}%`,minWidth:24,minHeight:24,transform:`translate(-50%, -50%) rotate(${shape.rotation}deg)`,touchAction:'none' }} title={lot.lotNumber}>{shape.locked?'🔒 ':''}{lot.lotNumber}</button>;
               })}
             </div>
             {savingPosition && <p className="text-xs text-amber-600">Menyimpan posisi ke GAS...</p>}
+            {lots.some(lot => getShape(lot.id).hidden) && <div className="flex flex-wrap items-center gap-2 mt-3 text-xs"><span className="font-semibold text-slate-600 dark:text-slate-300">Pin tersembunyi:</span>{lots.filter(lot => getShape(lot.id).hidden).map(lot => <button key={lot.id} type="button" disabled={!layoutReady || layoutBusy || layoutDirty} onClick={() => void handleHideLot(lot.id, false)} className="rounded-lg border border-emerald-500/40 px-3 py-1.5 text-emerald-700 dark:text-emerald-300 disabled:opacity-40">Tampilkan {lot.lotNumber}</button>)}</div>}
             {/* Selected Pin Detail Sheet */}
             {selectedLot && (
               <div className="p-4 rounded-2xl bg-emerald-950/70 border border-emerald-500/40 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
@@ -499,14 +616,23 @@ export const CampsiteManager: React.FC = () => {
                     </select>
                   </div>
                   <p className="text-slate-400 text-[11px] mt-1">{selectedLot.notes}</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-white">
+                    <label>Lebar (%)<input type="number" min="2" max="30" step="1" value={getShape(selectedLot.id).width} onChange={e=>patchShape(selectedLot.id,{width:Math.max(2,Math.min(30,Number(e.target.value)||2))})} className="mt-1 w-full rounded bg-white/15 p-2" /></label>
+                    <label>Tinggi (%)<input type="number" min="2" max="30" step="1" value={getShape(selectedLot.id).height} onChange={e=>patchShape(selectedLot.id,{height:Math.max(2,Math.min(30,Number(e.target.value)||2))})} className="mt-1 w-full rounded bg-white/15 p-2" /></label>
+                    <label>Rotasi (°)<input type="number" min="0" max="359" step="5" value={getShape(selectedLot.id).rotation} onChange={e=>patchShape(selectedLot.id,{rotation:((Number(e.target.value)||0)%360+360)%360})} className="mt-1 w-full rounded bg-white/15 p-2" /></label>
+                    <label className="flex items-center gap-2"><input type="checkbox" checked={getShape(selectedLot.id).locked} onChange={e=>patchShape(selectedLot.id,{locked:e.target.checked})}/> Kunci kavling</label>
+                  </div>
+                  <p className="text-[10px] text-amber-200 mt-2">Perubahan dimensi/zona/kunci harus disimpan dengan tombol Simpan Tata Letak.</p>
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <button type="button" disabled={!layoutReady || layoutBusy || layoutDirty} onClick={() => void handleHideLot(selectedLot.id, true)} className="px-3 py-1.5 bg-sky-500/20 text-sky-100 rounded-xl disabled:opacity-40">Sembunyikan dari Denah</button>
                   <button
-                    onClick={() => handleDeleteLot(selectedLot.id)}
+                    disabled={removingLot || Boolean(selectedLot.contingentId) || selectedLot.status === 'occupied'}
+                    onClick={() => void handleDeleteLot(selectedLot.id)}
                     className="px-3 py-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 rounded-xl"
                   >
-                    Hapus Kavling
+                    {removingLot ? 'Mengarsipkan...' : 'Arsipkan Kavling'}
                   </button>
                   <button
                     onClick={() => setSelectedLot(null)}
