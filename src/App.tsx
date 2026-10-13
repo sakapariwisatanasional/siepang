@@ -739,9 +739,12 @@ export default function App() {
   if (isInitializingAuth && !isRequestingPublicRoute) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#F7F7F8] dark:bg-[#0E0E12] text-[#171717] dark:text-slate-100 p-6 selection:bg-[#F47743] selection:text-white">
-        <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-[#208C60] via-[#F47743] to-[#FFD36A] flex items-center justify-center text-3xl shadow-lg shadow-pink-500/20 text-white animate-pulse">
-          ⚜️
-        </div>
+        <img
+          src="https://lh3.googleusercontent.com/d/1m9afdNFJjUCCjuUFbDe-v1pa2iqIyqc5=w1000"
+          alt="Logo SiEpang"
+          className="w-20 h-20 rounded-2xl object-contain animate-pulse"
+          referrerPolicy="no-referrer"
+        />
         <div className="mt-4 text-center space-y-1">
           <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200">
             Memuat SiEpang...
