@@ -37,6 +37,29 @@ function resolveParticipantPhotoUrl(raw: any): string {
   } catch { return ''; }
 }
 
+/** Document verification statuses returned by ParticipantVerificationApi.gs. */
+export type ParticipantDocumentType = 'KTA' | 'PARENT_CONSENT' | 'HEALTH_CERTIFICATE';
+export type ParticipantDocumentMethod = 'DIGITAL' | 'PHYSICAL' | 'NOT_SELECTED';
+export type ParticipantDocumentStatus = 'NOT_SUBMITTED' | 'PENDING' | 'VERIFIED' | 'REVISION' | 'REJECTED';
+export interface ParticipantDocumentRecord {
+  document_type: ParticipantDocumentType;
+  method: ParticipantDocumentMethod;
+  verification_status: ParticipantDocumentStatus;
+  has_file: boolean;
+  original_filename: string;
+  verified_by: string;
+  verified_at: string;
+  notes: string;
+}
+export interface ParticipantDocumentSummary {
+  participant_id: string;
+  event_id: string;
+  documents: ParticipantDocumentRecord[];
+  all_verified: boolean;
+  physical_check_required: ParticipantDocumentType[];
+}
+export type ParticipantDocumentDecision = 'VERIFIED' | 'REVISION' | 'REJECTED';
+
 class ParticipantService {
   private participants: Participant[] = [];
   private contingents: Contingent[] = [];
@@ -277,6 +300,106 @@ class ParticipantService {
   public getStatusHistory(participantId: string) {
     const p = this.participants.find(part => part.id === participantId);
     return p?.statusHistory || [];
+  }
+
+  // ==================== PER-DOCUMENT GAS VERIFICATION ====================
+  // The returned GAS summary is the source of truth. Never approve a participant
+  // locally simply because an upload succeeded or physical method was chosen.
+  private readonly documentOperationsInFlight = new Set<string>();
+
+  private async sendDocumentRequest(
+    action: string,
+    payload: Record<string, unknown>,
+    timeoutMs = 60000
+  ): Promise<ParticipantDocumentSummary> {
+    const response = await apiTransport.send<ParticipantDocumentSummary>(action, payload, { timeoutMs });
+    if (!response.ok) throw new Error(response.error?.message || `GAS menolak permintaan ${action}.`);
+    const data = response.data;
+    if (!data || !Array.isArray(data.documents) || typeof data.all_verified !== 'boolean') {
+      throw new Error(`Respons ${action} dari GAS tidak sesuai format.`);
+    }
+    return data;
+  }
+
+  public async listParticipantDocuments(participantId: string): Promise<ParticipantDocumentSummary> {
+    if (!participantId.trim()) throw new Error('ID peserta wajib diisi.');
+    return this.sendDocumentRequest('participants.documents.list', { participant_id: participantId }, 45000);
+  }
+
+  /** Convert a selected file into base64. GAS accepts PDF/JPEG/PNG up to 4 MB. */
+  private readDocumentAsBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result !== 'string') return reject(new Error('Berkas gagal dibaca.'));
+        const separator = reader.result.indexOf(',');
+        if (separator < 0) return reject(new Error('Format berkas tidak dikenali.'));
+        resolve(reader.result.slice(separator + 1));
+      };
+      reader.onerror = () => reject(new Error('Tidak dapat membaca berkas.'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  private async exclusiveDocumentWrite<T>(key: string, operation: () => Promise<T>): Promise<T> {
+    if (this.documentOperationsInFlight.has(key)) throw new Error('Dokumen ini sedang diproses. Tunggu hingga selesai.');
+    this.documentOperationsInFlight.add(key);
+    try { return await operation(); }
+    finally { this.documentOperationsInFlight.delete(key); }
+  }
+
+  public async uploadParticipantDocument(
+    participantId: string,
+    documentType: ParticipantDocumentType,
+    file: File
+  ): Promise<ParticipantDocumentSummary> {
+    if (!participantId.trim()) throw new Error('ID peserta wajib diisi.');
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png'];
+    if (!allowed.includes(file.type)) throw new Error('Hanya PDF, JPG, atau PNG yang dapat diunggah.');
+    if (file.size <= 0 || file.size > 4 * 1024 * 1024) throw new Error('Ukuran dokumen maksimal 4 MB.');
+    return this.exclusiveDocumentWrite(`${participantId}:${documentType}`, async () => {
+      const base64 = await this.readDocumentAsBase64(file);
+      return this.sendDocumentRequest('participants.documents.upload', {
+        participant_id: participantId,
+        document_type: documentType,
+        filename: file.name,
+        mime_type: file.type,
+        base64,
+        request_key: `${participantId}:${documentType}:${file.name}:${file.size}:${file.lastModified}`,
+      }, 120000);
+    });
+  }
+
+  /** Choose a future physical inspection; this does NOT verify the document. */
+  public async chooseParticipantDocumentPhysical(
+    participantId: string,
+    documentType: ParticipantDocumentType
+  ): Promise<ParticipantDocumentSummary> {
+    if (!participantId.trim()) throw new Error('ID peserta wajib diisi.');
+    return this.exclusiveDocumentWrite(`${participantId}:${documentType}`, () =>
+      this.sendDocumentRequest('participants.documents.choosePhysical', {
+        participant_id: participantId, document_type: documentType,
+      })
+    );
+  }
+
+  /** Only authorized registration officers/admins may verify. GAS enforces roles. */
+  public async verifyParticipantDocument(
+    participantId: string,
+    documentType: ParticipantDocumentType,
+    decision: ParticipantDocumentDecision,
+    method: 'DIGITAL' | 'PHYSICAL',
+    notes = ''
+  ): Promise<ParticipantDocumentSummary> {
+    if (!participantId.trim()) throw new Error('ID peserta wajib diisi.');
+    if (decision !== 'VERIFIED' && !notes.trim()) throw new Error('Alasan revisi atau penolakan wajib diisi.');
+    return this.exclusiveDocumentWrite(`${participantId}:${documentType}`, () =>
+      this.sendDocumentRequest('participants.documents.verify', {
+        participant_id: participantId,
+        document_type: documentType,
+        decision, method, notes: notes.trim(),
+      })
+    );
   }
 
   // ==================== DUPLICATE DETECTION ====================
