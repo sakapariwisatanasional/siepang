@@ -39,6 +39,9 @@ import {
   Sliders,
   Image as ImageIcon,
   Users,
+  School,
+  Plus,
+  RefreshCw,
 } from 'lucide-react';
 import { participantService } from '../../services/participantService';
 import { gudepRegistrationService, GudepRecord, GudepRegu } from '../../services/gudepRegistrationService';
@@ -79,6 +82,18 @@ export const ParticipantList: React.FC = () => {
   const [revisionReasonText, setRevisionReasonText] = useState('Foto KTA atau dokumen izin kurang jelas, mohon unggah ulang.');
   const [showImportModal, setShowImportModal] = useState(false);
   const [showStepRegModal, setShowStepRegModal] = useState(false);
+  const [showGudepManager, setShowGudepManager] = useState(false);
+  const [managerGudep, setManagerGudep] = useState<GudepRecord[]>([]);
+  const [managerSelectedId, setManagerSelectedId] = useState('');
+  const [managerRegu, setManagerRegu] = useState<GudepRegu[]>([]);
+  const [managerBusy, setManagerBusy] = useState(false);
+  const [managerLoading, setManagerLoading] = useState(false);
+  const [managerError, setManagerError] = useState('');
+  const [managerMessage, setManagerMessage] = useState('');
+  const [gudepForm, setGudepForm] = useState({ gudep_number: '', gudep_name: '', institution_name: '' });
+  const [reguForm, setReguForm] = useState({ regu_name: '', gender: 'PUTRA' as 'PUTRA' | 'PUTRI', quota: 8 });
+  const gudepCreateKey = useRef(makeRequestKey());
+  const reguCreateKey = useRef(makeRequestKey());
   const [showPhotoConfigModal, setShowPhotoConfigModal] = useState(false);
   const [photoConfig, setPhotoConfig] = useState<PhotoRequiredConfig>(profilePhotoService.getRequiredConfig());
   const [photoPolicy, setPhotoPolicy] = useState<PhotoReplacementPolicy>(profilePhotoService.getReplacementPolicy());
@@ -181,6 +196,64 @@ export const ParticipantList: React.FC = () => {
     }).finally(() => { if (active) setReguLoading(false); });
     return () => { active = false; };
   }, [showStepRegModal, stepData.gudepId]);
+
+  const refreshGudepManager = async (preferredId?: string) => {
+    setManagerLoading(true);
+    try {
+      const response = await gudepRegistrationService.list();
+      const items = response.gudep || [];
+      setManagerGudep(items);
+      setManagerSelectedId(previous => items.some(g => g.gudep_id === (preferredId || previous))
+        ? (preferredId || previous) : (items[0]?.gudep_id || ''));
+      setManagerError('');
+    } catch (err: any) {
+      setManagerError(err?.message || 'Gagal memuat Gugus Depan dari GAS.');
+    } finally { setManagerLoading(false); }
+  };
+
+  useEffect(() => {
+    if (showGudepManager) void refreshGudepManager();
+  }, [showGudepManager]);
+
+  useEffect(() => {
+    if (!showGudepManager || !managerSelectedId) { setManagerRegu([]); return; }
+    let active = true;
+    gudepRegistrationService.detail(managerSelectedId).then(data => {
+      if (active) setManagerRegu(data.regu || []);
+    }).catch((err: any) => {
+      if (active) setManagerError(err?.message || 'Gagal memuat regu.');
+    });
+    return () => { active = false; };
+  }, [showGudepManager, managerSelectedId]);
+
+  const submitNewGudep = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (managerBusy) return;
+    setManagerBusy(true); setManagerError(''); setManagerMessage('');
+    try {
+      const result = await gudepRegistrationService.create({ ...gudepForm, request_key: gudepCreateKey.current });
+      gudepCreateKey.current = makeRequestKey();
+      setGudepForm({ gudep_number: '', gudep_name: '', institution_name: '' });
+      setManagerMessage(`Gugus Depan ${result.gudep.gudep_name} tersimpan. Perlu verifikasi dan aktivasi sebelum digunakan mendaftarkan peserta.`);
+      await refreshGudepManager(result.gudep.gudep_id);
+    } catch (err: any) { setManagerError(err?.message || 'Gagal menyimpan Gudep. Periksa riwayat GAS sebelum mengulangi.'); }
+    finally { setManagerBusy(false); }
+  };
+
+  const submitNewRegu = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (managerBusy || !managerSelectedId) return;
+    setManagerBusy(true); setManagerError(''); setManagerMessage('');
+    try {
+      const result = await gudepRegistrationService.createRegu({ ...reguForm, gudep_id: managerSelectedId, request_key: reguCreateKey.current });
+      reguCreateKey.current = makeRequestKey();
+      setReguForm({ regu_name: '', gender: 'PUTRA', quota: 8 });
+      setManagerMessage(`Regu ${result.regu.regu_name} tersimpan. Regu hanya dapat dipilih peserta setelah diverifikasi dan diaktifkan.`);
+      const detail = await gudepRegistrationService.detail(managerSelectedId);
+      setManagerRegu(detail.regu || []);
+    } catch (err: any) { setManagerError(err?.message || 'Gagal menyimpan regu.'); }
+    finally { setManagerBusy(false); }
+  };
 
   const selectedGudep = gudepOptions.find(g => g.gudep_id === stepData.gudepId);
   const matchingRegu = reguOptions.filter(r => r.gender === (stepData.gender === 'M' ? 'PUTRA' : 'PUTRI'));
@@ -451,6 +524,17 @@ export const ParticipantList: React.FC = () => {
           >
             <Camera className="w-4 h-4 text-[#208C60] dark:text-purple-400" />
             <span className="hidden sm:inline sm:ml-1.5">Kebijakan Foto</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowGudepManager(true)}
+            className="flex items-center justify-center gap-1.5 p-2.5 sm:px-3 sm:py-2 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-bold border border-emerald-200 dark:border-emerald-500/20 transition-colors"
+            title="Daftarkan Gugus Depan dan Regu"
+            aria-label="Kelola Gugus Depan dan Regu"
+          >
+            <School className="w-4 h-4" />
+            <span className="hidden sm:inline">+ Gudep / Regu</span>
           </button>
 
           <button
@@ -1039,6 +1123,41 @@ export const ParticipantList: React.FC = () => {
                 Konfirmasi & Jalankan
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Gugus Depan dan Regu: data ditulis melalui GAS, bukan localStorage. */}
+      {showGudepManager && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label="Kelola Gugus Depan dan Regu">
+          <div className="w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white dark:bg-[#141418] shadow-2xl p-5 sm:p-7 space-y-5 text-slate-900 dark:text-white">
+            <div className="flex justify-between gap-3 items-start border-b dark:border-white/10 pb-4">
+              <div><h2 className="text-xl font-bold">Pendaftaran Gugus Depan & Regu</h2><p className="text-sm text-slate-500 dark:text-slate-400">Buat pangkalan dan regu langsung dari halaman peserta.</p></div>
+              <button type="button" aria-label="Tutup" onClick={() => setShowGudepManager(false)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10"><X className="h-5 w-5" /></button>
+            </div>
+            {managerError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-900/20 dark:text-rose-300">{managerError}</p>}
+            {managerMessage && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">{managerMessage}</p>}
+            <form onSubmit={submitNewGudep} className="rounded-2xl border border-slate-200 dark:border-white/10 p-4 space-y-3">
+              <h3 className="font-bold flex gap-2 items-center"><School className="h-4 w-4" /> 1. Tambah Gugus Depan</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="text-sm">Nomor Gugus Depan *<input required maxLength={60} value={gudepForm.gudep_number} onChange={e => setGudepForm(x=>({...x,gudep_number:e.target.value}))} placeholder="Contoh: 07.101–07.102" className="mt-1 w-full rounded-xl border p-3 bg-white text-slate-900 dark:bg-[#242428] dark:border-white/20 dark:text-white" /></label>
+                <label className="text-sm">Nama Gugus Depan *<input required maxLength={150} value={gudepForm.gudep_name} onChange={e => setGudepForm(x=>({...x,gudep_name:e.target.value}))} placeholder="Contoh: Gugus Depan Melati" className="mt-1 w-full rounded-xl border p-3 bg-white text-slate-900 dark:bg-[#242428] dark:border-white/20 dark:text-white" /></label>
+              </div>
+              <label className="text-sm block">Nama Pangkalan / Sekolah<input maxLength={150} value={gudepForm.institution_name} onChange={e => setGudepForm(x=>({...x,institution_name:e.target.value}))} placeholder="Contoh: SMP Negeri 1 Malang" className="mt-1 w-full rounded-xl border p-3 bg-white text-slate-900 dark:bg-[#242428] dark:border-white/20 dark:text-white" /></label>
+              <div className="flex justify-end"><button type="submit" disabled={managerBusy} className="rounded-xl bg-emerald-600 disabled:opacity-50 text-white font-bold px-4 py-2.5 inline-flex gap-2 items-center"><Plus className="h-4 w-4" /> Simpan Gudep ke GAS</button></div>
+            </form>
+            <form onSubmit={submitNewRegu} className="rounded-2xl border border-slate-200 dark:border-white/10 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2"><h3 className="font-bold flex gap-2 items-center"><Users className="h-4 w-4" /> 2. Tambah Regu</h3><button type="button" disabled={managerLoading || managerBusy} onClick={() => void refreshGudepManager()} className="text-xs text-emerald-600 flex gap-1 items-center"><RefreshCw className="h-3.5 w-3.5" /> Segarkan</button></div>
+              <label className="text-sm block">Pilih Gugus Depan *<select required value={managerSelectedId} onChange={e => setManagerSelectedId(e.target.value)} className="mt-1 w-full rounded-xl border p-3 bg-white text-slate-900 dark:bg-[#242428] dark:border-white/20 dark:text-white"><option value="">{managerLoading?'Memuat…':'-- Pilih Gugus Depan --'}</option>{managerGudep.map(g=><option value={g.gudep_id} key={g.gudep_id}>{g.gudep_number} — {g.gudep_name} ({g.verification_status})</option>)}</select></label>
+              <div className="grid sm:grid-cols-3 gap-3">
+                <label className="text-sm">Nama Regu *<input required maxLength={120} value={reguForm.regu_name} onChange={e=>setReguForm(x=>({...x,regu_name:e.target.value}))} placeholder="Contoh: Regu Elang" className="mt-1 w-full rounded-xl border p-3 bg-white text-slate-900 dark:bg-[#242428] dark:border-white/20 dark:text-white" /></label>
+                <label className="text-sm">Jenis Regu *<select value={reguForm.gender} onChange={e=>setReguForm(x=>({...x,gender:e.target.value as 'PUTRA'|'PUTRI'}))} className="mt-1 w-full rounded-xl border p-3 bg-white text-slate-900 dark:bg-[#242428] dark:border-white/20 dark:text-white"><option value="PUTRA">Putra</option><option value="PUTRI">Putri</option></select></label>
+                <label className="text-sm">Kuota (1–100) *<input required type="number" min={1} max={100} value={reguForm.quota} onChange={e=>setReguForm(x=>({...x,quota:Number(e.target.value)}))} className="mt-1 w-full rounded-xl border p-3 bg-white text-slate-900 dark:bg-[#242428] dark:border-white/20 dark:text-white" /></label>
+              </div>
+              <div className="flex justify-end"><button type="submit" disabled={managerBusy || !managerSelectedId} className="rounded-xl bg-emerald-600 disabled:opacity-50 text-white font-bold px-4 py-2.5 inline-flex gap-2 items-center"><Plus className="h-4 w-4" /> Simpan Regu ke GAS</button></div>
+              {managerSelectedId && <div className="text-sm space-y-1"><h4 className="font-semibold">Daftar regu di Gudep terpilih ({managerRegu.length})</h4>{managerRegu.map(r=><p key={r.regu_id} className="border-b border-slate-100 dark:border-white/10 py-1">{r.regu_name} · {r.gender} · Kuota {r.quota} · {r.verification_status || 'PENDING'}</p>)}</div>}
+            </form>
+            <p className="text-xs text-amber-700 dark:text-amber-300">Gudep dan regu baru berstatus draf/pending. Data peserta hanya dapat menggunakan Gudep/Regu yang sudah diverifikasi dan diaktifkan oleh Admin. Jika muncul ADMIN_ONLY, backend GAS harus diperbarui agar role registration_officer mendapat izin pembuatan.</p>
           </div>
         </div>
       )}
