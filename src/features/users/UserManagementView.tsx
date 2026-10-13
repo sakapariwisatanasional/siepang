@@ -138,6 +138,9 @@ export const UserManagementView: React.FC = () => {
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSavingUser, setIsSavingUser] = useState(false);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [usersError, setUsersError] = useState('');
+  const [candidateSearch, setCandidateSearch] = useState('');
   const [editingUser, setEditingUser] = useState<Partial<ManagedUser> | null>(null);
 
   // User Detail Modal State (Requirement 15)
@@ -174,8 +177,28 @@ export const UserManagementView: React.FC = () => {
     const unsub = userManagementService.subscribe(() => {
       setUsers(userManagementService.getUsers());
     });
+    void loadRegisteredUsers();
     return () => unsub();
   }, []);
+
+  const loadRegisteredUsers = async () => {
+    setIsLoadingUsers(true);
+    setUsersError('');
+    try {
+      const fetched = await userManagementService.refreshUsers();
+      setUsers(fetched);
+    } catch (error: any) {
+      setUsersError(error?.message || 'Gagal mengambil daftar pengguna dari GAS.');
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  };
+
+  const registeredCandidates = useMemo(() => {
+    const q = candidateSearch.trim().toLowerCase();
+    return users.filter(user => user.id && user.status === 'active' &&
+      (!q || `${user.name} ${user.email} ${user.organizationName || ''}`.toLowerCase().includes(q)));
+  }, [users, candidateSearch]);
 
   const filteredUsers = useMemo(() => {
     let result = users;
@@ -240,16 +263,14 @@ export const UserManagementView: React.FC = () => {
   };
 
   const handleOpenAdd = () => {
-    const activeWs = workspaceService.getCurrentWorkspace();
-    setEditingUser({
-      name: '',
-      email: '',
-      role: 'event_admin',
-      workspaceId: activeWs?.id || workspaces[0]?.id || '',
-      organizationName: activeWs?.organization || workspaces[0]?.organization || 'Penyelenggara Event',
-      status: 'active',
-    });
+    setEditingUser(null);
+    setCandidateSearch('');
     setIsModalOpen(true);
+    void loadRegisteredUsers();
+  };
+
+  const handleSelectRegisteredUser = (user: ManagedUser) => {
+    setEditingUser({ ...user });
   };
 
   const handleOpenEdit = (user: ManagedUser) => {
@@ -312,11 +333,11 @@ export const UserManagementView: React.FC = () => {
             type="button"
             onClick={handleOpenAdd}
             className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white font-bold text-xs shadow-md shadow-pink-500/20 transition-all min-h-[44px] cursor-pointer"
-            title="Undang / Tambah Pengguna Baru"
-            aria-label="Undang / Tambah Pengguna"
+            title="Pilih akun yang sudah terdaftar"
+            aria-label="Pilih Pengguna Terdaftar"
           >
             <UserPlus className="w-4 h-4 stroke-[3]" />
-            <span className="hidden sm:inline">Tambah Pengguna</span>
+            <span className="hidden sm:inline">Pilih Pengguna Terdaftar</span>
           </button>
         </div>
       </div>
@@ -751,173 +772,51 @@ export const UserManagementView: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: ADD / EDIT USER */}
-      {isModalOpen && editingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-3xl p-6 w-full max-w-md shadow-2xl relative space-y-4">
+      {/* MODAL: SELECT REGISTERED GAS USER AND ASSIGN ROLE */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-[#ECECEF] dark:border-white/10">
-              <h3 className="text-base font-bold text-[#171717] dark:text-white flex items-center gap-2">
-                <UserPlus className="w-5 h-5 text-[#208C60]" />
-                <span>{editingUser.id ? 'Edit Akun Pengguna' : 'Tambah / Undang Pengguna'}</span>
-              </h3>
-              <button
-                onClick={() => {
-                  setIsModalOpen(false);
-                  setEditingUser(null);
-                }}
-                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <h3 className="font-bold text-[#171717] dark:text-white flex items-center gap-2"><UserCheck className="w-5 h-5 text-emerald-500" />{editingUser?.id ? 'Tetapkan Peran Pengguna' : 'Pilih Pengguna Terdaftar'}</h3>
+              <button type="button" onClick={() => { setIsModalOpen(false); setEditingUser(null); }} aria-label="Tutup" className="p-2 text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
             </div>
-
-            <form onSubmit={handleSaveUser} className="space-y-3.5 text-xs">
-              {editingUser?.id && <p className="text-amber-600 dark:text-amber-300">Mode Ubah Peran: hanya pilihan Role yang disimpan ke GAS. Data profil dan status akun dikelola melalui alur terpisah.</p>}
-              <div>
-                <label className="block text-[#171717] dark:text-slate-200 font-semibold mb-1">Nama Lengkap & Gelar *</label>
-                <input
-                  type="text"
-                  required
-                  disabled={!!editingUser.id}
-                  placeholder="Contoh: Kak Siti Aminah, S.Pd."
-                  value={editingUser.name || ''}
-                  onChange={e => setEditingUser({ ...editingUser, name: e.target.value })}
-                  className="w-full p-2.5 bg-white dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-xl text-base md:text-xs text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[#171717] dark:text-slate-200 font-semibold mb-1">Alamat Email *</label>
-                <input
-                  type="email"
-                  required
-                  disabled={!!editingUser.id}
-                  placeholder="Contoh: siti.aminah@pramuka.or.id"
-                  value={editingUser.email || ''}
-                  onChange={e => setEditingUser({ ...editingUser, email: e.target.value })}
-                  className="w-full p-2.5 bg-white dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-xl text-base md:text-xs text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[#171717] dark:text-slate-200 font-semibold mb-1">Peran Akses (Role) *</label>
-                <select
-                  value={editingUser.role}
-                  onChange={e => setEditingUser({ ...editingUser, role: e.target.value as UserRole })}
-                  className="w-full p-2.5 bg-white dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-xl text-base md:text-xs text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743] font-semibold"
-                >
-                  {Object.entries(ROLE_LABELS).map(([k, v]) => (
-                    <option key={k} value={k}>
-                      {v.label}
-                    </option>
+            {!editingUser?.id ? (
+              <div className="space-y-3">
+                <p className="text-xs text-slate-500 dark:text-slate-300">Hanya akun yang sudah terdaftar dan aktif di GAS yang dapat dipilih. Tidak ada pembuatan akun manual.</p>
+                <div className="flex gap-2">
+                  <input aria-label="Cari nama atau email pengguna" value={candidateSearch} onChange={e => setCandidateSearch(e.target.value)} placeholder="Cari nama, email, atau instansi..." className="flex-1 min-w-0 rounded-xl px-3 py-2.5 bg-white dark:bg-[#1A1A1E] border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm" />
+                  <button type="button" onClick={() => void loadRegisteredUsers()} disabled={isLoadingUsers} title="Muat ulang dari GAS" className="px-3 rounded-xl border border-slate-300 dark:border-white/20 text-slate-600 dark:text-slate-200"><RefreshCw className={`w-4 h-4 ${isLoadingUsers ? 'animate-spin' : ''}`} /></button>
+                </div>
+                {usersError && <div role="alert" className="rounded-xl bg-rose-500/10 text-rose-500 p-3 text-xs">Gagal membaca akun dari GAS: {usersError}</div>}
+                <div className="max-h-72 overflow-y-auto space-y-2">
+                  {isLoadingUsers ? <p className="text-sm text-slate-500">Memuat akun dari GAS…</p> : registeredCandidates.length === 0 ? <p className="text-sm text-slate-500">Tidak ada akun aktif yang cocok. Pastikan pengguna telah mendaftar dan API users.list dapat diakses Admin.</p> : registeredCandidates.map(user => (
+                    <button key={user.id} type="button" onClick={() => handleSelectRegisteredUser(user)} className="w-full text-left rounded-xl border border-slate-200 dark:border-white/10 p-3 hover:border-emerald-500 hover:bg-emerald-500/5 transition-colors">
+                      <div className="text-sm font-semibold text-slate-900 dark:text-white">{user.name}</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400 break-all">{user.email}</div>
+                      <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">Peran saat ini: {ROLE_LABELS[user.role]?.label || user.role}</div>
+                    </button>
                   ))}
-                </select>
-              </div>
-
-              {/* Canonical Photo Uploader for Panitia, Juri, Official (Requirements 22, 25) */}
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Foto Profil Resmi Petugas / Juri</label>
-                <ProfilePhotoUploader
-                  entityType={
-                    editingUser.role === 'judge' ? 'JUDGE' :
-                    editingUser.role === 'kontingen_admin' ? 'OFFICIAL' : 'COMMITTEE'
-                  }
-                  entityId={editingUser.id || `draft_usr_${Date.now()}`}
-                  entityName={editingUser.name || 'Pengguna'}
-                  currentPhotoUrl={editingUser.avatar || editingUser.profile_photo_url}
-                  required={profilePhotoService.isPhotoRequired(
-                    editingUser.role === 'judge' ? 'JUDGE' :
-                    editingUser.role === 'kontingen_admin' ? 'OFFICIAL' : 'COMMITTEE'
-                  )}
-                  onPhotoSaved={rec => {
-                    setEditingUser({
-                      ...editingUser,
-                      avatar: rec.profile_photo_url,
-                      profile_photo_url: rec.profile_photo_url,
-                      profile_photo_file_id: rec.profile_photo_file_id,
-                      profile_photo_status: rec.profile_photo_status,
-                    });
-                  }}
-                  onPhotoRemoved={() => {
-                    setEditingUser({
-                      ...editingUser,
-                      avatar: '',
-                      profile_photo_url: '',
-                      profile_photo_file_id: '',
-                      profile_photo_status: 'NOT_UPLOADED',
-                    });
-                  }}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#171717] dark:text-slate-300 mb-1">Asal Instansi / Unit</label>
-                <input
-                  type="text"
-                  disabled={!!editingUser.id}
-                  placeholder="Contoh: Sekolah, gugus depan, atau penyelenggara"
-                  value={editingUser.organizationName || ''}
-                  onChange={e => setEditingUser({ ...editingUser, organizationName: e.target.value })}
-                  className="w-full p-2.5 bg-[#FAFAFA] dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-xl text-base sm:text-xs text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#171717] dark:text-slate-300 mb-1">Konteks penyelenggara (internal)</label>
-                <div className="w-full p-2.5 bg-slate-50 dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-xs text-[#171717] dark:text-white font-medium">
-                  {workspaceService.getCurrentWorkspace().name} ({workspaceService.getCurrentWorkspace().organization})
                 </div>
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#171717] dark:text-slate-300 mb-1">Status Akun</label>
-                <div className="flex items-center gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer text-xs text-[#171717] dark:text-slate-300">
-                    <input
-                      type="radio"
-                      name="user_status"
-                      disabled={!!editingUser.id}
-                      checked={editingUser.status === 'active'}
-                      onChange={() => setEditingUser({ ...editingUser, status: 'active' })}
-                      className="accent-[#F47743]"
-                    />
-                    <span>Aktif</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer text-xs text-[#6B7280] dark:text-slate-400">
-                    <input
-                      type="radio"
-                      name="user_status"
-                      disabled={!!editingUser.id}
-                      checked={editingUser.status === 'inactive'}
-                      onChange={() => setEditingUser({ ...editingUser, status: 'inactive' })}
-                      className="accent-rose-500"
-                    />
-                    <span>Nonaktif</span>
-                  </label>
+            ) : (
+              <form onSubmit={handleSaveUser} className="space-y-4">
+                <div className="rounded-xl bg-slate-50 dark:bg-white/5 p-3">
+                  <div className="font-semibold text-slate-900 dark:text-white">{editingUser.name}</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-300">{editingUser.email}</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-300">{editingUser.organizationName}</div>
                 </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#ECECEF] dark:border-white/10">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsModalOpen(false);
-                    setEditingUser(null);
-                  }}
-                  className="px-4 py-2.5 rounded-xl bg-[#FAFAFA] dark:bg-white/5 hover:bg-black/5 dark:hover:bg-white/10 text-[#6B7280] dark:text-slate-300 hover:text-[#171717] dark:hover:text-white font-semibold text-xs border border-[#ECECEF] dark:border-white/10 cursor-pointer min-h-[44px]"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSavingUser}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white font-bold text-xs shadow-md shadow-pink-500/20 cursor-pointer min-h-[44px] flex items-center gap-1.5"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>{isSavingUser ? 'Menyimpan ke GAS…' : editingUser?.id ? 'Simpan Role ke GAS' : 'Tambahkan Pengguna'}</span>
-                </button>
-              </div>
-            </form>
+                <label className="block text-sm font-semibold text-slate-900 dark:text-white">Peran Akses
+                  <select required value={editingUser.role || 'viewer'} onChange={e => setEditingUser({ ...editingUser, role: e.target.value as UserRole })} className="block w-full mt-2 rounded-xl px-3 py-2.5 bg-white dark:bg-[#1A1A1E] border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white">
+                    {Object.entries(ROLE_LABELS).filter(([role]) => role !== 'superadmin').map(([role, detail]) => <option key={role} value={role}>{detail.label}</option>)}
+                  </select>
+                </label>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Identitas pengguna tidak dapat diubah di sini. Yang disimpan hanya role ke backend GAS. Susunan jabatan kepanitiaan dikelola pada modul Kepanitiaan Event.</p>
+                <div className="flex justify-end gap-2">
+                  <button type="button" onClick={() => { setEditingUser(null); setCandidateSearch(''); }} className="px-4 py-2 rounded-xl border border-slate-300 dark:border-white/20 text-slate-700 dark:text-slate-200">Kembali</button>
+                  <button disabled={isSavingUser} type="submit" className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-semibold disabled:opacity-50">{isSavingUser ? 'Menyimpan ke GAS…' : 'Simpan Peran ke GAS'}</button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
