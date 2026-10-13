@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Server,
   UserCheck,
+  UserRoundPen,
   ChevronDown,
   Sparkles,
   Calendar,
@@ -42,6 +43,7 @@ import { OfflineEmergencySession } from '../../offline/types';
 
 interface GlobalHeaderProps {
   onOpenSyncCenter: () => void;
+  onNavigateProfile?: () => void;
   onOpenScanner?: () => void;
   onNavigatePublic?: () => void;
   onOpenMore?: () => void;
@@ -50,6 +52,7 @@ interface GlobalHeaderProps {
 
 export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
   onOpenSyncCenter,
+  onNavigateProfile,
   onNavigatePublic,
   onOpenMore,
   onLogout,
@@ -427,6 +430,16 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
                   )}
 
                   <div className="pt-2 border-t border-[#ECECEF] dark:border-white/10 space-y-1">
+                    {onNavigateProfile && (
+                      <button
+                        type="button"
+                        onClick={() => { setShowRoleMenu(false); onNavigateProfile(); }}
+                        className="w-full flex items-center gap-2 p-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors"
+                      >
+                        <UserRoundPen className="w-4 h-4 text-emerald-600" />
+                        <span>Profil Saya / Edit Biodata</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => {
@@ -596,6 +609,16 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
 
 
               <div className="pt-2 border-t border-slate-100 dark:border-white/5 space-y-1.5 mt-2">
+                {onNavigateProfile && (
+                  <button
+                    type="button"
+                    onClick={() => { setShowRoleMenu(false); onNavigateProfile(); }}
+                    className="w-full py-2.5 px-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300 font-bold text-xs flex items-center gap-2"
+                  >
+                    <UserRoundPen className="w-4 h-4" />
+                    Profil Saya / Edit Biodata
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
