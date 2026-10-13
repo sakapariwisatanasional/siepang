@@ -336,7 +336,7 @@ export class UserManagementService {
         throw new Error('Transport GAS tidak tersedia.');
       }
 
-      const res = await apiTransport.send<ManagedUser[]>('users.list');
+      const res = await apiTransport.send<ManagedUser[]>('users.list', {}, { timeoutMs: 45000 });
       if (!res.ok) throw new Error(res.error?.message || 'Gagal mengambil pengguna dari Google Apps Script.');
       if (!Array.isArray(res.data)) throw new Error('Format users.list dari GAS tidak valid (data bukan array).');
       if (res.ok && Array.isArray(res.data)) {
@@ -460,11 +460,13 @@ export class UserManagementService {
   public async updateUserRole(userId: string, newRole: UserRole): Promise<ManagedUser> {
     const user = this.users.find(u => u.id === userId);
     if (!user) throw new Error('Pengguna tidak ditemukan.');
+    // GAS can wait for a script lock and then write to Sheets. A client timeout
+    // does not mean the write was rolled back. Never blindly retry this mutation.
     const res = await apiTransport.send<{ assignment_id: string; user_id: string; role: UserRole }>('users.assignRole', {
       user_id: userId,
       role: newRole,
       permissions: ROLE_PERMISSION_MAP[newRole] || [],
-    });
+    }, { timeoutMs: 60000 });
     if (!res.ok || res.data?.user_id !== userId || res.data?.role !== newRole || !res.data?.assignment_id) {
       throw new Error(res.error?.message || 'Backend tidak mengonfirmasi penugasan role.');
     }
