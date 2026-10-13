@@ -50,6 +50,24 @@ import { onlineSessionService } from '../../services/onlineSessionService';
 import { profilePhotoService } from '../../services/profilePhotoService';
 import { ProfilePhotoUploader } from '../../components/media/ProfilePhotoUploader';
 
+/**
+ * Avatar is rendered only from the URL returned by GAS. If the remote
+ * Drive image is inaccessible, show initials instead of a broken <img>.
+ * No placeholder URL, localStorage, or simulated user photo is used.
+ */
+const ManagedUserAvatar: React.FC<{ name: string; src?: string | null; size?: 'small' | 'large' }> = ({ name, src, size = 'small' }) => {
+  const [failed, setFailed] = useState(false);
+  const imageUrl = typeof src === 'string' && /^https:\/\//i.test(src.trim()) ? src.trim() : '';
+  useEffect(() => { setFailed(false); }, [imageUrl]);
+  const initials = (name || '?').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part.charAt(0).toUpperCase()).join('') || '?';
+  const dimensions = size === 'large' ? 'w-12 h-12' : 'w-10 h-10';
+  const classes = `${dimensions} rounded-2xl border border-[#ECECEF] dark:border-white/10 shrink-0`;
+  if (!imageUrl || failed) {
+    return <div className={`${classes} flex items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-200 font-bold text-xs`} role="img" aria-label={`Foto profil ${name} tidak tersedia`}>{initials}</div>;
+  }
+  return <img key={imageUrl} src={imageUrl} alt={`Foto profil ${name}`} className={`${classes} object-cover bg-[#FAFAFA] dark:bg-slate-800`} referrerPolicy="no-referrer" onError={() => setFailed(true)} />;
+};
+
 const ROLE_LABELS: Record<UserRole, { label: string; badge: string; desc: string }> = {
   superadmin: {
     label: 'Administrator Sistem',
@@ -463,11 +481,7 @@ export const UserManagementView: React.FC = () => {
                     {/* User Header */}
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <img
-                          src={user.avatar}
-                          alt={user.name}
-                          className="w-10 h-10 rounded-2xl object-cover border border-[#ECECEF] dark:border-white/10 bg-[#FAFAFA] dark:bg-slate-800 shrink-0"
-                        />
+                        <ManagedUserAvatar name={user.name} src={user.avatar} />
                         <div>
                           <h3 className="text-xs font-bold text-[#171717] dark:text-white leading-tight">{user.name}</h3>
                           <div className="text-[11px] text-[#6B7280] dark:text-slate-400 truncate max-w-[170px]">{user.email}</div>
@@ -854,11 +868,7 @@ export const UserManagementView: React.FC = () => {
                 1. Identitas Pengguna
               </div>
               <div className="flex items-center gap-3">
-                <img
-                  src={detailUser.avatar}
-                  alt={detailUser.name}
-                  className="w-12 h-12 rounded-2xl object-cover border border-[#ECECEF] dark:border-white/10 shrink-0"
-                />
+                <ManagedUserAvatar name={detailUser.name} src={detailUser.avatar} size="large" />
                 <div className="space-y-0.5">
                   <h4 className="text-sm font-bold text-[#171717] dark:text-white">{detailUser.name}</h4>
                   <div className="text-xs text-[#6B7280] dark:text-slate-400">{detailUser.email}</div>
