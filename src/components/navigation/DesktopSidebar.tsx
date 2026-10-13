@@ -23,6 +23,7 @@ import {
   Sliders,
   FolderTree,
   UserCheck,
+  UserRound,
   Globe,
   Image as ImageIcon,
   Database,
@@ -205,6 +206,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       id: 'sistem',
       label: 'Sistem',
       items: [
+        {
+          id: 'profile',
+          label: 'Profil Saya / Edit Biodata',
+          icon: UserRound,
+          roles: ['all'],
+        },
         {
           id: 'database_storage',
           label: 'Database Spreadsheet',
