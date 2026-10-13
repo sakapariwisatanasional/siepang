@@ -25,6 +25,7 @@ import {
 import { eventStudioService } from '../../services/eventStudioService';
 import { CampsiteLot, CampFacility, FacilityCategory, Contingent } from '../../types';
 import { participantService } from '../../services/participantService';
+import { apiTransport } from '../../services/apiTransport';
 
 export const CampsiteManager: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'map' | 'lots' | 'assignment' | 'facilities'>('map');
@@ -80,48 +81,88 @@ export const CampsiteManager: React.FC = () => {
 
   const [toast, setToast] = useState<string | null>(null);
   const eventId = String(eventStudioService.getEvent()?.id || 'unassigned');
-  const mapStorageKey = `siepang:campsite:denah:${eventId}`;
-  const [mapImage, setMapImage] = useState<string>(() => {
-    try { return localStorage.getItem(mapStorageKey) || ''; } catch { return ''; }
-  });
+  const [mapImage, setMapImage] = useState<string>('');
   const [mapEditing, setMapEditing] = useState(false);
   const [savingPosition, setSavingPosition] = useState(false);
   const [dragging, setDragging] = useState<{ id: string; kind: 'lot' | 'facility' } | null>(null);
   const [draftPoint, setDraftPoint] = useState<{ x: number; y: number } | null>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
-  const [mapFileWarning, setMapFileWarning] = useState(false);
+  const [mapBusy, setMapBusy] = useState(false);
+  const [mapError, setMapError] = useState('');
 
   useEffect(() => eventStudioService.subscribe(() => {
     setLots([...eventStudioService.listLots()]);
     setFacilities([...eventStudioService.listFacilities()]);
   }), []);
 
-  useEffect(() => {
-    try { setMapImage(localStorage.getItem(mapStorageKey) || ''); } catch { setMapImage(''); }
-  }, [mapStorageKey]);
+  const loadMap = async () => {
+    setMapBusy(true);
+    setMapError('');
+    try {
+      const res = await apiTransport.send<{ exists: boolean; imageDataUrl?: string }>(
+        'campsite.map.get', {}, { timeoutMs: 60000 }
+      );
+      if (!res.ok) throw new Error(res.error?.message || 'Gagal membaca denah GAS.');
+      setMapImage(res.data?.exists ? (res.data.imageDataUrl || '') : '');
+    } catch (error: any) {
+      setMapImage('');
+      setMapError(error?.message || 'Gagal memuat denah dari GAS.');
+    } finally {
+      setMapBusy(false);
+    }
+  };
+
+  useEffect(() => { void loadMap(); }, [eventId]);
 
   const onMapUpload = async (file?: File) => {
-    if (!file) return;
+    if (!file || mapBusy) return;
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
       showToast('Pilih gambar JPG, PNG, atau WebP.'); return;
     }
     if (file.size > 2 * 1024 * 1024) {
-      showToast('Untuk tahap awal, ukuran denah maksimal 2 MB.'); return;
+      showToast('Ukuran denah maksimal 2 MB.'); return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const data = String(reader.result || '');
-      try {
-        localStorage.setItem(mapStorageKey, data);
-        setMapImage(data);
-        setMapFileWarning(true);
-        showToast('Denah tersimpan di browser ini. Sinkronisasi Drive belum tersedia.');
-      } catch {
-        showToast('Penyimpanan browser penuh. Gunakan gambar lebih kecil.');
-      }
-    };
-    reader.readAsDataURL(file);
+    setMapBusy(true);
+    setMapError('');
+    try {
+      const imageDataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Gagal membaca file gambar.'));
+        reader.readAsDataURL(file);
+      });
+      const base64 = imageDataUrl.split(',')[1];
+      if (!base64) throw new Error('Data gambar tidak valid.');
+      const res = await apiTransport.send('campsite.map.upload', {
+        filename: file.name, mime_type: file.type, base64,
+      }, { timeoutMs: 90000 });
+      if (!res.ok) throw new Error(res.error?.message || 'Gagal menyimpan gambar ke Google Drive.');
+      // The Drive write is confirmed; display this same image immediately.
+      setMapImage(imageDataUrl);
+      showToast('Denah berhasil disimpan ke Google Drive.');
+    } catch (error: any) {
+      setMapError(error?.message || 'Gagal mengunggah denah.');
+      showToast('Gagal menyimpan denah ke GAS.');
+    } finally {
+      setMapBusy(false);
+    }
+  };
+
+  const removeMap = async () => {
+    if (mapBusy || !confirm('Lepaskan denah event ini? Kavling dan koordinat tidak akan dihapus.')) return;
+    setMapBusy(true);
+    setMapError('');
+    try {
+      const res = await apiTransport.send('campsite.map.remove', {}, { timeoutMs: 60000 });
+      if (!res.ok) throw new Error(res.error?.message || 'Gagal menghapus tautan denah.');
+      setMapImage('');
+      showToast('Denah event dilepas. Data kavling tetap tersedia.');
+    } catch (error: any) {
+      setMapError(error?.message || 'Gagal melepas denah.');
+    } finally {
+      setMapBusy(false);
+    }
   };
 
   const startDrag = (e: React.PointerEvent<HTMLButtonElement>, id: string, kind: 'lot' | 'facility') => {
@@ -407,17 +448,17 @@ export const CampsiteManager: React.FC = () => {
               <span className="font-semibold text-slate-700 dark:text-slate-300">Denah Lokasi Bumi Perkemahan</span>
               <div className="flex flex-wrap items-center gap-2">
                 <input ref={uploadRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={e => { void onMapUpload(e.target.files?.[0]); e.target.value = ''; }} />
-                <button type="button" onClick={() => uploadRef.current?.click()} className="rounded-xl bg-slate-100 dark:bg-white/10 px-3 py-2 font-bold text-slate-800 dark:text-white">Unggah Denah</button>
+                <button type="button" onClick={() => uploadRef.current?.click()} disabled={mapBusy} className="rounded-xl bg-slate-100 dark:bg-white/10 px-3 py-2 font-bold text-slate-800 dark:text-white">{mapBusy ? 'Memproses...' : 'Unggah Denah'}</button>
                 <button type="button" onClick={() => setMapEditing(v => !v)} disabled={savingPosition} className={`rounded-xl px-3 py-2 font-bold ${mapEditing ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-white/10 text-slate-800 dark:text-white'}`}>
                   {mapEditing ? 'Selesai Atur Posisi' : 'Atur Posisi Pin'}
                 </button>
-                {mapImage && <button type="button" className="rounded-xl px-3 py-2 bg-rose-50 text-rose-700 font-bold" onClick={() => { if (confirm('Hapus denah di browser ini? Data kavling GAS tidak dihapus.')) { localStorage.removeItem(mapStorageKey); setMapImage(''); } }}>Hapus Denah</button>}
+                {mapImage && <button type="button" className="rounded-xl px-3 py-2 bg-rose-50 text-rose-700 font-bold" onClick={() => { void removeMap(); }} disabled={mapBusy}>Hapus Denah</button>}
               </div>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">{mapEditing ? 'Tarik pin kavling atau fasilitas ke posisi yang sesuai pada denah. Posisi disimpan ke GAS saat dilepas.' : 'Unggah denah, lalu aktifkan Atur Posisi Pin. Klik pin untuk melihat informasi.'}</p>
-            {mapFileWarning && <p className="text-xs text-amber-700 dark:text-amber-300">Denah gambar sementara tersimpan hanya di browser ini, bukan Google Drive. Posisi pin tersimpan melalui GAS.</p>}
+            {mapError && <p role="alert" className="text-xs text-rose-700 dark:text-rose-300">{mapError}</p>}
             <div ref={mapRef} className="relative w-full h-[400px] sm:h-[480px] rounded-3xl bg-slate-100 dark:bg-[#102318] border border-slate-200 dark:border-emerald-500/30 overflow-hidden select-none touch-none" style={mapImage ? { backgroundImage: `url(${mapImage})`, backgroundSize: '100% 100%', backgroundPosition: 'center' } : undefined}>
-              {!mapImage && <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-500 dark:text-slate-300 text-sm pointer-events-none"><span className="text-3xl">🗺️</span><span>Belum ada denah lokasi</span><span className="text-xs">Admin dapat mengunggah denah JPG, PNG, atau WebP</span></div>}
+              {!mapImage && <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-500 dark:text-slate-300 text-sm pointer-events-none"><span className="text-3xl">🗺️</span><span>{mapBusy ? 'Memuat denah dari GAS...' : 'Belum ada denah lokasi'}</span><span className="text-xs">Admin dapat mengunggah denah JPG, PNG, atau WebP</span></div>}
               {facilities.map(fac => {
                 const pos = dragging?.id === fac.id && dragging.kind === 'facility' ? draftPoint || fac.coordinates : fac.coordinates;
                 return <button key={fac.id} type="button" onPointerDown={e => startDrag(e, fac.id, 'facility')} onPointerMove={moveDrag} onPointerUp={() => void finishDrag()} onPointerCancel={() => { setDragging(null); setDraftPoint(null); }} onClick={() => { if (!mapEditing) { setSelectedFacility(fac); setSelectedLot(null); } }} className={`absolute -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full flex items-center justify-center shadow-lg z-20 bg-amber-400 border-2 border-white ${mapEditing ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`} style={{ left: `${pos?.x ?? 50}%`, top: `${pos?.y ?? 50}%`, touchAction: 'none' }} title={fac.name}>{fac.icon}</button>;
