@@ -337,6 +337,8 @@ export class UserManagementService {
       }
 
       const res = await apiTransport.send<ManagedUser[]>('users.list');
+      if (!res.ok) throw new Error(res.error?.message || 'Gagal mengambil pengguna dari Google Apps Script.');
+      if (!Array.isArray(res.data)) throw new Error('Format users.list dari GAS tidak valid (data bukan array).');
       if (res.ok && Array.isArray(res.data)) {
         this.users = res.data.map(u => ({
           ...u,
