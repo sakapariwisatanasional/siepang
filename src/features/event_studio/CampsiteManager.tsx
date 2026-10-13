@@ -703,6 +703,31 @@ export const CampsiteManager: React.FC = () => {
                 {lot.notes && (
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 italic pt-1">{lot.notes}</p>
                 )}
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#ECECEF] dark:border-white/10">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono" title="Identitas unik kavling">ID: {lot.id}</span>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={!layoutReady || layoutBusy || layoutDirty || removingLot}
+                      onClick={() => void handleHideLot(lot.id, !getShape(lot.id).hidden)}
+                      className="rounded-xl border border-sky-300 text-sky-700 dark:text-sky-300 px-3 py-2 text-xs font-semibold disabled:opacity-40"
+                      title={layoutDirty ? 'Simpan Tata Letak dahulu' : 'Hanya mengubah tampilan pin, bukan menghapus data kavling'}
+                    >
+                      {getShape(lot.id).hidden ? 'Tampilkan Pin' : 'Sembunyikan Pin'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={removingLot || Boolean(lot.contingentId) || lot.status === 'occupied'}
+                      onClick={() => void handleDeleteLot(lot.id)}
+                      className="rounded-xl bg-rose-50 text-rose-700 border border-rose-200 px-3 py-2 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={lot.contingentId || lot.status === 'occupied' ? 'Kavling dialokasikan/terisi: hapus alokasi terlebih dahulu' : 'Arsipkan kavling ini dari database melalui GAS'}
+                    >
+                      <Trash2 size={13} className="inline-block mr-1" />
+                      {removingLot ? 'Memproses...' : 'Arsipkan Kavling'}
+                    </button>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
