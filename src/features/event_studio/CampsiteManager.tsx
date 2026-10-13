@@ -6,7 +6,7 @@
  * contingent assignment, and buper facilities catalog.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Tent,
   MapPin,
@@ -54,11 +54,11 @@ export const CampsiteManager: React.FC = () => {
   const contingents = participantService.getContingents();
 
   const [lotForm, setLotForm] = useState<Omit<CampsiteLot, 'id'>>({
-    subCamp: 'Sektor Utama',
-    zone: 'Zona A (Putra)',
-    block: 'Blok A-01',
-    lotNumber: 'Kavling 01',
-    capacity: 32,
+    subCamp: '',
+    zone: '',
+    block: '',
+    lotNumber: '',
+    capacity: 0,
     gender: 'male',
     contingentId: '',
     contingentName: '',
@@ -79,6 +79,87 @@ export const CampsiteManager: React.FC = () => {
   });
 
   const [toast, setToast] = useState<string | null>(null);
+  const eventId = String(eventStudioService.getEvent()?.id || 'unassigned');
+  const mapStorageKey = `siepang:campsite:denah:${eventId}`;
+  const [mapImage, setMapImage] = useState<string>(() => {
+    try { return localStorage.getItem(mapStorageKey) || ''; } catch { return ''; }
+  });
+  const [mapEditing, setMapEditing] = useState(false);
+  const [savingPosition, setSavingPosition] = useState(false);
+  const [dragging, setDragging] = useState<{ id: string; kind: 'lot' | 'facility' } | null>(null);
+  const [draftPoint, setDraftPoint] = useState<{ x: number; y: number } | null>(null);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const uploadRef = useRef<HTMLInputElement>(null);
+  const [mapFileWarning, setMapFileWarning] = useState(false);
+
+  useEffect(() => eventStudioService.subscribe(() => {
+    setLots([...eventStudioService.listLots()]);
+    setFacilities([...eventStudioService.listFacilities()]);
+  }), []);
+
+  useEffect(() => {
+    try { setMapImage(localStorage.getItem(mapStorageKey) || ''); } catch { setMapImage(''); }
+  }, [mapStorageKey]);
+
+  const onMapUpload = async (file?: File) => {
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      showToast('Pilih gambar JPG, PNG, atau WebP.'); return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('Untuk tahap awal, ukuran denah maksimal 2 MB.'); return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const data = String(reader.result || '');
+      try {
+        localStorage.setItem(mapStorageKey, data);
+        setMapImage(data);
+        setMapFileWarning(true);
+        showToast('Denah tersimpan di browser ini. Sinkronisasi Drive belum tersedia.');
+      } catch {
+        showToast('Penyimpanan browser penuh. Gunakan gambar lebih kecil.');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const startDrag = (e: React.PointerEvent<HTMLButtonElement>, id: string, kind: 'lot' | 'facility') => {
+    if (!mapEditing || savingPosition) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragging({ id, kind });
+    const current = kind === 'lot' ? lots.find(l => l.id === id) : facilities.find(f => f.id === id);
+    setDraftPoint(current?.coordinates || { x: 50, y: 50 });
+  };
+  const moveDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!dragging || !mapRef.current) return;
+    const bounds = mapRef.current.getBoundingClientRect();
+    setDraftPoint({
+      x: Math.round(Math.max(1, Math.min(99, ((e.clientX - bounds.left) / bounds.width) * 100)) * 100) / 100,
+      y: Math.round(Math.max(1, Math.min(99, ((e.clientY - bounds.top) / bounds.height) * 100)) * 100) / 100,
+    });
+  };
+  const finishDrag = async () => {
+    if (!dragging || !draftPoint || savingPosition) return;
+    const moved = dragging;
+    const point = draftPoint;
+    setDragging(null);
+    setDraftPoint(null);
+    setSavingPosition(true);
+    try {
+      if (moved.kind === 'lot') {
+        await eventStudioService.updateLot(moved.id, { coordinates: point });
+        setLots([...eventStudioService.listLots()]);
+      } else {
+        await eventStudioService.updateFacility(moved.id, { coordinates: point });
+        setFacilities([...eventStudioService.listFacilities()]);
+      }
+      showToast('Posisi berhasil disimpan ke backend.');
+    } catch (err: any) {
+      showToast(`Gagal menyimpan posisi: ${err?.message || 'Periksa koneksi GAS.'}`);
+    } finally { setSavingPosition(false); }
+  };
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -220,7 +301,7 @@ export const CampsiteManager: React.FC = () => {
             </div>
           </div>
           <button
-            onClick={() => showToast('🛡️ Override kapasitas disetujui & dicatat dalam Log Audit Enterprise.')}
+            onClick={() => showToast('Override belum tersedia; hubungi administrator untuk meninjau kapasitas.')}
             className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold text-[11px] shrink-0"
           >
             Override Panitia
@@ -322,71 +403,31 @@ export const CampsiteManager: React.FC = () => {
       {activeTab === 'map' && (
         <div className="space-y-4">
           <div className="p-4 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-3 shadow-xs">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-slate-700 dark:text-slate-300">
-                Peta Skematis Bumi Perkemahan Selogiri (Klik pin untuk detail):
-              </span>
-              <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Putra</span>
-                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-pink-500" /> Putri</span>
-                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> Fasilitas</span>
+            <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+              <span className="font-semibold text-slate-700 dark:text-slate-300">Denah Lokasi Bumi Perkemahan</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <input ref={uploadRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={e => { void onMapUpload(e.target.files?.[0]); e.target.value = ''; }} />
+                <button type="button" onClick={() => uploadRef.current?.click()} className="rounded-xl bg-slate-100 dark:bg-white/10 px-3 py-2 font-bold text-slate-800 dark:text-white">Unggah Denah</button>
+                <button type="button" onClick={() => setMapEditing(v => !v)} disabled={savingPosition} className={`rounded-xl px-3 py-2 font-bold ${mapEditing ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-white/10 text-slate-800 dark:text-white'}`}>
+                  {mapEditing ? 'Selesai Atur Posisi' : 'Atur Posisi Pin'}
+                </button>
+                {mapImage && <button type="button" className="rounded-xl px-3 py-2 bg-rose-50 text-rose-700 font-bold" onClick={() => { if (confirm('Hapus denah di browser ini? Data kavling GAS tidak dihapus.')) { localStorage.removeItem(mapStorageKey); setMapImage(''); } }}>Hapus Denah</button>}
               </div>
             </div>
-
-            {/* Simulated 2D Map Canvas */}
-            <div className="relative w-full h-[400px] sm:h-[480px] rounded-3xl bg-gradient-to-b from-[#0c2415] via-[#091e12] to-[#06140b] border-2 border-emerald-500/30 overflow-hidden shadow-2xl p-4 select-none">
-              {/* Grid Lines */}
-              <div className="absolute inset-0 bg-[radial-gradient(#15803d_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
-
-              {/* Geographic Landmarks */}
-              <div className="absolute top-4 left-6 text-[10px] uppercase font-mono tracking-widest text-emerald-400/40">
-                ▲ Lereng Gunung Kalipuro (Utara)
-              </div>
-              <div className="absolute bottom-4 left-6 text-[10px] uppercase font-mono tracking-widest text-emerald-400/40">
-                ▼ Gerbang Masuk & Jalan Raya Selogiri (Selatan)
-              </div>
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 rounded-full border border-emerald-500/10 pointer-events-none" />
-
-              {/* Central Campfire Ring Visual */}
-              <div className="absolute top-[55%] left-[50%] -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full border-2 border-amber-400/30 bg-amber-500/10 flex items-center justify-center text-xs pointer-events-none">
-                <span className="text-base animate-pulse">🔥</span>
-              </div>
-
-              {/* Facilities Pins */}
-              {facilities.map(fac => (
-                <button
-                  key={fac.id}
-                  onClick={() => { setSelectedFacility(fac); setSelectedLot(null); }}
-                  className={`absolute -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-lg transition-transform hover:scale-125 z-20 ${
-                    selectedFacility?.id === fac.id ? 'ring-2 ring-white scale-125 bg-amber-500 text-slate-950' : 'bg-black/60 border border-amber-400/40 text-white'
-                  }`}
-                  style={{ left: `${fac.coordinates.x}%`, top: `${fac.coordinates.y}%` }}
-                  title={`${fac.name} (${fac.category})`}
-                >
-                  {fac.icon}
-                </button>
-              ))}
-
-              {/* Campsite Lots Pins */}
-              {lots.map(lot => (
-                <button
-                  key={lot.id}
-                  onClick={() => { setSelectedLot(lot); setSelectedFacility(null); }}
-                  className={`absolute -translate-x-1/2 -translate-y-1/2 px-2 py-1 rounded-xl text-[10px] font-bold shadow-lg transition-transform hover:scale-115 flex items-center gap-1 z-10 ${
-                    selectedLot?.id === lot.id
-                      ? 'ring-2 ring-white scale-115 bg-white text-slate-900'
-                      : lot.gender === 'male'
-                      ? 'bg-emerald-700/80 border border-emerald-400/50 text-white'
-                      : 'bg-pink-700/80 border border-pink-400/50 text-white'
-                  }`}
-                  style={{ left: `${lot.coordinates.x}%`, top: `${lot.coordinates.y}%` }}
-                >
-                  <span>⛺</span>
-                  <span className="font-mono">{lot.lotNumber.replace('Kavling ', 'K')}</span>
-                </button>
-              ))}
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">{mapEditing ? 'Tarik pin kavling atau fasilitas ke posisi yang sesuai pada denah. Posisi disimpan ke GAS saat dilepas.' : 'Unggah denah, lalu aktifkan Atur Posisi Pin. Klik pin untuk melihat informasi.'}</p>
+            {mapFileWarning && <p className="text-xs text-amber-700 dark:text-amber-300">Denah gambar sementara tersimpan hanya di browser ini, bukan Google Drive. Posisi pin tersimpan melalui GAS.</p>}
+            <div ref={mapRef} className="relative w-full h-[400px] sm:h-[480px] rounded-3xl bg-slate-100 dark:bg-[#102318] border border-slate-200 dark:border-emerald-500/30 overflow-hidden select-none touch-none" style={mapImage ? { backgroundImage: `url(${mapImage})`, backgroundSize: '100% 100%', backgroundPosition: 'center' } : undefined}>
+              {!mapImage && <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-500 dark:text-slate-300 text-sm pointer-events-none"><span className="text-3xl">🗺️</span><span>Belum ada denah lokasi</span><span className="text-xs">Admin dapat mengunggah denah JPG, PNG, atau WebP</span></div>}
+              {facilities.map(fac => {
+                const pos = dragging?.id === fac.id && dragging.kind === 'facility' ? draftPoint || fac.coordinates : fac.coordinates;
+                return <button key={fac.id} type="button" onPointerDown={e => startDrag(e, fac.id, 'facility')} onPointerMove={moveDrag} onPointerUp={() => void finishDrag()} onPointerCancel={() => { setDragging(null); setDraftPoint(null); }} onClick={() => { if (!mapEditing) { setSelectedFacility(fac); setSelectedLot(null); } }} className={`absolute -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full flex items-center justify-center shadow-lg z-20 bg-amber-400 border-2 border-white ${mapEditing ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`} style={{ left: `${pos?.x ?? 50}%`, top: `${pos?.y ?? 50}%`, touchAction: 'none' }} title={fac.name}>{fac.icon}</button>;
+              })}
+              {lots.map(lot => {
+                const pos = dragging?.id === lot.id && dragging.kind === 'lot' ? draftPoint || lot.coordinates : lot.coordinates;
+                return <button key={lot.id} type="button" onPointerDown={e => startDrag(e, lot.id, 'lot')} onPointerMove={moveDrag} onPointerUp={() => void finishDrag()} onPointerCancel={() => { setDragging(null); setDraftPoint(null); }} onClick={() => { if (!mapEditing) { setSelectedLot(lot); setSelectedFacility(null); } }} className={`absolute -translate-x-1/2 -translate-y-1/2 px-2 py-1 rounded-lg shadow-lg z-10 text-[11px] font-bold text-white border border-white/60 ${lot.gender === 'female' ? 'bg-pink-600' : 'bg-emerald-700'} ${mapEditing ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`} style={{ left: `${pos?.x ?? 50}%`, top: `${pos?.y ?? 50}%`, touchAction: 'none' }} title={lot.lotNumber}>⛺ {lot.lotNumber}</button>;
+              })}
             </div>
-
+            {savingPosition && <p className="text-xs text-amber-600">Menyimpan posisi ke GAS...</p>}
             {/* Selected Pin Detail Sheet */}
             {selectedLot && (
               <div className="p-4 rounded-2xl bg-emerald-950/70 border border-emerald-500/40 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
