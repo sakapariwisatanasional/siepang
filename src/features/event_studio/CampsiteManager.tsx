@@ -33,9 +33,75 @@ const DEFAULT_PLOT: PlotShape = { width: 5, height: 5, rotation: 0, locked: fals
 const clampPct = (n:number) => Math.max(1, Math.min(99, n));
 
 export const CampsiteManager: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'map' | 'lots' | 'assignment' | 'facilities'>('map');
+  const [activeTab, setActiveTab] = useState<'map' | 'lots' | 'assignment' | 'facilities' | 'generator'>('map');
   const [lots, setLots] = useState<CampsiteLot[]>(eventStudioService.getCampsiteLots());
   const [facilities, setFacilities] = useState<CampFacility[]>(eventStudioService.getFacilities());
+  // GAS is the sole source of truth. No generated demo records are inserted locally.
+  type StructurePreview = {eventId?: string; requestedLots: number; newLots: number; existingLots: number; conflicts: string[]; canGenerate: boolean};
+  type StructureResult = {eventId?: string; createdLots: number; createdNodes: number; message?: string};
+  const [structureKabupaten, setStructureKabupaten] = useState('');
+  const [structurePutraVillages, setStructurePutraVillages] = useState('0');
+  const [structurePutraLots, setStructurePutraLots] = useState('0');
+  const [structurePutriVillages, setStructurePutriVillages] = useState('0');
+  const [structurePutriLots, setStructurePutriLots] = useState('0');
+  const [structurePreview, setStructurePreview] = useState<StructurePreview | null>(null);
+  const [structureNodes, setStructureNodes] = useState<Array<{id: string; code: string; name: string; node_type: string}>>([]);
+  const [structureBusy, setStructureBusy] = useState(false);
+  const [structureError, setStructureError] = useState('');
+  const [structureMessage, setStructureMessage] = useState('');
+  const structurePlan = () => {
+    const integer = (raw: string, label: string) => {
+      if (!/^\d+$/.test(raw.trim())) throw new Error(label + ' harus bilangan bulat 0 atau lebih.');
+      const n = Number(raw);
+      if (n > 100) throw new Error(label + ' maksimal 100.');
+      return n;
+    };
+    if (!structureKabupaten.trim()) throw new Error('Nama Kabupaten wajib diisi.');
+    return {
+      kabupaten: structureKabupaten.trim(),
+      putra: {kelurahanCount: integer(structurePutraVillages, 'Kelurahan Putra'), lotsPerVillage: integer(structurePutraLots, 'Kavling Putra')},
+      putri: {kelurahanCount: integer(structurePutriVillages, 'Kelurahan Putri'), lotsPerVillage: integer(structurePutriLots, 'Kavling Putri')},
+    };
+  };
+  const loadStructure = async () => {
+    setStructureError('');
+    try {
+      const response = await apiTransport.send<{nodes: Array<{id:string;code:string;name:string;node_type:string}>}>('campsite.structure.get', {}, {timeoutMs:45000});
+      if (!response.ok) throw new Error(response.error?.message || 'Gagal memuat struktur GAS.');
+      setStructureNodes(response.data?.nodes || []);
+      const kab = response.data?.nodes?.find(n => n.node_type === 'KABUPATEN');
+      if (kab) setStructureKabupaten(kab.name);
+    } catch (error: any) { setStructureError(error?.message || 'Gagal memuat struktur.'); }
+  };
+  const previewStructure = async () => {
+    setStructureBusy(true); setStructureError(''); setStructureMessage(''); setStructurePreview(null);
+    try {
+      const plan = structurePlan();
+      const response = await apiTransport.send<StructurePreview>('campsite.structure.preview', {plan}, {timeoutMs:60000});
+      if (!response.ok || !response.data) throw new Error(response.error?.message || 'Gagal membaca pratinjau GAS.');
+      setStructurePreview(response.data);
+    } catch (error: any) { setStructureError(error?.message || 'Gagal memeriksa rencana.'); }
+    finally { setStructureBusy(false); }
+  };
+  const generateStructure = async () => {
+    if (!structurePreview?.canGenerate || structureBusy) return;
+    if (!window.confirm(`Buat ${structurePreview.newLots} kavling baru di GAS? Data yang sudah ada tidak akan ditimpa.`)) return;
+    setStructureBusy(true); setStructureError(''); setStructureMessage('');
+    try {
+      const plan = structurePlan();
+      // Recheck immediately before writing; layout or other admins may have changed.
+      const fresh = await apiTransport.send<StructurePreview>('campsite.structure.preview', {plan}, {timeoutMs:60000});
+      if (!fresh.ok || !fresh.data?.canGenerate) throw new Error(fresh.error?.message || 'Rencana berubah atau memiliki konflik. Ulangi pratinjau.');
+      const result = await apiTransport.send<StructureResult>('campsite.structure.generate', {plan}, {timeoutMs:120000});
+      if (!result.ok || !result.data) throw new Error(result.error?.message || 'Generator tidak mengembalikan konfirmasi GAS. Periksa sebelum mencoba ulang.');
+      setStructureMessage(`${result.data.createdLots || 0} kavling dan ${result.data.createdNodes || 0} node wilayah dibuat di GAS. ${result.data.message || ''}`);
+      setStructurePreview(null);
+      await loadStructure();
+      await eventStudioService.initialSync();
+      setLots([...eventStudioService.listLots()]);
+    } catch (error: any) { setStructureError(error?.message || 'Generator gagal. Periksa data GAS sebelum mencoba ulang.'); }
+    finally { setStructureBusy(false); }
+  };
   const [selectedLot, setSelectedLot] = useState<CampsiteLot | null>(null);
   const [selectedFacility, setSelectedFacility] = useState<CampFacility | null>(null);
 
@@ -508,6 +574,12 @@ export const CampsiteManager: React.FC = () => {
         {/* Sub-Tab Navigation */}
         <div className="flex flex-wrap p-1 rounded-2xl bg-[#F7F7F8] dark:bg-black/40 border border-[#ECECEF] dark:border-white/5 gap-1">
           <button
+            onClick={() => { setActiveTab('generator'); void loadStructure(); }}
+            className={`flex-1 min-w-[140px] py-2 rounded-xl text-xs font-semibold transition-all ${activeTab === 'generator' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
+          >
+            🏕️ Generator Kavling
+          </button>
+          <button
             onClick={() => setActiveTab('map')}
             className={`flex-1 min-w-[120px] py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               activeTab === 'map' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -541,6 +613,51 @@ export const CampsiteManager: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {activeTab === 'generator' && (
+        <section className="p-5 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-5">
+          <header>
+            <h3 className="font-bold text-base text-slate-900 dark:text-white">Generator Kabupaten → Kecamatan Putra/Putri → Kelurahan → Kavling</h3>
+            <p className="text-xs text-slate-500 mt-1">Setiap kavling untuk satu regu. Struktur dan nomor dibuat di GAS; posisi kavling di denah diatur setelah pembuatan.</p>
+          </header>
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">Nama Kabupaten
+            <input value={structureKabupaten} maxLength={100} onChange={e => {setStructureKabupaten(e.target.value);setStructurePreview(null);}} placeholder="Contoh: Kabupaten ..." className="mt-1 w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 dark:bg-slate-900 dark:text-white dark:border-slate-600" />
+          </label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {([{key:'putra',title:'Kecamatan Putra',v:structurePutraVillages,setV:setStructurePutraVillages,l:structurePutraLots,setL:setStructurePutraLots}, {key:'putri',title:'Kecamatan Putri',v:structurePutriVillages,setV:setStructurePutriVillages,l:structurePutriLots,setL:setStructurePutriLots}] as const).map(d => (
+              <div key={d.key} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+                <h4 className="font-bold text-sm text-slate-900 dark:text-white">{d.title}</h4>
+                <label className="block text-xs text-slate-600 dark:text-slate-300">Jumlah Kelurahan
+                  <input type="number" min="0" max="100" value={d.v} onChange={e => {d.setV(e.target.value);setStructurePreview(null);}} className="mt-1 w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 dark:bg-slate-900 dark:text-white dark:border-slate-600" />
+                </label>
+                <label className="block text-xs text-slate-600 dark:text-slate-300">Jumlah kavling per Kelurahan
+                  <input type="number" min="0" max="100" value={d.l} onChange={e => {d.setL(e.target.value);setStructurePreview(null);}} className="mt-1 w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 dark:bg-slate-900 dark:text-white dark:border-slate-600" />
+                </label>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={structureBusy} onClick={() => void previewStructure()} className="px-4 py-2 rounded-xl bg-sky-700 text-white text-xs font-bold disabled:opacity-50">{structureBusy?'Memproses...':'Pratinjau dari GAS'}</button>
+            <button type="button" disabled={structureBusy || !structurePreview?.canGenerate || structurePreview.newLots===0} onClick={() => void generateStructure()} className="px-4 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold disabled:opacity-40">Generate Kavling di GAS</button>
+            <button type="button" disabled={structureBusy} onClick={() => void loadStructure()} className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold dark:text-white">Muat Ulang Struktur</button>
+          </div>
+          {structureError && <p role="alert" className="p-3 rounded-xl bg-rose-50 text-rose-700 text-xs">{structureError}</p>}
+          {structureMessage && <p role="status" className="p-3 rounded-xl bg-emerald-50 text-emerald-700 text-xs">{structureMessage}</p>}
+          {structurePreview && <div className="p-4 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm text-slate-800 dark:text-white space-y-1">
+            <p>Direncanakan: <strong>{structurePreview.requestedLots}</strong> kavling · Sudah ada: <strong>{structurePreview.existingLots}</strong> · Baru: <strong>{structurePreview.newLots}</strong></p>
+            <p>Status: {structurePreview.canGenerate ? 'Siap dibuat di GAS' : 'Perlu diperbaiki sebelum generate'}</p>
+            {structurePreview.conflicts?.map((c,i) => <p key={i} className="text-rose-600">{c}</p>)}
+          </div>}
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+            <p className="font-semibold text-xs text-slate-700 dark:text-white">Struktur tersimpan di GAS: {structureNodes.length} node</p>
+            <div className="mt-2 max-h-52 overflow-y-auto text-xs text-slate-600 dark:text-slate-300 space-y-1">
+              {structureNodes.map(n => <p key={n.id}>{n.code} · {n.node_type} · {n.name}</p>)}
+              {!structureNodes.length && <p>Belum ada struktur. Gunakan pratinjau untuk memulai.</p>}
+            </div>
+          </div>
+          <p className="text-xs text-amber-700 dark:text-amber-300">Pembuatan tidak menetapkan regu dan tidak menempatkan posisi pin otomatis. Gunakan Papan Alokasi dan Peta Interaktif sesudahnya. Jangan mengulang permintaan ketika status GAS belum diketahui.</p>
+        </section>
+      )}
 
       {/* VIEW 1: INTERACTIVE 2D CAMPSITE MAP PREVIEW */}
       {activeTab === 'map' && (
