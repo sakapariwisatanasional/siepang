@@ -46,6 +46,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       <GlobalHeader
         onOpenScanner={onOpenScanner}
         onOpenSyncCenter={onOpenSyncCenter}
+        onNavigateProfile={() => onTabChange('profile')}
         onNavigatePublic={() => onTabChange('public_home')}
         onOpenMore={() => setIsMobileMoreOpen(true)}
         onLogout={onLogout}
