@@ -20,12 +20,37 @@ import {
   DownloadControlMode,
 } from '../types';
 import { mediaResolverService } from './mediaResolverService';
+import { apiTransport } from './apiTransport';
 import { eventStudioService } from './eventStudioService';
+
+export interface GalleryUrlRecord {
+  id: string;
+  type: 'PHOTO' | 'VIDEO';
+  title: string;
+  caption?: string;
+  source_url: string;
+  thumbnail_url?: string;
+  album_id?: string;
+  display_order?: number;
+  status?: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface GalleryPage {
+  items: GalleryUrlRecord[];
+  total: number;
+  offset: number;
+  limit: number;
+}
 
 class DocumentationService {
   private albums: Map<string, PhotoAlbum> = new Map();
   private mediaItems: Map<string, MediaItem> = new Map();
   private listeners: Set<() => void> = new Set();
+  private gasPublishedMedia: MediaItem[] = [];
+  private gasGalleryLoaded = false;
+
 
   constructor() {
     this.seedDefaultDocumentation();
@@ -33,6 +58,97 @@ class DocumentationService {
 
   private seedDefaultDocumentation(): void {
     // Pure clean runtime: zero dummy media
+  }
+
+  // ==================== GAS GALLERY (AUTHORITATIVE) ====================
+
+  /** Read published gallery items from GAS, not browser memory. */
+  public async loadPublicGallery(): Promise<MediaItem[]> {
+    const all: GalleryUrlRecord[] = [];
+    let offset = 0;
+    const pageSize = 100;
+    // Limit total retrieval defensively; UI can add server-side paging later.
+    while (offset < 5000) {
+      const response = await apiTransport.send<GalleryPage>(
+        'gallery.public.list', { limit: pageSize, offset }, { skipAuth: true }
+      );
+      if (!response.ok) throw new Error(response.error?.message || 'Gagal mengambil galeri dari GAS.');
+      const page = response.data;
+      if (!page || !Array.isArray(page.items) || typeof page.total !== 'number') {
+        throw new Error('Format data galeri GAS tidak valid.');
+      }
+      all.push(...page.items);
+      if (!page.items.length || all.length >= page.total) break;
+      offset += page.items.length;
+    }
+    this.gasPublishedMedia = all.map(item => this.toPublicMediaItem(item));
+    this.gasGalleryLoaded = true;
+    this.notify();
+    return [...this.gasPublishedMedia];
+  }
+
+  /** Published items are sourced only from GAS, never local admin-memory writes. */
+  public getPublishedGalleryItems(type?: 'PHOTO' | 'VIDEO'): MediaItem[] {
+    return this.gasPublishedMedia
+      .filter(item => !type || item.media_type === type)
+      .sort((a, b) => a.display_order - b.display_order);
+  }
+
+  public hasLoadedPublicGallery(): boolean {
+    return this.gasGalleryLoaded;
+  }
+
+  /** Requires an authorized session; permissions are enforced by GAS. */
+  public async listGalleryForAdmin(type?: 'PHOTO' | 'VIDEO'): Promise<GalleryPage> {
+    const result = await apiTransport.send<GalleryPage>('gallery.admin.list', { type: type || '', limit: 100 });
+    if (!result.ok || !result.data || !Array.isArray(result.data.items)) {
+      throw new Error(result.error?.message || 'Gagal membaca galeri admin.');
+    }
+    return result.data;
+  }
+
+  public async saveGalleryUrl(data: Omit<GalleryUrlRecord, 'created_at' | 'updated_at'>): Promise<void> {
+    const result = await apiTransport.send('gallery.admin.save', data);
+    if (!result.ok) throw new Error(result.error?.message || 'Gagal menyimpan URL media.');
+    await this.loadPublicGallery();
+  }
+
+  public async archiveGalleryUrl(id: string): Promise<void> {
+    const result = await apiTransport.send('gallery.admin.archive', { id });
+    if (!result.ok) throw new Error(result.error?.message || 'Gagal mengarsipkan media.');
+    await this.loadPublicGallery();
+  }
+
+  private toPublicMediaItem(item: GalleryUrlRecord): MediaItem {
+    if (!item || !item.id || !['PHOTO', 'VIDEO'].includes(item.type) || !/^https:\/\//i.test(item.source_url || '')) {
+      throw new Error('Record media dari GAS tidak valid.');
+    }
+    const source = item.source_url.trim();
+    const youtube = /(?:youtube\.com|youtu\.be)/i.test(source);
+    const drive = /drive\.google\.com/i.test(source);
+    const provider: MediaItem['provider'] = youtube ? 'YOUTUBE' : drive ? 'GOOGLE_DRIVE' : 'EXTERNAL';
+    return {
+      media_id: item.id,
+      workspace_id: '',
+      event_id: '',
+      album_id: item.album_id || undefined,
+      media_type: item.type,
+      provider,
+      source_type: item.type === 'PHOTO' ? 'PUBLIC_IMAGE_URL' : 'PUBLIC_VIDEO_URL',
+      source_url: source,
+      thumbnail_url: item.thumbnail_url || (item.type === 'PHOTO' ? source : ''),
+      original_url: source,
+      title: item.title || 'Tanpa judul',
+      caption: item.caption || '',
+      event_date: '',
+      display_order: Number(item.display_order || 0),
+      publication_status: 'PUBLISHED',
+      metadata_status: 'ACCESSIBLE',
+      download_control: 'VIEW_ONLY',
+      views_count: 0,
+      created_at: item.created_at || '',
+      created_by: '',
+    };
   }
 
   // ==================== ALBUM OPERATIONS ====================
