@@ -59,6 +59,9 @@ class EventService {
     ...EMPTY_EVENT,
   };
   private schedule: ScheduleItem[] = [];
+  private publicScheduleRequest: Promise<void> | null = null;
+  private publicScheduleEventId = '';
+  private publicScheduleError: string | null = null;
   private announcements: Announcement[] = [];
   private listeners: Set<() => void> = new Set();
   private isLoading = false;
@@ -188,6 +191,10 @@ class EventService {
    * Authoritatively sets the single installation event
    */
   public setInstallationEvent(event: ScoutEvent): void {
+    if (this.currentEvent.id !== event.id) {
+      this.schedule = [];
+      this.publicScheduleError = null;
+    }
     this.currentEvent = { ...event };
     brandingService.applyBranding({
       eventShortName: event.shortName,
@@ -217,6 +224,40 @@ class EventService {
   public getEvents(): ScoutEvent[] {
     return [this.currentEvent];
   }
+
+  /** Public read only. Never expose draft agendas, even if GAS returns them. */
+  public async refreshPublicSchedule(): Promise<void> {
+    const eventId = String(this.currentEvent.id || '').trim();
+    if (!eventId) { this.publicScheduleError = null; this.setSchedule([]); return; }
+    if (this.publicScheduleRequest && this.publicScheduleEventId === eventId) return this.publicScheduleRequest;
+    this.publicScheduleEventId = eventId;
+    const pending = (async () => {
+      const res = await apiTransport.send<ScheduleItem[]>('schedules.list', { event_id: eventId }, { skipAuth: true });
+      if (!res.ok || !Array.isArray(res.data)) {
+        throw new Error(res.error?.message || 'Gagal mengambil jadwal publik dari GAS.');
+      }
+      // Avoid stale responses when installation/event context changes mid-flight.
+      if (String(this.currentEvent.id || '').trim() !== eventId) return;
+      const published = res.data
+        .filter(item => item && item.isPublished === true && item.archived !== true)
+        .filter(item => !item.eventId || String(item.eventId) === eventId)
+        .sort((a, b) => (a.dayNumber - b.dayNumber) || String(a.startTime || a.time || '').localeCompare(String(b.startTime || b.time || '')));
+      this.publicScheduleError = null;
+      this.setSchedule(published);
+    })().catch(error => {
+      if (String(this.currentEvent.id || '').trim() === eventId) {
+        this.publicScheduleError = error instanceof Error ? error.message : 'Jadwal publik tidak dapat dimuat.';
+        // Never display old-event entries or private draft data on network failure.
+        this.setSchedule([]);
+      }
+    }).finally(() => {
+      if (this.publicScheduleRequest === pending) this.publicScheduleRequest = null;
+    });
+    this.publicScheduleRequest = pending;
+    return pending;
+  }
+
+  public getPublicScheduleError(): string | null { return this.publicScheduleError; }
 
   public getSchedule(dayNumber?: number): ScheduleItem[] {
     if (dayNumber) {
