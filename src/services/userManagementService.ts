@@ -456,6 +456,30 @@ export class UserManagementService {
     throw new Error('users.update belum tersedia di router GAS aktif. Data user tidak diubah.');
   }
 
+  /** Read authoritative active assignments for this installation from GAS. */
+  public async listActiveRoleAssignments(userId: string): Promise<Array<{assignment_id:string;role:UserRole;scope_type:string;scope_id:string}>> {
+    const res = await apiTransport.send<{user_id:string;assignments:Array<{assignment_id:string;role:UserRole;scope_type:string;scope_id:string}>}>('users.roles.list', {user_id:userId},{timeoutMs:45000});
+    if (!res.ok || res.data?.user_id !== userId || !Array.isArray(res.data.assignments))
+      throw new Error(res.error?.message || 'Gagal membaca penugasan aktif dari GAS.');
+    return res.data.assignments;
+  }
+
+  /** Additive grant. Never revokes old roles; confirms the exact assignment by readback. */
+  public async grantAdditionalRoles(userId:string, roles:UserRole[], scopeType:'EVENT'|'WORKSPACE'='EVENT'): Promise<void> {
+    const unique = Array.from(new Set(roles));
+    if (!unique.length) throw new Error('Pilih minimal satu role.');
+    for (const role of unique) {
+      const res = await apiTransport.send<{assignment_id:string;user_id:string;role:UserRole;scope_type:string;scope_id:string;verified:boolean}>('users.assignRole',
+        {user_id:userId,role,scope_type:scopeType}, {timeoutMs:60000});
+      if (!res.ok || res.data?.user_id !== userId || res.data?.role !== role || res.data?.verified !== true)
+        throw new Error(`Role ${role} belum dapat diverifikasi: ${res.error?.message || 'Periksa Spreadsheet sebelum mencoba ulang.'}`);
+      const current = await this.listActiveRoleAssignments(userId);
+      if (!current.some(a=>a.role===role && a.scope_type===scopeType))
+        throw new Error(`Penugasan ${role} belum ditemukan saat pembacaan ulang. Jangan ulangi sebelum memeriksa GAS.`);
+    }
+    await this.refreshUsers();
+  }
+
   /** Role diberikan server-side, kemudian daftar dibaca ulang. */
   public async updateUserRole(userId: string, newRole: UserRole): Promise<ManagedUser> {
     const user = this.users.find(u => u.id === userId);
