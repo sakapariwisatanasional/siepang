@@ -40,10 +40,46 @@ export interface DemoRegistration {
   status: 'DRAFT' | 'SUBMITTED' | 'VERIFIED';
 }
 
+export type DemoOperationKind = 'TASK' | 'SCHEDULE' | 'CAMPSITE' | 'HEALTH' | 'LOGISTICS' | 'ANNOUNCEMENT' | 'EVALUATION' | 'FINANCE';
+export type DemoOperationStatus = 'OPEN' | 'IN_PROGRESS' | 'DONE';
+export interface DemoOperation {
+  id: string;
+  kind: DemoOperationKind;
+  title: string;
+  detail: string;
+  status: DemoOperationStatus;
+  createdByPosition: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Each committee position may demonstrate only its associated workflows.
+ * This is demo UI scoping only; backend authorization remains independent. */
+export const DEMO_COMMITTEE_OPERATIONS: Record<string, readonly DemoOperationKind[]> = {
+  'Pelindung': ['EVALUATION'],
+  'Penasehat': ['EVALUATION'],
+  'Ketua Pelaksana': ['TASK','SCHEDULE','EVALUATION','ANNOUNCEMENT'],
+  'Sekretaris': ['TASK','ANNOUNCEMENT'],
+  'Bendahara': ['FINANCE'],
+  'Koordinator Lapangan': ['TASK','SCHEDULE','CAMPSITE'],
+  'Bid. Kesekretariatan, Kerjasama dan Pameran': ['TASK','ANNOUNCEMENT'],
+  'Bid. Kegiatan': ['SCHEDULE','TASK'],
+  'Bid. Perkemahan': ['CAMPSITE','TASK'],
+  'Bid. Keagamaan': ['SCHEDULE','ANNOUNCEMENT'],
+  'Bid. Sarana, Prasarana dan Keamanan': ['LOGISTICS','TASK'],
+  'Bid. Kesehatan': ['HEALTH','TASK'],
+  'Bid. Pengawasan dan Evaluasi': ['EVALUATION'],
+  'Bid. Konsumsi': ['LOGISTICS'],
+  'Bid. Humas': ['ANNOUNCEMENT'],
+  'Bid. Dokumentasi dan Publikasi': ['ANNOUNCEMENT','TASK'],
+  'Sangga Kerja': ['TASK','SCHEDULE'],
+};
+
 export interface DemoSession {
   id: string;
   level: DemoLevel;
   committeePosition: string | null;
+  operations: DemoOperation[];
   albums: DemoAlbum[];
   media: DemoMedia[];
   registrations: DemoRegistration[];
@@ -138,7 +174,7 @@ export class DemoSessionStore {
     this.active = {
       id: this.nextId('SESSION'), level,
       committeePosition: level === 'committee' ? committeePosition || 'Bid. Dokumentasi dan Publikasi' : null,
-      albums: [], media: [], registrations: [], votedMediaIds: [], activity: [], revision: 0,
+      operations: [], albums: [], media: [], registrations: [], votedMediaIds: [], activity: [], revision: 0,
     };
     this.change(`Sesi simulasi ${level} dimulai`);
     return clone(this.active);
@@ -161,6 +197,47 @@ export class DemoSessionStore {
   public end(): void {
     this.active = null;
     this.listeners.forEach((fn) => fn());
+  }
+
+  /** Generic committee workflows remain in-memory, never GAS or localStorage. */
+  public createOperation(input: { kind: DemoOperationKind; title: string; detail?: string }): DemoResult<DemoOperation> {
+    const session = this.requireSession();
+    if (session.level !== 'committee' || !session.committeePosition) throw new Error('Pilih level Panitia terlebih dahulu.');
+    const allowed = DEMO_COMMITTEE_OPERATIONS[session.committeePosition] || [];
+    if (!allowed.includes(input.kind)) throw new Error('Simulasi fitur tidak tersedia untuk jabatan ini.');
+    const now = new Date().toISOString();
+    const operation: DemoOperation = {
+      id: this.nextId('OPERATION'), kind: input.kind,
+      title: safeText(input.title, 'Judul', 160),
+      detail: String(input.detail || '').trim().slice(0, 1200),
+      status: 'OPEN', createdByPosition: session.committeePosition,
+      createdAt: now, updatedAt: now,
+    };
+    session.operations.push(operation);
+    this.change(`Simulasi ${input.kind}: ${operation.title}`);
+    return this.result(operation, 'Catatan demo dibuat');
+  }
+
+  public updateOperationStatus(id: string, status: DemoOperationStatus): DemoResult<DemoOperation> {
+    const session = this.requireSession();
+    if (session.level !== 'committee' || !session.committeePosition) throw new Error('Pilih level Panitia terlebih dahulu.');
+    if (!['OPEN','IN_PROGRESS','DONE'].includes(status)) throw new Error('Status simulasi tidak valid.');
+    const operation = session.operations.find(item => item.id === id);
+    if (!operation) throw new Error('Catatan demo tidak ditemukan.');
+    if (!(DEMO_COMMITTEE_OPERATIONS[session.committeePosition] || []).includes(operation.kind)) {
+      throw new Error('Jabatan saat ini tidak memiliki akses simulasi ke catatan ini.');
+    }
+    operation.status = status;
+    operation.updatedAt = new Date().toISOString();
+    this.change(`Status demo ${operation.title} → ${status}`);
+    return this.result(operation, 'Status catatan demo diperbarui');
+  }
+
+  public listOperations(kind?: DemoOperationKind): DemoOperation[] {
+    const session = this.requireSession();
+    if (session.level !== 'committee' || !session.committeePosition) return [];
+    const allowed = DEMO_COMMITTEE_OPERATIONS[session.committeePosition] || [];
+    return clone(session.operations.filter(item => allowed.includes(item.kind) && (!kind || item.kind === kind)));
   }
 
   public createAlbum(input: { name: string; description?: string; coverUrl?: string; folderUrl?: string }): DemoResult<DemoAlbum> {
