@@ -1,295 +1,129 @@
 /**
- * @license
- * SiEpang - Committee (Panitia) Home Screen
- * Prioritizes: Today's Tasks, Schedule, Attendance Scan, Announcements,
- * Participant Lookup, Activity Status, Emergency / Incident Quick Action.
+ * SiEpang - Dashboard Panitia (Grid Card + Icon)
+ * Perbaikan berdasarkan New siepang(2).zip.
+ * Tidak menggunakan daftar tugas dummy, status keamanan fiktif, atau data hard-coded.
+ * Sumber data operasional tetap service yang tersinkronisasi dengan GAS.
  */
-
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  Calendar,
-  CheckCircle2,
-  QrCode,
-  Users,
-  AlertTriangle,
-  Bell,
-  Clock,
-  Compass,
-  Search,
-  ChevronRight,
-  ShieldAlert,
+  CalendarDays, ClipboardCheck, HeartPulse, LayoutGrid,
+  Megaphone, QrCode, Search, ShieldCheck, Users, ArrowUpRight,
+  Clock3, UserRound,
 } from 'lucide-react';
 import { eventService } from '../../services/eventService';
 import { participantService } from '../../services/participantService';
-import { NavTab } from '../../components/navigation/MobileNavigation';
-import { MetricCard, SearchBar } from '../../components/common/GlobalUxComponents';
+import { featureControlService } from '../../services/featureControlService';
+import type { NavTab } from '../../components/navigation/MobileNavigation';
 
 interface CommitteeHomeProps {
   onNavigate: (tab: NavTab) => void;
   onOpenScanner: () => void;
 }
 
-export const CommitteeHome: React.FC<CommitteeHomeProps> = ({
-  onNavigate,
-  onOpenScanner,
-}) => {
+type Shortcut = {
+  label: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  onClick: () => void;
+  feature?: string;
+  color: string;
+};
+
+export const CommitteeHome: React.FC<CommitteeHomeProps> = ({ onNavigate, onOpenScanner }) => {
+  const [query, setQuery] = useState('');
+  const [, refresh] = useState(0);
+
+  // ParticipantService memperoleh data dari sinkronisasi GAS; perbarui tampilan
+  // bila data layanan berubah. Jangan isi fallback dengan data fiktif.
+  useEffect(() => {
+    const unsubscribe = participantService.subscribe(() => refresh(v => v + 1));
+    return unsubscribe;
+  }, []);
+
   const event = eventService.getCurrentEvent();
-  const scheduleToday = eventService.getSchedule(1);
   const participants = participantService.getParticipants();
-  const announcements = eventService.getAnnouncements();
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const [tasks, setTasks] = useState([
-    { id: '1', title: 'Siapkan Posko Giat 1: Pioneering', time: '08:00', done: true },
-    { id: '2', title: 'Presensi Peserta Upacara Pembukaan', time: '09:30', done: true },
-    { id: '3', title: 'Cek Kesiapan Konsumsi Siang Kontingen', time: '11:45', done: false },
-    { id: '4', title: 'Monitoring Jalur Wide Game Pos Selogiri', time: '14:00', done: false },
-  ]);
-
-  const toggleTask = (id: string) => {
-    setTasks(prev =>
-      prev.map(t => (t.id === id ? { ...t, done: !t.done } : t))
-    );
-  };
-
-  const searchedParticipants = searchQuery.trim()
-    ? participants
-        .filter(
-          p =>
-            p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            p.contingentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            p.code.toLowerCase().includes(searchQuery.toLowerCase())
+  const checkedIn = participants.filter(p => p.checkedIn).length;
+  const schedules = eventService.getSchedule(1);
+  const matches = query.trim()
+    ? participants.filter(p =>
+        [p.name, p.code, p.contingentName].some(value =>
+          String(value || '').toLowerCase().includes(query.trim().toLowerCase())
         )
-        .slice(0, 4)
+      ).slice(0, 5)
     : [];
 
-  const checkedInTotal = participants.filter(p => p.checkedIn).length;
+  const shortcuts: Shortcut[] = [
+    { label: 'Pindai QR', description: 'Presensi dan check-in', icon: QrCode, onClick: onOpenScanner, color: 'emerald' },
+    { label: 'Data Peserta', description: 'Temukan peserta', icon: Users, onClick: () => onNavigate('participants'), color: 'blue' },
+    { label: 'Jadwal', description: 'Agenda kegiatan', icon: CalendarDays, onClick: () => onNavigate('schedule'), feature: 'SCHEDULE', color: 'violet' },
+    { label: 'Presensi', description: 'Cek kehadiran', icon: ClipboardCheck, onClick: () => onNavigate('attendance'), feature: 'ATTENDANCE', color: 'amber' },
+    { label: 'Kesehatan', description: 'Layanan medis', icon: HeartPulse, onClick: () => onNavigate('health'), color: 'rose' },
+    { label: 'Informasi Event', description: 'Berita dan pengumuman', icon: Megaphone, onClick: () => onNavigate('public_home'), feature: 'PUBLIC_EVENT_PAGE', color: 'sky' },
+    { label: 'Profil Saya', description: 'Biodata dan foto', icon: UserRound, onClick: () => onNavigate('profile'), color: 'slate' },
+  ];
+  const visibleShortcuts = shortcuts.filter(item => !item.feature || featureControlService.isFeatureEnabled(item.feature as Parameters<typeof featureControlService.isFeatureEnabled>[0]));
+  const tones: Record<string, string> = {
+    emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
+    blue: 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300',
+    violet: 'bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300',
+    amber: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
+    rose: 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
+    sky: 'bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300',
+    slate: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto pb-10">
-      {/* 1. Greeting & Event Context Bar */}
-      <div className="p-5 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs font-bold mb-2">
-            <span>⚜️ Posko Panitia Lapangan</span>
-            <span>·</span>
-            <span>{event.shortName || 'Jambore'}</span>
-          </div>
-          <h1 className="text-xl sm:text-2xl font-black text-[#171717] dark:text-white tracking-tight">
-            Tugas & Operasional Hari Ini
-          </h1>
-          <p className="text-xs text-[#6B7280] dark:text-slate-400 mt-0.5">
-            Pastikan seluruh giat perkemahan berjalan tertib, aman, dan tepat waktu.
-          </p>
-        </div>
-
-        {/* Primary Scan Button */}
-        <button
-          type="button"
-          onClick={onOpenScanner}
-          className="self-start sm:self-auto px-5 py-3 rounded-2xl bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white font-bold text-xs shadow-md shadow-pink-500/20 active:scale-95 transition-transform flex items-center gap-2 cursor-pointer"
-        >
-          <QrCode className="w-5 h-5 stroke-[2.2]" />
-          <span>Pindai Presensi / Pos</span>
-        </button>
-      </div>
-
-      {/* 2. Key Metrics for Committee (Max 4) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <MetricCard
-          value={`${checkedInTotal}/${participants.length}`}
-          label="Kehadiran Buper"
-          sublabel="Total peserta di area"
-          color="emerald"
-          icon={CheckCircle2}
-          onClick={() => onNavigate('attendance')}
-        />
-        <MetricCard
-          value={tasks.filter(t => t.done).length}
-          label="Tugas Selesai"
-          sublabel={`dari ${tasks.length} target panitia`}
-          color="purple"
-          icon={CheckCircle2}
-        />
-        <MetricCard
-          value={scheduleToday.length}
-          label="Sesi Jadwal"
-          sublabel="Hari ke-1 perkemahan"
-          color="blue"
-          icon={Calendar}
-          onClick={() => onNavigate('schedule')}
-        />
-        <MetricCard
-          value="Normal"
-          label="Status Lapangan"
-          sublabel="Posko & cuaca aman"
-          color="amber"
-          icon={Compass}
-        />
-      </div>
-
-      {/* 3. Quick Participant Lookup */}
-      <div className="p-4 sm:p-5 rounded-[24px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 shadow-xs space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold text-[#171717] dark:text-white uppercase tracking-wider flex items-center gap-2">
-            <Users className="w-4 h-4 text-[#208C60]" />
-            <span>Pencarian Cepat Peserta / Kontingen</span>
-          </h3>
-          <span className="text-[11px] text-slate-400">Verifikasi lapangan</span>
-        </div>
-
-        <SearchBar
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder="Ketik nama peserta, nomor ID, atau nama kontingen..."
-        />
-
-        {searchQuery.trim() && (
-          <div className="space-y-1.5 pt-1">
-            {searchedParticipants.length > 0 ? (
-              searchedParticipants.map(p => (
-                <div
-                  key={p.id}
-                  className="p-3 rounded-xl bg-slate-50 dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 flex items-center justify-between text-xs"
-                >
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={p.photoUrl}
-                      alt={p.name}
-                      className="w-9 h-9 rounded-full object-cover border border-[#ECECEF]"
-                    />
-                    <div>
-                      <div className="font-bold text-[#171717] dark:text-white">{p.name}</div>
-                      <div className="text-[11px] text-slate-500">
-                        {p.contingentName} · Tenda {p.tentNumber} ({p.subCamp})
-                      </div>
-                    </div>
-                  </div>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                      p.checkedIn
-                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                        : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                    }`}
-                  >
-                    {p.checkedIn ? 'Hadir di Buper' : 'Belum Check-in'}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <div className="p-3 text-center text-xs text-slate-400">
-                Tidak ada peserta yang cocok dengan "{searchQuery}".
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* 4. Two-Column Layout: Today's Tasks & Today's Schedule */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Today's Tasks */}
-        <div className="p-5 rounded-[24px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 shadow-xs space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold text-[#171717] dark:text-white uppercase tracking-wider flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>Daftar Tugas Panitia</span>
-            </h3>
-            <span className="text-[11px] text-slate-400 font-mono">
-              {tasks.filter(t => t.done).length}/{tasks.length} Selesai
-            </span>
-          </div>
-
-          <div className="space-y-2">
-            {tasks.map(task => (
-              <div
-                key={task.id}
-                onClick={() => toggleTask(task.id)}
-                className={`p-3 rounded-xl border flex items-center justify-between gap-3 cursor-pointer transition-colors ${
-                  task.done
-                    ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-500/20 text-slate-500 dark:text-slate-400'
-                    : 'bg-slate-50 dark:bg-white/5 border-[#ECECEF] dark:border-white/10 text-[#171717] dark:text-white hover:border-[#208C60]/30'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${
-                      task.done
-                        ? 'bg-emerald-600 border-emerald-600 text-white'
-                        : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-black/40'
-                    }`}
-                  >
-                    {task.done && <CheckCircle2 className="w-3.5 h-3.5" />}
-                  </div>
-                  <span className={`text-xs font-semibold ${task.done ? 'line-through' : ''}`}>
-                    {task.title}
-                  </span>
-                </div>
-                <span className="text-[11px] font-mono text-slate-400 shrink-0">
-                  {task.time}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Schedule Preview */}
-        <div className="p-5 rounded-[24px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 shadow-xs space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold text-[#171717] dark:text-white uppercase tracking-wider flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-[#208C60]" />
-              <span>Jadwal Kegiatan Terdekat</span>
-            </h3>
-            <button
-              onClick={() => onNavigate('schedule')}
-              className="text-[11px] font-bold text-[#208C60] hover:underline"
-            >
-              Lihat Semua
-            </button>
-          </div>
-
-          <div className="space-y-2">
-            {scheduleToday.slice(0, 3).map(item => (
-              <div
-                key={item.id}
-                className="p-3 rounded-xl bg-slate-50 dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 flex items-center justify-between text-xs"
-              >
-                <div>
-                  <div className="font-bold text-[#171717] dark:text-white">{item.title}</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">{item.location}</div>
-                </div>
-                <div className="text-right">
-                  <div className="font-mono font-bold text-[#208C60]">{item.time}</div>
-                  <span className="text-[10px] text-slate-400 uppercase">{item.category}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* 5. Emergency Incident Quick Alert */}
-      <div className="p-4 rounded-[20px] bg-rose-50 dark:bg-rose-950/20 border border-rose-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center shrink-0">
-            <ShieldAlert className="w-4 h-4" />
-          </div>
+    <div className="mx-auto max-w-6xl space-y-6 pb-12">
+      <section className="rounded-3xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-5 sm:p-7 dark:border-emerald-900/40 dark:from-emerald-950/40 dark:via-slate-900 dark:to-slate-900">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="font-bold text-rose-800 dark:text-rose-300">
-              Posko P3K & Tanggap Darurat Siaga
-            </div>
-            <div className="text-slate-600 dark:text-slate-400 text-[11px]">
-              Jika terjadi insiden medis atau cuaca darurat, segera laporkan ke tim kesehatan.
-            </div>
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200"><ShieldCheck className="h-4 w-4" /> Ruang Kerja Panitia</div>
+            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl dark:text-white">Dashboard Panitia</h1>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{event?.shortName || 'SiEpang'} · Akses kegiatan dan layanan lapangan.</p>
           </div>
+          <button type="button" onClick={onOpenScanner} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-700 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"><QrCode className="h-5 w-5" /> Mulai Scan QR</button>
         </div>
-        <button
-          type="button"
-          onClick={() => onNavigate('health')}
-          className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shrink-0 cursor-pointer"
-        >
-          Buka Posko Medis
-        </button>
+      </section>
+
+      <section aria-label="Ringkasan data yang dimuat" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {[
+          { name: 'Peserta dalam data', value: participants.length, icon: Users, color: 'text-blue-700' },
+          { name: 'Sudah check-in', value: checkedIn, icon: ClipboardCheck, color: 'text-emerald-700' },
+          { name: 'Jadwal termuat', value: schedules.length, icon: CalendarDays, color: 'text-violet-700' },
+        ].map(metric => (
+          <div key={metric.name} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#191b23]">
+            <metric.icon className={`mb-3 h-5 w-5 ${metric.color}`} aria-hidden="true" />
+            <div className="text-2xl font-extrabold tabular-nums text-slate-900 dark:text-white">{metric.value}</div>
+            <div className="mt-1 text-xs text-slate-600 dark:text-slate-400">{metric.name}</div>
+          </div>
+        ))}
+      </section>
+      <p className="-mt-3 text-xs text-slate-500 dark:text-slate-400">Angka menampilkan data yang saat ini tersedia di layanan aplikasi. Jika sinkronisasi GAS belum selesai, angka belum tentu mencerminkan data terbaru.</p>
+
+      <section aria-labelledby="committee-tools">
+        <div className="mb-3 flex items-center gap-2"><LayoutGrid className="h-5 w-5 text-emerald-700"/><h2 id="committee-tools" className="text-lg font-extrabold text-slate-900 dark:text-white">Layanan & Alat Kerja</h2></div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+          {visibleShortcuts.map(item => (
+            <button type="button" key={item.label} onClick={item.onClick} className="group flex min-h-[140px] flex-col items-start rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 dark:border-white/10 dark:bg-[#191b23]">
+              <div className="mb-3 flex w-full items-start justify-between"><span className={`flex h-11 w-11 items-center justify-center rounded-xl ${tones[item.color]}`}><item.icon className="h-5 w-5"/></span><ArrowUpRight className="h-4 w-4 text-slate-400 opacity-60 group-hover:opacity-100"/></div>
+              <span className="text-sm font-bold text-slate-900 dark:text-white">{item.label}</span><span className="mt-1 text-xs text-slate-500 dark:text-slate-400">{item.description}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-[#191b23]" aria-label="Cari peserta">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white"><Search className="h-5 w-5 text-emerald-700"/> Cari Peserta / Kontingen</h2>
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Nama, nomor ID, atau kontingen" aria-label="Cari peserta" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-emerald-500 dark:border-white/10 dark:bg-slate-800 dark:text-white" />
+          {query.trim() && <div className="mt-3 space-y-2">{matches.length ? matches.map(p => <div key={p.id} className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-800"><span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-900 dark:text-white">{p.name}</span><span className="block truncate text-xs text-slate-500 dark:text-slate-400">{p.contingentName || 'Belum ada kontingen'}</span></span><span className="shrink-0 text-xs text-slate-500">{p.checkedIn ? 'Sudah hadir' : 'Belum hadir'}</span></div>) : <p className="text-sm text-slate-500">Tidak ada hasil pada data yang termuat.</p>}</div>}
+        </section>
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-[#191b23]" aria-label="Jadwal kegiatan">
+          <div className="mb-3 flex items-center justify-between gap-2"><h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white"><Clock3 className="h-5 w-5 text-blue-700"/> Pratinjau Jadwal</h2><button type="button" onClick={() => onNavigate('schedule')} className="text-xs font-bold text-emerald-700 hover:underline">Lihat semua</button></div>
+          {schedules.length ? <div className="space-y-2">{schedules.slice(0, 4).map(item => <div key={item.id} className="flex items-start justify-between gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800"><span><span className="block text-sm font-semibold text-slate-900 dark:text-white">{item.title}</span><span className="text-xs text-slate-500">{item.location}</span></span><span className="shrink-0 text-xs font-semibold text-emerald-700">{item.time}</span></div>)}</div> : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500 dark:bg-slate-800">Belum ada jadwal dalam data yang termuat.</p>}
+        </section>
       </div>
+      <p className="flex items-start gap-2 rounded-2xl border border-rose-100 bg-rose-50 p-4 text-xs text-rose-900 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-200"><HeartPulse className="h-4 w-4 shrink-0"/> Bila ada keadaan darurat, segera hubungi posko kesehatan sesuai prosedur kegiatan.</p>
     </div>
   );
 };
