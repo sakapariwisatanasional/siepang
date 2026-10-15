@@ -1,165 +1,109 @@
-/**
- * SiEpang — Admin Public Gallery Manager
- * Source of truth: GAS actions gallery.admin.* via documentationService.
- * Install: src/features/documentation/AdminPublicGalleryManager.tsx
- * NOTE: This is an ADDITIVE page component. Mount it as a dedicated route/tab
- * with role checks in App.tsx; backend independently enforces permissions.
+/** SiEpang — Galeri Publik Admin (URL-first, GAS as source of truth)
+ * Replace: src/features/documentation/AdminPublicGalleryManager.tsx
+ * File uploads require a separate Drive upload endpoint; this view registers shared URLs.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Archive, CheckCircle2, ExternalLink, Film, Image as ImageIcon, Loader2, Pencil, Plus, RefreshCw, Save, Search, X, AlertCircle } from 'lucide-react';
+import { AlertCircle, Archive, CheckCircle2, ExternalLink, Film, Image as ImageIcon, Link2, Loader2, Pencil, Plus, RefreshCw, Search, X, PlayCircle, Cloud, ClipboardPaste, Save, ShieldCheck } from 'lucide-react';
 import { documentationService, type GalleryUrlRecord } from '../../services/documentationService';
 
-type GalleryForm = {
-  id: string;
-  type: 'PHOTO' | 'VIDEO';
-  title: string;
-  caption: string;
-  source_url: string;
-  thumbnail_url: string;
-  album_id: string;
-  display_order: string;
-  status: 'DRAFT' | 'PUBLISHED';
-};
-const emptyForm = (): GalleryForm => ({
-  id: '', type: 'PHOTO', title: '', caption: '', source_url: '', thumbnail_url: '',
-  album_id: '', display_order: '0', status: 'DRAFT',
-});
-const trim = (x: string) => x.trim();
-const validHttps = (value: string) => {
-  try {
-    const u = new URL(value);
-    return u.protocol === 'https:' && !!u.hostname && !u.username && !u.password;
-  } catch { return false; }
-};
+type FormValue = { id: string; type: 'PHOTO'|'VIDEO'; title: string; caption: string; source_url: string; thumbnail_url: string; album_id: string; display_order: string; status: 'DRAFT'|'PUBLISHED' };
+type Kind = 'ALL'|'PHOTO'|'VIDEO';
+const blank = (type: 'PHOTO'|'VIDEO'='PHOTO'): FormValue => ({ id:'',type,title:'',caption:'',source_url:'',thumbnail_url:'',album_id:'',display_order:'0',status:'DRAFT' });
+const https = (value: string) => { try { const u=new URL(value); return u.protocol==='https:' && !!u.hostname && !u.username && !u.password; } catch {return false;} };
+function info(url: string) {
+  if (!https(url)) return {provider:'', image:'', embed:'', direct:false};
+  const u=new URL(url), host=u.hostname.toLowerCase(), path=u.pathname;
+  const yt = host==='youtu.be' ? path.split('/')[1] : host.endsWith('youtube.com') || host.endsWith('youtube-nocookie.com') ? (u.searchParams.get('v') || path.match(/\/(?:shorts|embed|live)\/([\w-]{11})/)?.[1] || '') : '';
+  if (yt && /^[\w-]{11}$/.test(yt)) return {provider:'YouTube',image:`https://i.ytimg.com/vi/${yt}/hqdefault.jpg`,embed:`https://www.youtube-nocookie.com/embed/${yt}`,direct:false};
+  const driveId=(host==='drive.google.com' || host==='docs.google.com') ? (path.match(/\/file\/d\/([\w-]+)/)?.[1] || u.searchParams.get('id') || '') : '';
+  if (driveId && /^[\w-]+$/.test(driveId)) return {provider:'Google Drive',image:`https://drive.google.com/thumbnail?id=${driveId}&sz=w600`,embed:`https://drive.google.com/file/d/${driveId}/preview`,direct:false};
+  if (host==='instagram.com' || host.endsWith('.instagram.com')) return {provider:'Instagram',image:'',embed:'',direct:false};
+  if (host==='tiktok.com' || host.endsWith('.tiktok.com')) return {provider:'TikTok',image:'',embed:'',direct:false};
+  if (host==='facebook.com' || host.endsWith('.facebook.com') || host==='fb.watch') return {provider:'Facebook',image:'',embed:'',direct:false};
+  const direct=/\.(?:mp4|webm|ogg)(?:$|\?)/i.test(url);
+  return {provider:direct?'Video langsung':'Tautan HTTPS',image:'',embed:'',direct};
+}
+const field='w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white';
+const text='text-slate-900 dark:text-white';
+const muted='text-slate-600 dark:text-slate-300';
+const btn='inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-800';
 
 export const AdminPublicGalleryManager: React.FC = () => {
-  const [items, setItems] = useState<GalleryUrlRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [working, setWorking] = useState(false);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<'ALL' | 'PHOTO' | 'VIDEO'>('ALL');
-  const [form, setForm] = useState<GalleryForm | null>(null);
-  const [total, setTotal] = useState(0);
-  const [pendingArchive, setPendingArchive] = useState<GalleryUrlRecord | null>(null);
-
-  const reload = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      // Current service returns the first 100 records; do not pretend this is a full database list.
-      const result = await documentationService.listGalleryForAdmin();
-      setItems(result.items);
-      setTotal(result.total);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Gagal memuat galeri dari GAS.');
-    } finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { void reload(); }, [reload]);
-  const visible = useMemo(() => items.filter(m =>
-    (filter === 'ALL' || m.type === filter) &&
-    [m.title, m.caption, m.source_url].some(s => String(s || '').toLowerCase().includes(search.toLowerCase()))
-  ), [items, filter, search]);
-
-  const edit = (item: GalleryUrlRecord) => {
-    setError(''); setNotice('');
-    setForm({
-      id: item.id, type: item.type, title: item.title || '', caption: item.caption || '',
-      source_url: item.source_url || '', thumbnail_url: item.thumbnail_url || '',
-      album_id: item.album_id || '', display_order: String(item.display_order ?? 0),
-      status: item.status === 'PUBLISHED' ? 'PUBLISHED' : 'DRAFT',
-    });
-    window.scrollTo({ top: 0, behavior: 'auto' });
+  const [items,setItems]=useState<GalleryUrlRecord[]>([]);
+  const [total,setTotal]=useState(0);
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState('');
+  const [notice,setNotice]=useState('');
+  const [filter,setFilter]=useState<Kind>('ALL');
+  const [query,setQuery]=useState('');
+  const [form,setForm]=useState<FormValue|null>(null);
+  const [archiveItem,setArchiveItem]=useState<GalleryUrlRecord|null>(null);
+  const [preview,setPreview]=useState<GalleryUrlRecord|null>(null);
+  const [broken,setBroken]=useState<Record<string,boolean>>({});
+  const reload=useCallback(async()=>{
+    setLoading(true);setError('');
+    try { const page=await documentationService.listGalleryForAdmin(); setItems(page.items);setTotal(page.total); }
+    catch(e){setError(e instanceof Error?e.message:'Gagal mengambil data Galeri dari GAS.');}
+    finally{setLoading(false);}
+  },[]);
+  useEffect(()=>{void reload();},[reload]);
+  const counts=useMemo(()=>({photo:items.filter(x=>x.type==='PHOTO').length,video:items.filter(x=>x.type==='VIDEO').length,published:items.filter(x=>x.status==='PUBLISHED').length,draft:items.filter(x=>x.status==='DRAFT').length}),[items]);
+  const visible=useMemo(()=>items.filter(x=>(filter==='ALL'||x.type===filter)&&[x.title,x.caption,x.source_url].some(v=>String(v||'').toLowerCase().includes(query.trim().toLowerCase()))),[items,filter,query]);
+  const openForm=(item?:GalleryUrlRecord,type:'PHOTO'|'VIDEO'='PHOTO')=>{
+    setError('');setNotice('');
+    setForm(item?{id:item.id,type:item.type,title:item.title||'',caption:item.caption||'',source_url:item.source_url||'',thumbnail_url:item.thumbnail_url||'',album_id:item.album_id||'',display_order:String(item.display_order??0),status:item.status==='PUBLISHED'?'PUBLISHED':'DRAFT'}:blank(type));
   };
-
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!form || working) return;
-    if (!trim(form.title)) { setError('Judul wajib diisi.'); return; }
-    if (!validHttps(trim(form.source_url))) { setError('URL media wajib berupa tautan HTTPS yang valid.'); return; }
-    if (trim(form.thumbnail_url) && !validHttps(trim(form.thumbnail_url))) {
-      setError('URL thumbnail harus menggunakan HTTPS.'); return;
-    }
-    const displayOrder = Number(form.display_order);
-    if (!Number.isInteger(displayOrder) || displayOrder < 0 || displayOrder > 999999) {
-      setError('Urutan tampil harus bilangan bulat antara 0 dan 999999.'); return;
-    }
-    setWorking(true); setError(''); setNotice('');
-    try {
-      await documentationService.saveGalleryUrl({
-        id: form.id, type: form.type, title: trim(form.title), caption: trim(form.caption),
-        source_url: trim(form.source_url), thumbnail_url: trim(form.thumbnail_url),
-        album_id: trim(form.album_id), display_order: displayOrder, status: form.status,
-      });
-      setForm(null);
-      setNotice('Media berhasil disimpan di GAS. Status publikasi mengikuti pilihan Anda.');
-      await reload();
-    } catch (e) { setError(e instanceof Error ? e.message : 'Gagal menyimpan media.'); }
-    finally { setWorking(false); }
+  const update=(patch:Partial<FormValue>)=>setForm(p=>p?{...p,...patch}:p);
+  const submit=async(e:React.FormEvent)=>{
+    e.preventDefault(); if(!form||saving)return;
+    if(!form.title.trim()){setError('Judul media harus diisi.');return;}
+    if(!https(form.source_url.trim())){setError('Tempel URL HTTPS yang valid dan dapat diakses publik.');return;}
+    if(form.thumbnail_url.trim()&&!https(form.thumbnail_url.trim())){setError('URL thumbnail harus menggunakan HTTPS.');return;}
+    const order=Number(form.display_order);
+    if(!Number.isInteger(order)||order<0||order>999999){setError('Urutan tampil harus bilangan bulat 0–999999.');return;}
+    setSaving(true);setError('');setNotice('');
+    try{
+      await documentationService.saveGalleryUrl({id:form.id,type:form.type,title:form.title.trim(),caption:form.caption.trim(),source_url:form.source_url.trim(),thumbnail_url:form.thumbnail_url.trim(),album_id:form.album_id.trim(),display_order:order,status:form.status});
+      // Do not signal success if the authoritative admin read fails.
+      const after=await documentationService.listGalleryForAdmin();setItems(after.items);setTotal(after.total);
+      setForm(null);setNotice('Media berhasil dikirim ke GAS dan daftar Galeri dimuat ulang dari Spreadsheet.');
+    }catch(e){setError(e instanceof Error?e.message:'Gagal menyimpan atau memuat ulang data. Cek Spreadsheet sebelum mengulangi.');}
+    finally{setSaving(false);}
   };
-
-  const archive = async () => {
-    if (!pendingArchive || working) return;
-    setWorking(true); setError(''); setNotice('');
-    try {
-      await documentationService.archiveGalleryUrl(pendingArchive.id);
-      setPendingArchive(null);
-      setNotice('Media berhasil diarsipkan. Tautan tidak lagi ditampilkan di Galeri Publik.');
-      await reload();
-    } catch (e) { setError(e instanceof Error ? e.message : 'Gagal mengarsipkan media.'); }
-    finally { setWorking(false); }
+  const archive=async()=>{
+    if(!archiveItem||saving)return;
+    setSaving(true);setError('');setNotice('');
+    try{await documentationService.archiveGalleryUrl(archiveItem.id); const after=await documentationService.listGalleryForAdmin();setItems(after.items);setTotal(after.total);setArchiveItem(null);setNotice('Media diarsipkan; status terbaru dibaca ulang dari GAS.');}
+    catch(e){setError(e instanceof Error?e.message:'Arsip gagal atau belum dapat diverifikasi.');}
+    finally{setSaving(false);}
   };
-
-  const inputClass = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-white';
-  const labelClass = 'block space-y-1.5 text-sm font-medium text-slate-700 dark:text-slate-200';
-
-  return (
-    <main className="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6" aria-label="Manajemen Galeri Publik">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h1 className="text-2xl font-bold text-slate-900 dark:text-white">Manajemen Galeri Publik</h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Kelola foto dan video dari URL. Data tersimpan di Google Sheets melalui GAS.</p></div>
-        <div className="flex gap-2">
-          <button type="button" onClick={() => void reload()} disabled={loading || working} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200"><RefreshCw className="h-4 w-4"/> Muat Ulang</button>
-          <button type="button" onClick={() => { setForm(emptyForm()); setError(''); setNotice(''); }} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"><Plus className="h-4 w-4"/> Tambah Media</button>
-        </div>
-      </div>
-
-      {error && <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0"/>{error}</div>}
-      {notice && <div role="status" className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0"/>{notice}</div>}
-
-      {form && <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:p-6" aria-label="Form URL media">
-        <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-slate-900 dark:text-white">{form.id ? 'Edit Media' : 'Tambah Foto / Video'}</h2><button aria-label="Tutup formulir" type="button" onClick={() => setForm(null)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><X className="h-5 w-5"/></button></div>
-        <form onSubmit={e => void submit(e)} className="grid gap-4 sm:grid-cols-2">
-          <label className={labelClass}>Jenis Media<select className={inputClass} value={form.type} onChange={e => setForm({ ...form, type: e.target.value as GalleryForm['type'] })}><option value="PHOTO">Foto</option><option value="VIDEO">Video</option></select></label>
-          <label className={labelClass}>Status Publikasi<select className={inputClass} value={form.status} onChange={e => setForm({ ...form, status: e.target.value as GalleryForm['status'] })}><option value="DRAFT">Draft (tidak tampil publik)</option><option value="PUBLISHED">Terbit (tampil publik)</option></select></label>
-          <label className={labelClass}>Judul *<input required maxLength={160} className={inputClass} value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Judul dokumentasi"/></label>
-          <label className={labelClass}>Urutan Tampil<input required type="number" min={0} max={999999} step={1} className={inputClass} value={form.display_order} onChange={e => setForm({ ...form, display_order: e.target.value })}/></label>
-          <label className={`${labelClass} sm:col-span-2`}>URL Foto / Video (HTTPS) *<input required type="url" className={inputClass} value={form.source_url} onChange={e => setForm({ ...form, source_url: e.target.value })} placeholder="https://..."/><span className="block text-xs font-normal text-slate-500">Gunakan link publik. Untuk video: YouTube, Google Drive (akses diizinkan), atau file video langsung.</span></label>
-          <label className={`${labelClass} sm:col-span-2`}>URL Thumbnail (opsional)<input type="url" className={inputClass} value={form.thumbnail_url} onChange={e => setForm({ ...form, thumbnail_url: e.target.value })} placeholder="https://.../thumbnail.jpg"/></label>
-          <label className={`${labelClass} sm:col-span-2`}>Caption / Deskripsi<textarea rows={3} maxLength={2000} className={inputClass} value={form.caption} onChange={e => setForm({ ...form, caption: e.target.value })}/></label>
-          <label className={labelClass}>ID Album (opsional)<input maxLength={100} className={inputClass} value={form.album_id} onChange={e => setForm({ ...form, album_id: e.target.value })}/></label>
-          <div className="flex items-end gap-2"><button type="submit" disabled={working} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{working ? <Loader2 className="h-4 w-4 animate-spin"/> : <Save className="h-4 w-4"/>} Simpan ke GAS</button></div>
-        </form>
-      </section>}
-
-      <section className="space-y-3" aria-label="Daftar media">
-        <div className="flex flex-wrap gap-3"><div className="relative min-w-48 flex-1"><Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400"/><input aria-label="Cari media" value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari judul, caption, atau URL..." className={`${inputClass} pl-9`}/></div><select aria-label="Filter jenis media" className={`${inputClass} w-auto`} value={filter} onChange={e => setFilter(e.target.value as typeof filter)}><option value="ALL">Semua</option><option value="PHOTO">Foto</option><option value="VIDEO">Video</option></select></div>
-        <p className="text-xs text-slate-500">{loading ? 'Memuat dari GAS...' : `${visible.length} ditampilkan dari ${items.length} data yang dimuat (${total} total di GAS).`}{total > items.length && ' Daftar masih terbatas 100 record pertama; pagination menyusul.'}</p>
-        {loading ? <div role="status" className="flex justify-center p-12 text-slate-500"><Loader2 className="mr-2 h-5 w-5 animate-spin"/> Memuat galeri...</div> : items.length === 0 && !error ? <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center text-slate-500">Belum ada media di GAS. Klik Tambah Media untuk memulai.</div> : visible.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">Tidak ada media yang cocok dengan pencarian.</div> :
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{visible.map(item => <article key={item.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-            <div className="flex aspect-video items-center justify-center bg-slate-100 dark:bg-slate-800">{item.thumbnail_url || (item.type === 'PHOTO' ? item.source_url : '') ? <img loading="lazy" className="h-full w-full object-cover" alt={`Thumbnail ${item.title}`} src={item.thumbnail_url || item.source_url}/> : item.type === 'VIDEO' ? <Film className="h-10 w-10 text-slate-400"/> : <ImageIcon className="h-10 w-10 text-slate-400"/>}</div>
-            <div className="space-y-3 p-4"><div className="flex flex-wrap items-center gap-2"><span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">{item.type === 'PHOTO' ? 'Foto' : 'Video'}</span><span className={`rounded-lg px-2 py-1 text-xs font-semibold ${item.status === 'PUBLISHED' ? 'bg-emerald-100 text-emerald-800' : item.status === 'ARCHIVED' ? 'bg-slate-200 text-slate-700' : 'bg-amber-100 text-amber-800'}`}>{item.status === 'PUBLISHED' ? 'Terbit' : item.status === 'ARCHIVED' ? 'Arsip' : 'Draft'}</span></div>
-              <h3 className="line-clamp-2 font-semibold text-slate-900 dark:text-white">{item.title}</h3>{item.caption && <p className="line-clamp-2 text-sm text-slate-500 dark:text-slate-400">{item.caption}</p>}
-              <div className="flex flex-wrap gap-2"><button type="button" onClick={() => edit(item)} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold dark:border-slate-600"><Pencil className="h-3.5 w-3.5"/> Edit</button><a href={item.source_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold dark:border-slate-600"><ExternalLink className="h-3.5 w-3.5"/> Buka URL</a>{item.status !== 'ARCHIVED' && <button type="button" onClick={() => setPendingArchive(item)} className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 dark:border-red-900 dark:text-red-300"><Archive className="h-3.5 w-3.5"/> Arsip</button>}</div>
-            </div>
-          </article>)}</div>}
-      </section>
-
-      {pendingArchive && <div role="presentation" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"><section role="dialog" aria-modal="true" aria-label="Konfirmasi arsip media" className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl dark:bg-slate-900"><h2 className="text-lg font-bold dark:text-white">Arsipkan media?</h2><p className="mt-2 text-sm text-slate-600 dark:text-slate-300">“{pendingArchive.title}” tidak akan tampil lagi di Galeri Publik. Data tetap tersimpan di GAS.</p><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setPendingArchive(null)} disabled={working} className="rounded-xl border px-4 py-2 text-sm">Batal</button><button type="button" onClick={() => void archive()} disabled={working} className="rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{working ? 'Memproses...' : 'Ya, Arsipkan'}</button></div></section></div>}
-    </main>
-  );
+  const thumb=(m:GalleryUrlRecord)=>m.thumbnail_url||info(m.source_url).image||(m.type==='PHOTO'?m.source_url:'');
+  const activeInfo=info(form?.source_url||'');
+  const formThumb=form?.thumbnail_url||activeInfo.image||(form?.type==='PHOTO'?form?.source_url:'');
+  return <main className="mx-auto max-w-7xl space-y-5 px-4 py-5 sm:px-6" aria-label="Manajemen Galeri Publik">
+    <header className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-amber-50 p-5 dark:border-slate-700 dark:from-slate-900 dark:to-slate-800 sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4"><div className="space-y-1"><p className="text-xs font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Pusat Dokumentasi SiEpang</p><h1 className="text-2xl font-extrabold text-emerald-950 dark:text-white">Manajemen Galeri Foto & Video</h1><p className={`max-w-2xl text-sm ${muted}`}>Masukkan tautan Google Drive, YouTube, atau media sosial, atur pratinjau, lalu publikasikan tanpa mengubah source aplikasi.</p></div><div className="flex flex-wrap gap-2"><button type="button" className={btn} onClick={()=>void reload()} disabled={loading||saving}><RefreshCw size={16}/> Segarkan</button><button type="button" className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800" onClick={()=>openForm()}><Plus size={18}/> Tambah Media</button></div></div>
+    </header>
+    <section className="grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Ringkasan galeri">
+      {([{label:'Foto',value:counts.photo,icon:ImageIcon},{label:'Video',value:counts.video,icon:Film},{label:'Dipublikasikan',value:counts.published,icon:CheckCircle2},{label:'Draft',value:counts.draft,icon:ClipboardPaste}] as const).map(c=><div key={c.label} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"><c.icon className="mb-2 text-emerald-600" size={19}/><div className={`text-2xl font-bold ${text}`}>{loading?'—':c.value}</div><p className={`text-xs ${muted}`}>{c.label} dalam daftar termuat</p></div>)}
+    </section>
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 sm:p-5" aria-label="Aksi cepat">
+      <h2 className={`mb-3 font-bold ${text}`}>Tambahkan dokumentasi</h2><div className="grid gap-3 sm:grid-cols-3">
+        <button type="button" onClick={()=>openForm(undefined,'PHOTO')} className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-left hover:bg-emerald-100 dark:border-slate-700 dark:bg-slate-800"><ImageIcon className="text-emerald-700"/><span><strong className={`block text-sm ${text}`}>Tambah Foto</strong><small className={muted}>Link Google Drive atau gambar</small></span></button>
+        <button type="button" onClick={()=>openForm(undefined,'VIDEO')} className="flex items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 text-left hover:bg-sky-100 dark:border-slate-700 dark:bg-slate-800"><Film className="text-sky-700"/><span><strong className={`block text-sm ${text}`}>Tambah Video</strong><small className={muted}>YouTube, Drive, atau MP4</small></span></button>
+        <a className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-left hover:bg-amber-100 dark:border-slate-700 dark:bg-slate-800" href="https://drive.google.com/drive/my-drive" target="_blank" rel="noopener noreferrer"><Cloud className="text-amber-700"/><span><strong className={`block text-sm ${text}`}>Buka Google Drive <ExternalLink className="inline" size={12}/></strong><small className={muted}>Unggah file di Drive, lalu salin link</small></span></a>
+      </div><p className="mt-3 text-xs text-slate-500 dark:text-slate-400">Catatan: fitur ini menyimpan tautan dan metadata ke GAS/Spreadsheet. Unggah file langsung dari SiEpang membutuhkan endpoint Google Drive tersendiri.</p>
+    </section>
+    {error&&<div role="alert" className="flex gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"><AlertCircle className="shrink-0" size={18}/><span>{error}</span></div>}
+    {notice&&<div role="status" className="flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"><CheckCircle2 className="shrink-0" size={18}/><span>{notice}</span></div>}
+    <section className="space-y-3" aria-label="Daftar media GAS"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className={`text-lg font-bold ${text}`}>Koleksi Galeri</h2><div className="flex flex-wrap gap-2"><div className="relative"><Search size={16} className="pointer-events-none absolute left-3 top-3 text-slate-400"/><input aria-label="Cari media" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Cari judul atau URL..." className={`${field} pl-9`}/></div><select aria-label="Filter jenis" className={field} value={filter} onChange={e=>setFilter(e.target.value as Kind)}><option value="ALL">Semua</option><option value="PHOTO">Foto</option><option value="VIDEO">Video</option></select></div></div>
+      <p className="text-xs text-slate-500">{loading?'Memuat dari GAS...':`${visible.length} ditampilkan dari ${items.length} data yang dimuat (${total} total di server).`}{total>items.length?' Layanan saat ini hanya memuat maksimal 100 record pertama.':''}</p>
+      {loading?<div className="flex justify-center gap-2 rounded-xl border p-10 text-slate-500"><Loader2 className="animate-spin"/> Memuat media...</div>:items.length===0&&!error?<div className="rounded-2xl border border-dashed p-10 text-center"><ImageIcon className="mx-auto mb-2 text-slate-400"/><p className={muted}>Belum ada media tersimpan. Tambahkan foto atau video dari tombol di atas.</p></div>:visible.length===0?<p className={`rounded-xl border p-6 text-center ${muted}`}>Tidak ada media yang cocok.</p>:<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{visible.map(m=><article key={m.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900"><div className="relative flex aspect-video items-center justify-center bg-slate-100 dark:bg-slate-800">{thumb(m)&&!broken[m.id]?<img loading="lazy" src={thumb(m)} alt={`Thumbnail ${m.title}`} className="h-full w-full object-cover" onError={()=>setBroken(p=>({...p,[m.id]:true}))}/>:m.type==='VIDEO'?<Film className="text-slate-400" size={36}/>:<ImageIcon className="text-slate-400" size={36}/>}<span className="absolute left-2 top-2 rounded-lg bg-black/70 px-2 py-1 text-xs font-semibold text-white">{m.type==='PHOTO'?'Foto':'Video'}</span>{m.type==='VIDEO'&&<button type="button" aria-label={`Pratinjau ${m.title}`} onClick={()=>setPreview(m)} className="absolute inset-0 flex items-center justify-center"><PlayCircle className="text-white drop-shadow-lg" size={46}/></button>}</div><div className="space-y-3 p-4"><div className="flex items-center justify-between gap-2"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${m.status==='PUBLISHED'?'bg-emerald-100 text-emerald-800':m.status==='ARCHIVED'?'bg-slate-200 text-slate-800':'bg-amber-100 text-amber-900'}`}>{m.status==='PUBLISHED'?'Terbit':m.status==='ARCHIVED'?'Arsip':'Draft'}</span><span className="text-xs text-slate-500">{info(m.source_url).provider||'Media'}</span></div><h3 className={`line-clamp-2 font-semibold ${text}`}>{m.title}</h3>{m.caption&&<p className={`line-clamp-2 text-sm ${muted}`}>{m.caption}</p>}<div className="flex flex-wrap gap-2"><button type="button" className={btn} onClick={()=>openForm(m)}><Pencil size={14}/> Edit</button><button type="button" className={btn} onClick={()=>setPreview(m)}><PlayCircle size={14}/> Lihat</button><a className={btn} href={m.source_url} target="_blank" rel="noopener noreferrer"><ExternalLink size={14}/> URL</a>{m.status!=='ARCHIVED'&&<button type="button" className={`${btn} text-rose-700`} onClick={()=>setArchiveItem(m)}><Archive size={14}/> Arsip</button>}</div></div></article>)}</div>}
+    </section>
+    {form&&<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3" role="presentation"><section role="dialog" aria-modal="true" aria-label={form.id?'Edit media':'Tambah media'} className="max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl dark:bg-slate-900 sm:p-6"><div className="mb-4 flex items-start justify-between gap-3"><div><p className="text-xs font-bold text-emerald-700">{form.id?'UBAH DOKUMENTASI':'DOKUMENTASI BARU'}</p><h2 className={`text-xl font-bold ${text}`}>{form.id?'Edit Foto / Video':'Tambahkan Foto atau Video'}</h2><p className={`text-sm ${muted}`}>Tempel link publik, cek pratinjau, lalu simpan.</p></div><button className={btn} type="button" onClick={()=>setForm(null)} disabled={saving} aria-label="Tutup"><X size={18}/></button></div><form onSubmit={e=>void submit(e)} className="grid gap-5 md:grid-cols-[1.2fr_0.8fr]"><div className="space-y-4"><div><p className={`mb-2 text-sm font-semibold ${text}`}>1. Jenis dokumentasi</p><div className="grid grid-cols-2 gap-2"><button type="button" disabled={saving} onClick={()=>update({type:'PHOTO'})} className={`rounded-xl border p-3 text-sm font-semibold ${form.type==='PHOTO'?'border-emerald-600 bg-emerald-50 text-emerald-900':'border-slate-200 dark:border-slate-600 dark:text-white'}`}><ImageIcon className="mb-1 inline" size={17}/> Foto</button><button type="button" disabled={saving} onClick={()=>update({type:'VIDEO'})} className={`rounded-xl border p-3 text-sm font-semibold ${form.type==='VIDEO'?'border-emerald-600 bg-emerald-50 text-emerald-900':'border-slate-200 dark:border-slate-600 dark:text-white'}`}><Film className="mb-1 inline" size={17}/> Video</button></div></div><label className={`block text-sm font-semibold ${text}`}>2. Link {form.type==='PHOTO'?'foto':'video'} *<div className="relative mt-2"><Link2 className="pointer-events-none absolute left-3 top-3 text-slate-400" size={18}/><input required type="url" className={`${field} pl-10`} value={form.source_url} onChange={e=>update({source_url:e.target.value})} placeholder="https://drive.google.com/... atau https://youtube.com/..."/></div></label><p className={`text-xs ${muted}`}>{activeInfo.provider?`Terdeteksi: ${activeInfo.provider}. `:''}Pastikan akses file Google Drive adalah “Siapa saja yang memiliki link — Pelihat”. Link sosial media dapat dibuka di platform asal bila pemutar tertanam tidak didukung.</p><label className={`block text-sm font-semibold ${text}`}>3. Judul dokumentasi *<input required maxLength={160} className={`${field} mt-2`} value={form.title} onChange={e=>update({title:e.target.value})} placeholder="Contoh: Upacara Pembukaan Perkemahan"/></label><label className={`block text-sm font-semibold ${text}`}>Caption / Deskripsi<textarea className={`${field} mt-2`} rows={3} maxLength={2000} value={form.caption} onChange={e=>update({caption:e.target.value})} placeholder="Ceritakan momen kegiatan..."/></label><details className="rounded-xl border border-slate-200 p-3 dark:border-slate-700"><summary className={`cursor-pointer text-sm font-semibold ${text}`}>Pengaturan tambahan (opsional)</summary><div className="mt-3 space-y-3"><label className={`block text-sm ${text}`}>URL thumbnail<input className={`${field} mt-1`} type="url" value={form.thumbnail_url} onChange={e=>update({thumbnail_url:e.target.value})} placeholder="https://.../thumbnail.jpg"/></label><label className={`block text-sm ${text}`}>ID Album<input className={`${field} mt-1`} value={form.album_id} onChange={e=>update({album_id:e.target.value})}/></label><label className={`block text-sm ${text}`}>Urutan tampil<input className={`${field} mt-1`} type="number" min={0} max={999999} step={1} value={form.display_order} onChange={e=>update({display_order:e.target.value})}/></label></div></details></div><div className="space-y-4"><div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700"><div className="flex aspect-video items-center justify-center bg-slate-100 dark:bg-slate-800">{https(formThumb)&&form.type==='PHOTO'?<img src={formThumb} alt="Pratinjau foto" className="h-full w-full object-contain"/>:https(formThumb)&&form.type==='VIDEO'?<img src={formThumb} alt="Pratinjau thumbnail video" className="h-full w-full object-contain"/>:<div className="text-center text-slate-400">{form.type==='VIDEO'?<Film size={42} className="mx-auto"/>:<ImageIcon size={42} className="mx-auto"/>}<p className="mt-2 text-xs">Pratinjau setelah URL diisi</p></div>}</div><p className={`p-2 text-xs ${muted}`}>Thumbnail Drive dan media sosial bisa memerlukan izin publik atau URL thumbnail tersendiri.</p></div>{https(form.source_url)&&<a href={form.source_url} target="_blank" rel="noopener noreferrer" className={btn}><ExternalLink size={15}/> Uji buka tautan</a>}<div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-slate-700 dark:bg-slate-800"><p className="mb-2 flex items-center gap-2 text-sm font-bold text-emerald-900 dark:text-white"><ShieldCheck size={17}/> 4. Status publikasi</p><label className={`block text-sm ${text}`}>Tampilkan di Galeri Publik<select className={`${field} mt-2`} value={form.status} onChange={e=>update({status:e.target.value as FormValue['status']})}><option value="DRAFT">Simpan sebagai Draft</option><option value="PUBLISHED">Terbitkan ke Publik</option></select></label></div><button type="submit" disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white hover:bg-emerald-800 disabled:opacity-60">{saving?<Loader2 className="animate-spin" size={18}/>:<Save size={18}/>} {saving?'Menyimpan ke GAS...':'Simpan ke Spreadsheet'}</button><p className={`text-xs ${muted}`}>Penyimpanan dilakukan melalui GAS. Jangan menutup jendela saat memproses.</p></div></form></section></div>}
+    {archiveItem&&<div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4"><section role="dialog" aria-modal="true" aria-label="Konfirmasi arsip" className="w-full max-w-md rounded-2xl bg-white p-5 dark:bg-slate-900"><h2 className={`text-lg font-bold ${text}`}>Arsipkan media?</h2><p className={`my-3 text-sm ${muted}`}>“{archiveItem.title}” tidak lagi ditampilkan di publik. Metadata tetap tercatat di Spreadsheet.</p><div className="flex justify-end gap-2"><button className={btn} type="button" disabled={saving} onClick={()=>setArchiveItem(null)}>Batal</button><button type="button" className="rounded-xl bg-rose-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50" disabled={saving} onClick={()=>void archive()}>{saving?'Memproses...':'Arsipkan'}</button></div></section></div>}
+    {preview&&<div className="fixed inset-0 z-[105] flex items-center justify-center bg-black/80 p-3" role="presentation"><section role="dialog" aria-modal="true" aria-label="Pratinjau dokumentasi" className="w-full max-w-4xl rounded-2xl bg-white p-3 dark:bg-slate-900"><div className="mb-3 flex items-center justify-between"><strong className={`line-clamp-1 ${text}`}>{preview.title}</strong><button className={btn} type="button" onClick={()=>setPreview(null)} aria-label="Tutup pratinjau"><X size={18}/></button></div><div className="flex min-h-56 items-center justify-center overflow-hidden rounded-xl bg-black">{preview.type==='PHOTO'?<img src={preview.source_url} alt={preview.title} className="max-h-[70vh] max-w-full object-contain"/>:info(preview.source_url).embed?<iframe title={preview.title} src={info(preview.source_url).embed} className="aspect-video w-full" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowFullScreen referrerPolicy="strict-origin-when-cross-origin"/>:info(preview.source_url).direct?<video src={preview.source_url} controls className="max-h-[70vh] w-full"/>:<div className="p-8 text-center text-white"><p>Pemutaran tertanam tidak tersedia untuk sumber ini.</p><a href={preview.source_url} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-2 underline"><ExternalLink size={16}/> Buka di sumber asli</a></div>}</div></section></div>}
+  </main>;
 };
-
 export default AdminPublicGalleryManager;
