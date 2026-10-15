@@ -20,12 +20,26 @@ import {
   RefreshCw,
   AlertTriangle,
   CheckCircle2,
+  ChevronLeft,
+  ArrowRight,
+  Image as ImageIcon,
+  Eye,
 } from 'lucide-react';
 import { eventStudioService } from '../../services/eventStudioService';
 import { EventCategory, EventStatus, OrganizationalLevel, ParticipationScope } from '../../types';
 
 export const GeneralEventEditor: React.FC = () => {
   const event = eventStudioService.getEvent();
+  type SettingsSection = 'identity' | 'dates' | 'registration' | 'contacts' | 'media' | 'publication';
+  const [activeSection, setActiveSection] = useState<SettingsSection | null>(null);
+  const sections: { id: SettingsSection; title: string; description: string; icon: React.ElementType }[] = [
+    { id: 'identity', title: 'Identitas Event', description: 'Nama, penyelenggara dan profil kegiatan', icon: Building2 },
+    { id: 'dates', title: 'Tanggal & Lokasi', description: 'Hari pelaksanaan, lokasi dan bumi perkemahan', icon: Calendar },
+    { id: 'registration', title: 'Pendaftaran', description: 'Jadwal pendaftaran dan kuota peserta', icon: Users },
+    { id: 'contacts', title: 'Kontak Panitia', description: 'Medis, keamanan, helpdesk dan informasi', icon: Phone },
+    { id: 'media', title: 'Logo & Banner', description: 'Identitas visual resmi kegiatan', icon: ImageIcon },
+    { id: 'publication', title: 'Publikasi Portal', description: 'Status operasional dan penayangan event', icon: Eye },
+  ];
   const [isSaving, setIsSaving] = useState(false);
   const [eventLoadStatus, setEventLoadStatus] = useState(eventStudioService.getEventLoadStatus());
   const [isReloading, setIsReloading] = useState(false);
@@ -143,7 +157,53 @@ export const GeneralEventEditor: React.FC = () => {
   }
 
   return (
-    <form onSubmit={handleSave} className="space-y-6">
+    <form onSubmit={handleSave} className="space-y-5">
+      <div className="rounded-[28px] border border-[#ECECEF] bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#141418] sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Event Studio / Pengaturan Umum</p>
+            <h1 className="mt-2 text-xl font-extrabold text-slate-900 dark:text-white sm:text-2xl">{formData.name || 'Pengaturan Event'}</h1>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Seluruh perubahan menggunakan data event dari Google Apps Script.</p>
+          </div>
+          <span className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 dark:border-emerald-700/50 dark:bg-emerald-950/40 dark:text-emerald-300">
+            <CheckCircle2 className="h-4 w-4" /> Data event GAS dimuat
+          </span>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-700 dark:text-slate-200">
+          {formData.startDate && formData.endDate && <span className="rounded-lg bg-slate-100 px-3 py-2 dark:bg-white/10">{formData.startDate} — {formData.endDate}</span>}
+          {formData.status && <span className="rounded-lg bg-slate-100 px-3 py-2 dark:bg-white/10">{formData.status}</span>}
+          {formData.participantCapacity > 0 && <span className="rounded-lg bg-slate-100 px-3 py-2 dark:bg-white/10">Kapasitas: {formData.participantCapacity.toLocaleString('id-ID')} peserta</span>}
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4 text-xs dark:border-white/10">
+          <span className="text-slate-500 dark:text-slate-400">{saveState.status === 'Unsaved Changes' ? 'Ada perubahan belum disimpan' : saveState.status === 'Saving…' ? 'Sedang menyimpan' : saveState.status === 'Save Failed' ? 'Penyimpanan terakhir gagal' : 'Data siap dikelola'}</span>
+          <button type="button" disabled={isReloading || isSaving || saveState.status === 'Unsaved Changes'} onClick={async () => {
+            setIsReloading(true);
+            try { await eventStudioService.refreshGeneralEvent(); }
+            catch (error) { console.error('Gagal memuat event:', error); }
+            finally { setIsReloading(false); }
+          }} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-white/20 dark:text-slate-200 dark:hover:bg-white/10">
+            <RefreshCw className="h-4 w-4" /> {isReloading ? 'Memuat...' : 'Muat Ulang dari GAS'}
+          </button>
+        </div>
+      </div>
+      {activeSection === null ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {sections.map(({ id, title, description, icon: Icon }) => (
+            <button key={id} type="button" onClick={() => setActiveSection(id)} className="group flex min-h-36 flex-col items-start rounded-2xl border border-slate-200 bg-white p-5 text-left transition hover:border-emerald-500 hover:shadow-md dark:border-white/10 dark:bg-[#141418] dark:hover:border-emerald-500">
+              <Icon className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+              <span className="mt-3 text-sm font-bold text-slate-900 dark:text-white">{title}</span>
+              <span className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{description}</span>
+              <ArrowRight className="mt-auto self-end text-slate-400 group-hover:text-emerald-600" size={17} />
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#141418] sm:p-5">
+          <button type="button" onClick={() => setActiveSection(null)} className="mb-2 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:underline dark:text-emerald-400"><ChevronLeft className="h-4 w-4" /> Kembali ke Pilihan Pengaturan</button>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">{sections.find(section => section.id === activeSection)?.title}</h2>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{sections.find(section => section.id === activeSection)?.description}</p>
+        </div>
+      )}
       {toast && (
         <div className={`p-3.5 rounded-2xl border text-xs font-semibold flex items-center justify-between shadow-lg ${
           toast.type === 'error'
@@ -155,6 +215,8 @@ export const GeneralEventEditor: React.FC = () => {
         </div>
       )}
 
+      {(activeSection === 'publication') && (
+        <>
       {/* 1. Status Lifecycle Selector */}
       <div className="p-5 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-3 shadow-xs">
         <div className="flex items-center justify-between">
@@ -191,6 +253,10 @@ export const GeneralEventEditor: React.FC = () => {
         </div>
       </div>
 
+        </>
+      )}
+      {(activeSection === 'identity') && (
+        <>
       {/* 2. Core Identity Fields */}
       <div className="p-5 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-4 shadow-xs">
         <h2 className="text-sm font-bold text-[#171717] dark:text-white tracking-tight flex items-center gap-2">
@@ -303,6 +369,10 @@ export const GeneralEventEditor: React.FC = () => {
         Perubahan aturan siapa yang boleh mendaftar akan dilakukan secara terpisah setelah pemeriksaan GAS.
       </div>
 
+        </>
+      )}
+      {(activeSection === 'media') && (
+        <>
       {/* 2c. Branding Media (Logo & Banner) */}
       <div className="p-5 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-4 shadow-xs">
         <div>
@@ -363,6 +433,10 @@ export const GeneralEventEditor: React.FC = () => {
         </div>
       </div>
 
+        </>
+      )}
+      {(activeSection === 'dates' || activeSection === 'registration') && (
+        <>
       {/* 3. Dates & Capacity */}
       <div className="p-5 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-4 shadow-xs">
         <h2 className="text-sm font-bold text-[#171717] dark:text-white tracking-tight flex items-center gap-2">
@@ -371,6 +445,8 @@ export const GeneralEventEditor: React.FC = () => {
         </h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+          {activeSection === 'dates' && (
+            <>
           <div>
             <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1.5">Mulai Kemah:</label>
             <input
@@ -382,6 +458,10 @@ export const GeneralEventEditor: React.FC = () => {
             />
           </div>
 
+            </>
+          )}
+          {activeSection === 'dates' && (
+            <>
           <div>
             <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1.5">Selesai Kemah:</label>
             <input
@@ -393,6 +473,10 @@ export const GeneralEventEditor: React.FC = () => {
             />
           </div>
 
+            </>
+          )}
+          {activeSection === 'registration' && (
+            <>
           <div>
             <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1.5">Buka Pendaftaran:</label>
             <input
@@ -403,6 +487,10 @@ export const GeneralEventEditor: React.FC = () => {
             />
           </div>
 
+            </>
+          )}
+          {activeSection === 'registration' && (
+            <>
           <div>
             <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1.5">Tutup Pendaftaran:</label>
             <input
@@ -413,6 +501,10 @@ export const GeneralEventEditor: React.FC = () => {
             />
           </div>
 
+            </>
+          )}
+          {activeSection === 'registration' && (
+            <>
           <div className="sm:col-span-2">
             <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1.5">Kapasitas Maksimal Peserta:</label>
             <div className="relative">
@@ -428,6 +520,10 @@ export const GeneralEventEditor: React.FC = () => {
             </div>
           </div>
 
+            </>
+          )}
+          {activeSection === 'dates' && (
+            <>
           <div className="sm:col-span-2">
             <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1.5">Bumi Perkemahan / Venue:</label>
             <input
@@ -438,9 +534,15 @@ export const GeneralEventEditor: React.FC = () => {
               placeholder="Contoh: Bumi Perkemahan Utama"
             />
           </div>
+            </>
+          )}
         </div>
       </div>
 
+        </>
+      )}
+      {(activeSection === 'contacts') && (
+        <>
       {/* 4. Important Contacts */}
       <div className="p-5 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-4 shadow-xs">
         <h2 className="text-sm font-bold text-[#171717] dark:text-white tracking-tight flex items-center gap-2">
@@ -501,6 +603,9 @@ export const GeneralEventEditor: React.FC = () => {
         </div>
       </div>
 
+        </>
+      )}
+      {activeSection !== null && (
       <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
         <div className="flex items-center gap-2">
           <div className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all ${
@@ -550,6 +655,7 @@ export const GeneralEventEditor: React.FC = () => {
           <span>{isSaving ? 'Menyimpan ke Backend…' : 'Simpan Pengaturan Umum Event'}</span>
         </button>
       </div>
+      )}
     </form>
   );
 };
