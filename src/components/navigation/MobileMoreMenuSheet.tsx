@@ -9,7 +9,6 @@ import {
   X,
   Calendar,
   Trophy,
-  Flame,
   Image as ImageIcon,
   Users,
   CreditCard,
@@ -18,11 +17,8 @@ import {
   Globe,
   Sliders,
   ShieldCheck,
-  Building,
   UserCheck,
-  FolderTree,
   Database,
-  ArrowRight,
   Award,
   LayoutDashboard,
   Sun,
@@ -68,6 +64,13 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
   onLogout,
 }) => {
   const [appearanceMode, setAppearanceMode] = useState<AppearanceMode>(brandingService.getAppearance());
+  const [search, setSearch] = useState('');
+  const [, setFeatureRevision] = useState(0);
+
+  useEffect(() => featureControlService.subscribe(() => setFeatureRevision(v => v + 1)), []);
+  useEffect(() => {
+    if (isOpen) setSearch('');
+  }, [isOpen]);
 
   useEffect(() => {
     const unsub = brandingService.subscribe(mode => {
@@ -86,7 +89,7 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
     {
       title: 'Akun & Identitas',
       items: [
-        { id: 'profile', label: 'Profil & Koleksi Lencana', icon: Award },
+        { id: 'profile', label: 'Profil Saya', icon: Award },
         { id: 'leaderboard', label: 'Peringkat & XP Saya', icon: Zap, feature: 'POINTS_XP' },
       ],
     },
@@ -119,7 +122,7 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
     {
       title: 'Operasional',
       items: [
-        { id: 'event_studio', label: 'Pengaturan Event', icon: Sliders },
+        { id: 'event_studio', label: 'Pengaturan Event', icon: Sliders, adminOnly: true },
         { id: 'health', label: 'Posko Medis & P3K', icon: Stethoscope, feature: 'HEALTH' },
         { id: 'logistics', label: 'Gudang Logistik', icon: Boxes, feature: 'LOGISTICS' },
       ],
@@ -134,6 +137,7 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
     {
       title: 'Sistem & Konfigurasi',
       items: [
+        { id: 'profile', label: 'Profil Saya', icon: Award },
         { id: 'admin_dashboard', label: 'Ringkasan Admin', icon: LayoutDashboard, adminOnly: true },
         { id: 'database_storage', label: 'Database Spreadsheet', icon: Database, adminOnly: true },
         { id: 'branding_settings', label: 'Branding & Tampilan', icon: Sparkles, adminOnly: true },
@@ -165,6 +169,10 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
         return true;
       }),
     }))
+    .map(grp => ({
+      ...grp,
+      items: grp.items.filter(item => `${item.label} ${grp.title}`.toLocaleLowerCase('id').includes(search.trim().toLocaleLowerCase('id'))),
+    }))
     .filter(grp => grp.items.length > 0);
 
   const toggleTheme = () => {
@@ -173,8 +181,8 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="w-full max-w-lg bg-white dark:bg-[#141418] rounded-t-[32px] border-t border-[#ECECEF] dark:border-white/10 shadow-2xl max-h-[85vh] flex flex-col animate-in slide-in-from-bottom duration-200">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 backdrop-blur-sm" onClick={onClose} role="presentation">
+      <section role="dialog" aria-modal="true" aria-label="Menu fitur SiEpang" onClick={e => e.stopPropagation()} className="w-full max-w-lg bg-white dark:bg-[#141418] rounded-t-[28px] border-t border-slate-200 dark:border-white/10 shadow-2xl max-h-[88dvh] flex flex-col">
         {/* Header Handle */}
         <div className="p-4 pb-2 border-b border-[#ECECEF] dark:border-white/10 flex items-center justify-between">
           <div className="w-10 h-1 bg-slate-200 dark:bg-white/20 rounded-full mx-auto absolute left-1/2 -translate-x-1/2 top-2.5" />
@@ -190,14 +198,25 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
           </button>
         </div>
 
-        {/* Content List with Categorized Groups */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="px-4 pt-3">
+          <label htmlFor="siepang-mobile-menu-search" className="sr-only">Cari fitur</label>
+          <input
+            id="siepang-mobile-menu-search"
+            type="search"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Cari halaman atau fitur..."
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-emerald-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+          />
+        </div>
+        {/* Kategori dan kartu navigasi halaman, bukan anchor scroll. */}
+        <div className="flex-1 overflow-y-auto overscroll-contain p-4 pb-[max(24px,env(safe-area-inset-bottom))] space-y-4">
           {filteredGroups.map(grp => (
             <div key={grp.title} className="space-y-1.5">
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">
                 {grp.title}
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {grp.items.map(item => {
                   const Icon = item.icon;
                   const isActive = activeTab === item.id;
@@ -209,16 +228,18 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
                         onSelectTab(item.id);
                         onClose();
                       }}
-                      className={`p-3 rounded-2xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
+                      aria-current={isActive ? 'page' : undefined}
+                      aria-label={`Buka halaman ${item.label}`}
+                      className={`min-h-[96px] p-3 rounded-2xl border text-left flex flex-col justify-between items-start gap-2 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-600 ${
                         isActive
                           ? 'bg-[#208C60]/10 border-[#208C60]/30 text-[#208C60] dark:text-[#F47743] font-bold'
                           : 'bg-slate-50 dark:bg-white/5 border-[#ECECEF] dark:border-white/5 text-[#171717] dark:text-white hover:border-[#208C60]/30'
                       }`}
                     >
-                      <div className="w-8 h-8 rounded-xl bg-white dark:bg-white/10 flex items-center justify-center text-[#208C60] shrink-0 shadow-2xs">
+                      <div className="w-10 h-10 rounded-xl bg-white dark:bg-white/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400 shrink-0">
                         <Icon className="w-4 h-4 stroke-[2.2]" />
                       </div>
-                      <span className="text-xs font-bold truncate">{item.label}</span>
+                      <span className="text-xs font-semibold leading-snug line-clamp-2">{item.label}</span>
                     </button>
                   );
                 })}
@@ -226,6 +247,11 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
             </div>
           ))}
 
+          {filteredGroups.length === 0 && (
+            <div className="rounded-xl bg-slate-50 p-5 text-center text-sm text-slate-600 dark:bg-white/5 dark:text-slate-300" role="status">
+              Tidak ada fitur yang sesuai pencarian atau izin akun Anda.
+            </div>
+          )}
           {/* Theme Switcher Row */}
           <div className="pt-2 border-t border-[#ECECEF] dark:border-white/5 flex items-center justify-between px-1">
             <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
@@ -267,7 +293,7 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
             </div>
           )}
         </div>
-      </div>
+      </section>
     </div>
   );
 };
