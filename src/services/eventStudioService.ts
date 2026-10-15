@@ -53,6 +53,8 @@ export interface StudioSaveState {
 class EventStudioService {
   // Local cache for immediate UI responsiveness and offline hydration
   private event: ScoutEvent = { ...EMPTY_EVENT };
+  private eventLoadReady = false;
+  private eventLoadError: string | null = null;
   private schedules: ScheduleItem[] = [];
   private activities: CampActivity[] = [];
   private activityTypes: ActivityType[] = [];
@@ -449,8 +451,11 @@ class EventStudioService {
 
       if (evRes.ok && evRes.data) {
         this.event = this.normalizeEvent(evRes.data);
+        this.eventLoadReady = true;
+        this.eventLoadError = null;
       } else {
-        this.event = { ...EMPTY_EVENT };
+        // Preserve the last confirmed event; an API failure is not an empty event.
+        this.eventLoadError = evRes.error?.message || 'Gagal memuat pengaturan event dari GAS.';
       }
       if (schRes.success && schRes.data) this.schedules = schRes.data;
       if (actRes.success && actRes.data) this.activities = actRes.data;
@@ -516,6 +521,9 @@ class EventStudioService {
     this.notify();
 
     try {
+      if (!this.eventLoadReady) {
+        throw new Error('Pengaturan event belum berhasil dimuat dari GAS.');
+      }
       const eventId = String(this.event.id || '').trim();
 
       if (!eventId) {
@@ -579,6 +587,23 @@ class EventStudioService {
     return this.event;
   }
 
+  public getEventLoadStatus(): { ready: boolean; error: string | null } {
+    return { ready: this.eventLoadReady, error: this.eventLoadError };
+  }
+
+  public async refreshGeneralEvent(): Promise<void> {
+    const res = await apiTransport.send<ScoutEvent>('events.get', {}, { timeoutMs: 30000 });
+    if (!res.ok || !res.data) {
+      this.eventLoadError = res.error?.message || 'Gagal membaca pengaturan event dari GAS.';
+      this.notify();
+      throw new Error(this.eventLoadError);
+    }
+    this.event = this.normalizeEvent(res.data);
+    this.eventLoadReady = true;
+    this.eventLoadError = null;
+    this.notify();
+  }
+
   public async updateEvent(updates: Partial<ScoutEvent>): Promise<ScoutEvent> {
     // Manual save supersedes a pending autosave of an earlier draft.
     if (this.debounceTimer) {
@@ -587,6 +612,13 @@ class EventStudioService {
     }
     this.saveState = { ...this.saveState, status: 'Saving…' };
     this.notify();
+
+    if (!this.eventLoadReady) {
+      const message = 'Pengaturan event belum berhasil dimuat dari GAS. Penyimpanan diblokir agar data tidak tertimpa nilai sementara.';
+      this.saveState = { ...this.saveState, hasUnsaved: true, status: 'Save Failed', errorMessage: message };
+      this.notify();
+      throw new Error(message);
+    }
 
     const eventId = String(this.event.id || '').trim();
     if (!eventId) {
