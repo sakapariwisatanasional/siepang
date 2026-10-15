@@ -130,6 +130,10 @@ export const FeatureSettingsEditor: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [tick, setTick] = useState(0);
+  const [loadingFeatures, setLoadingFeatures] = useState(true);
+  const [featureLoadError, setFeatureLoadError] = useState<string | null>(null);
+  const [savingFeature, setSavingFeature] = useState<SystemFeatureKey | null>(null);
+  const [savingLayout, setSavingLayout] = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -142,6 +146,33 @@ export const FeatureSettingsEditor: React.FC = () => {
     });
     return () => unsub();
   }, []);
+
+  // Server data is authoritative. Never treat seeded defaults as confirmed Spreadsheet values.
+  useEffect(() => {
+    let active = true;
+    setLoadingFeatures(true);
+    setFeatureLoadError(null);
+    featureControlService.refreshAllFromSpreadsheet()
+      .then(() => { if (active) setLoadingFeatures(false); })
+      .catch((err: unknown) => {
+        if (!active) return;
+        setFeatureLoadError(err instanceof Error ? err.message : 'Gagal membaca konfigurasi dari GAS.');
+        setLoadingFeatures(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  const retryFeatureLoad = async () => {
+    setLoadingFeatures(true);
+    setFeatureLoadError(null);
+    try {
+      await featureControlService.refreshAllFromSpreadsheet();
+    } catch (err: unknown) {
+      setFeatureLoadError(err instanceof Error ? err.message : 'Gagal membaca konfigurasi dari GAS.');
+    } finally {
+      setLoadingFeatures(false);
+    }
+  };
 
   // Canonical categories list
   const categories = [
@@ -176,49 +207,70 @@ export const FeatureSettingsEditor: React.FC = () => {
     INFORMATION_BANNER: 'informationBanner',
   };
 
-  const handleToggleFeature = (key: SystemFeatureKey) => {
+  const handleToggleFeature = async (key: SystemFeatureKey) => {
+    if (savingFeature || loadingFeatures || featureLoadError) return;
+    setSavingFeature(key);
     try {
-      const nextState = featureControlService.toggleEventFeature(key);
+      // GAS writes FeatureConfigs, verifies the row, and reloads authoritative state.
+      const nextState = await featureControlService.toggleEventFeature(key);
 
-      // Sync legacy feature if mapped
+      // Legacy feature flags may still be consumed by old SiEpang screens.
+      // Keep them in sync with the verified value, never blindly invert a cached flag.
       const legacyKey = legacyKeyMap[key];
       if (legacyKey) {
-        eventStudioService.toggleFeature(legacyKey);
+        try {
+          await eventStudioService.updateEventFeature(legacyKey, nextState);
+        } catch (syncError: unknown) {
+          showToast(`FeatureConfigs tersimpan, tetapi sinkronisasi fitur lama gagal: ${syncError instanceof Error ? syncError.message : String(syncError)}`);
+          return;
+        }
       }
-
-      showToast(`Fitur ${key} berhasil diubah ke ${nextState ? 'Aktif' : 'Nonaktif'}.`);
-    } catch (err: any) {
-      showToast(`❌ ${err.message}`);
+      showToast(`Fitur ${key} tersimpan di Spreadsheet: ${nextState ? 'Aktif' : 'Nonaktif'}.`);
+    } catch (err: unknown) {
+      showToast(`❌ Gagal menyimpan: ${err instanceof Error ? err.message : String(err)}`);
+      try { await featureControlService.refreshAllFromSpreadsheet(); }
+      catch (reloadError: unknown) {
+        setFeatureLoadError(reloadError instanceof Error ? reloadError.message : 'Gagal memuat ulang Feature Control.');
+      }
+    } finally {
+      setSavingFeature(null);
     }
   };
 
   const handleToggleSection = async (sectionId: string) => {
-    const updated = homeSections.map(s => (s.id === sectionId ? { ...s, enabled: !s.enabled } : s));
-    setHomeSections(updated);
+    if (savingLayout) return;
+    const previous = homeSections.map(s => ({ ...s }));
+    const updated = homeSections.map(s => (s.id === sectionId ? { ...s, enabled: !s.enabled } : { ...s }));
+    setSavingLayout(true);
     try {
-      await eventStudioService.updateHomeSections(updated);
-      showToast('Tampilan seksi beranda peserta diperbarui.');
-    } catch (err: any) {
-      showToast(`❌ Gagal: ${err.message}`);
+      const confirmed = await eventStudioService.updateHomeSections(updated);
+      setHomeSections(confirmed);
+      showToast('Tampilan seksi beranda peserta berhasil disimpan.');
+    } catch (err: unknown) {
+      setHomeSections(previous);
+      showToast(`❌ Gagal menyimpan tata letak: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSavingLayout(false);
     }
   };
 
   const handleMoveSection = async (index: number, direction: 'up' | 'down') => {
-    if ((direction === 'up' && index === 0) || (direction === 'down' && index === homeSections.length - 1)) return;
+    if (savingLayout || (direction === 'up' && index === 0) || (direction === 'down' && index === homeSections.length - 1)) return;
+    const previous = homeSections.map(s => ({ ...s }));
     const targetIdx = direction === 'up' ? index - 1 : index + 1;
-    const updated = [...homeSections];
-    const temp = updated[index];
-    updated[index] = updated[targetIdx];
-    updated[targetIdx] = temp;
-    updated.forEach((s, idx) => {
-      s.order = idx + 1;
-    });
-    setHomeSections(updated);
+    const updated = homeSections.map(s => ({ ...s }));
+    [updated[index], updated[targetIdx]] = [updated[targetIdx], updated[index]];
+    updated.forEach((s, idx) => { s.order = idx + 1; });
+    setSavingLayout(true);
     try {
-      await eventStudioService.updateHomeSections(updated);
-      showToast('Urutan susunan beranda berhasil disesuaikan.');
-    } catch (err: any) {
-      showToast(`❌ Gagal: ${err.message}`);
+      const confirmed = await eventStudioService.updateHomeSections(updated);
+      setHomeSections(confirmed);
+      showToast('Urutan beranda berhasil disimpan.');
+    } catch (err: unknown) {
+      setHomeSections(previous);
+      showToast(`❌ Gagal menyimpan urutan: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSavingLayout(false);
     }
   };
 
@@ -294,6 +346,17 @@ export const FeatureSettingsEditor: React.FC = () => {
           ))}
         </div>
 
+        {loadingFeatures && (
+          <div role="status" className="text-xs text-slate-500 flex items-center gap-2">
+            <RefreshCw className="w-4 h-4 animate-spin" /> Membaca Feature Control dari Spreadsheet…
+          </div>
+        )}
+        {featureLoadError && (
+          <div role="alert" className="p-3 rounded-xl bg-rose-50 text-rose-700 text-xs flex items-center justify-between gap-2">
+            <span>Konfigurasi belum dapat diverifikasi dari Spreadsheet: {featureLoadError}</span>
+            <button type="button" onClick={retryFeatureLoad} className="font-bold underline shrink-0">Coba lagi</button>
+          </div>
+        )}
         {/* Grid of Canonical Features */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {filteredFeatures.map(def => {
@@ -345,12 +408,13 @@ export const FeatureSettingsEditor: React.FC = () => {
                 {/* IOS Style Toggle Switch */}
                 <button
                   type="button"
-                  disabled={isLocked}
+                  disabled={isLocked || loadingFeatures || !!featureLoadError || savingFeature !== null}
                   onClick={() => handleToggleFeature(def.key)}
                   className={`w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                     isEnabled ? 'bg-purple-600' : 'bg-slate-300 dark:bg-slate-700'
                   }`}
                   aria-label={`Toggle ${def.name}`}
+                  aria-busy={savingFeature === def.key}
                 >
                   <div
                     className={`w-5 h-5 rounded-full bg-white shadow-xs transition-transform duration-200 ${
@@ -394,7 +458,7 @@ export const FeatureSettingsEditor: React.FC = () => {
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
-                  disabled={idx === 0}
+                  disabled={savingLayout || idx === 0}
                   onClick={() => handleMoveSection(idx, 'up')}
                   className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-20 transition-colors"
                   title="Naikkan Urutan"
@@ -404,7 +468,7 @@ export const FeatureSettingsEditor: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  disabled={idx === homeSections.length - 1}
+                  disabled={savingLayout || idx === homeSections.length - 1}
                   onClick={() => handleMoveSection(idx, 'down')}
                   className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-20 transition-colors"
                   title="Turunkan Urutan"
@@ -415,6 +479,7 @@ export const FeatureSettingsEditor: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => handleToggleSection(sec.id)}
+                  disabled={savingLayout}
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors ${
                     sec.enabled
                       ? 'bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 border border-purple-200/50'
