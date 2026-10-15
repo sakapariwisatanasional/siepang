@@ -39,6 +39,7 @@ import {
   RoleScopedSnapshot,
 } from '../types';
 import { apiTransport } from './apiTransport';
+import { workspaceService } from './workspaceService';
 import { EMPTY_EVENT } from './eventService';
 
 export type SaveStatusType = 'Saved ✓' | 'Saving…' | 'Unsaved Changes' | 'Save Failed';
@@ -55,6 +56,7 @@ class EventStudioService {
   private event: ScoutEvent = { ...EMPTY_EVENT };
   private eventLoadReady = false;
   private eventLoadError: string | null = null;
+  private eventConfirmedMissing = false;
   private schedules: ScheduleItem[] = [];
   private activities: CampActivity[] = [];
   private activityTypes: ActivityType[] = [];
@@ -588,20 +590,70 @@ class EventStudioService {
   }
 
   public getEventLoadStatus(): { ready: boolean; error: string | null } {
-    return { ready: this.eventLoadReady, error: this.eventLoadError };
+    return { ready: this.eventLoadReady, error: this.eventLoadError, notFound: this.eventConfirmedMissing };
   }
 
   public async refreshGeneralEvent(): Promise<void> {
     const res = await apiTransport.send<ScoutEvent>('events.get', {}, { timeoutMs: 30000 });
     if (!res.ok || !res.data) {
+      this.eventConfirmedMissing = false;
       this.eventLoadError = res.error?.message || 'Gagal membaca pengaturan event dari GAS.';
+      // An absent specific event is not proof that the workspace has no events.
+      // Only an authoritative empty events.list can enable event creation.
+      if (res.error?.code === 'EVENT_NOT_FOUND') {
+        const ws = workspaceService.getCurrentWorkspace()?.id;
+        if (ws) {
+          const listing = await apiTransport.send<ScoutEvent[]>('events.list', { workspace_id: ws }, { timeoutMs: 30000 });
+          this.eventConfirmedMissing = Boolean(listing.ok && Array.isArray(listing.data) && listing.data.length === 0);
+        }
+      }
       this.notify();
       throw new Error(this.eventLoadError);
     }
-    this.event = this.normalizeEvent(res.data);
+    const normalized = this.normalizeEvent(res.data);
+    if (!String(normalized.id || '').trim()) {
+      this.eventLoadError = 'Respons events.get tidak memiliki ID event.';
+      this.notify();
+      throw new Error(this.eventLoadError);
+    }
+    this.event = normalized;
     this.eventLoadReady = true;
+    this.eventConfirmedMissing = false;
     this.eventLoadError = null;
     this.notify();
+  }
+
+  public async createNewEvent(input: { name: string; shortName?: string; startDate: string; endDate: string; location?: string }): Promise<ScoutEvent> {
+    if (this.eventLoadReady || !this.eventConfirmedMissing) {
+      throw new Error('Pembuatan event hanya tersedia setelah GAS memastikan workspace belum memiliki event.');
+    }
+    const workspaceId = workspaceService.getCurrentWorkspace()?.id;
+    if (!workspaceId) throw new Error('Workspace aktif tidak ditemukan.');
+    const name = input.name.trim();
+    if (!name || !/^\d{4}-\d{2}-\d{2}$/.test(input.startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(input.endDate) || input.endDate < input.startDate) {
+      throw new Error('Nama dan rentang tanggal kegiatan wajib diisi dengan benar.');
+    }
+    // Recheck immediately before mutation to avoid duplicate events from stale UI state.
+    const check = await apiTransport.send<ScoutEvent[]>('events.list', { workspace_id: workspaceId }, { timeoutMs: 30000 });
+    if (!check.ok || !Array.isArray(check.data)) throw new Error(check.error?.message || 'Gagal memastikan daftar event dari GAS.');
+    if (check.data.length !== 0) {
+      this.eventConfirmedMissing = false;
+      this.eventLoadError = 'Workspace sudah memiliki event. Muat ulang halaman dan pilih event yang tersedia.';
+      this.notify();
+      throw new Error(this.eventLoadError);
+    }
+    const created = await apiTransport.send<ScoutEvent>('events.create', {
+      event: { workspace_id: workspaceId, name, shortName: input.shortName?.trim() || name, startDate: input.startDate, endDate: input.endDate, location: input.location?.trim() || '', status: 'DRAFT' },
+    }, { timeoutMs: 30000 });
+    if (!created.ok || !created.data) throw new Error(created.error?.message || 'Gagal membuat event baru di GAS.');
+    const normalized = this.normalizeEvent(created.data);
+    if (!normalized.id || normalized.workspaceId !== workspaceId) throw new Error('GAS tidak mengembalikan identitas event yang sesuai. Periksa daftar Events sebelum mencoba lagi.');
+    this.event = normalized;
+    this.eventLoadReady = true;
+    this.eventConfirmedMissing = false;
+    this.eventLoadError = null;
+    this.notify();
+    return normalized;
   }
 
   public async updateEvent(updates: Partial<ScoutEvent>): Promise<ScoutEvent> {
@@ -613,23 +665,24 @@ class EventStudioService {
     this.saveState = { ...this.saveState, status: 'Saving…' };
     this.notify();
 
-    if (!this.eventLoadReady) {
-      const message = 'Pengaturan event belum berhasil dimuat dari GAS. Penyimpanan diblokir agar data tidak tertimpa nilai sementara.';
-      this.saveState = { ...this.saveState, hasUnsaved: true, status: 'Save Failed', errorMessage: message };
-      this.notify();
-      throw new Error(message);
+    // Recover authoritative event identity before saving. A transient initialSync
+    // failure must not make a valid Spreadsheet event permanently unsaveable.
+    // Do not synthesize an ID or write the locally edited form as the source.
+    if (!this.eventLoadReady || !String(this.event.id || '').trim()) {
+      try {
+        await this.refreshGeneralEvent();
+      } catch (error: any) {
+        const message = `Gagal membaca event aktif dari GAS. Perubahan belum disimpan. ${error?.message || ''}`.trim();
+        this.saveState = { ...this.saveState, hasUnsaved: true, status: 'Save Failed', errorMessage: message };
+        this.notify();
+        throw new Error(message);
+      }
     }
 
     const eventId = String(this.event.id || '').trim();
     if (!eventId) {
-      const message =
-        'Event aktif belum terhubung ke backend. Muat ulang Event Studio lalu coba lagi.';
-      this.saveState = {
-        hasUnsaved: true,
-        status: 'Save Failed',
-        lastSaved: this.saveState.lastSaved,
-        errorMessage: message,
-      };
+      const message = 'Respons events.get tidak berisi ID event valid. Penyimpanan dibatalkan untuk melindungi data.';
+      this.saveState = { ...this.saveState, hasUnsaved: true, status: 'Save Failed', errorMessage: message };
       this.notify();
       throw new Error(message);
     }
