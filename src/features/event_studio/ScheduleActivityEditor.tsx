@@ -41,10 +41,43 @@ import { ScheduleItem, CampActivity, ActivityType, ScheduleConflict, ActivityQrC
 import { ActivityQrModal } from '../activities/ActivityQrModal';
 import { ActivityQrSignPrint } from '../activities/ActivityQrSignPrint';
 
+
+// Dates are read only from the active event. No synthetic event or sample dates.
+const parseEventDate = (value: string): Date | null => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ''));
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? date : null;
+};
+
+const eventDayOptions = (startValue: string, endValue: string) => {
+  const start = parseEventDate(startValue);
+  const end = parseEventDate(endValue);
+  if (!start || !end || end.getTime() < start.getTime()) return [];
+  const duration = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+  if (duration > 366) return []; // Prevent accidental unbounded UI if event dates are invalid.
+  return Array.from({ length: duration }, (_, index) => {
+    const date = new Date(start.getTime() + index * 86400000);
+    return {
+      day: index + 1,
+      date: date.toISOString().slice(0, 10),
+      label: `Hari ${index + 1} (${new Intl.DateTimeFormat('id-ID', { timeZone: 'UTC', day: 'numeric', month: 'short' }).format(date)})`,
+    };
+  });
+};
+
 export const ScheduleActivityEditor: React.FC = () => {
+  const [eventVersion, setEventVersion] = useState(0);
+  useEffect(() => eventStudioService.subscribe(() => setEventVersion(version => version + 1)), []);
+  const activeEvent = eventStudioService.getEvent();
+  const eventDays = eventDayOptions(activeEvent.startDate, activeEvent.endDate);
+  void eventVersion;
   const [subTab, setSubTab] = useState<'schedule' | 'activities'>('schedule');
   const [viewMode, setViewMode] = useState<'cards' | 'timeline'>('cards');
-  const [selectedDay, setSelectedDay] = useState<number | 'all'>(1);
+  const [selectedDay, setSelectedDay] = useState<number | 'all'>('all');
   const [scheduleList, setScheduleList] = useState<ScheduleItem[]>(eventStudioService.getSchedule());
   const [activityList, setActivityList] = useState<CampActivity[]>(eventStudioService.getActivities());
   const [activityTypes, setActivityTypes] = useState<ActivityType[]>(eventStudioService.listActivityTypes());
@@ -94,13 +127,13 @@ export const ScheduleActivityEditor: React.FC = () => {
   const [scheduleForm, setScheduleForm] = useState<Omit<ScheduleItem, 'id'>>({
     title: '',
     category: 'pioneering',
-    time: '08:00 - 10:00',
-    date: '2026-10-11',
-    dayNumber: 2,
-    location: 'Lapangan Utama Selogiri',
+    time: '',
+    date: '',
+    dayNumber: 1,
+    location: '',
     description: '',
-    mandatoryFor: ['Semua Peserta'],
-    xpReward: 25,
+    mandatoryFor: [],
+    xpReward: 0,
     status: 'upcoming',
   });
 
@@ -111,10 +144,10 @@ export const ScheduleActivityEditor: React.FC = () => {
     type: activityTypes[0]?.name || 'Pioneering',
     description: '',
     targetGroup: 'Penggalang & Penegak',
-    location: 'Zona Lapangan Buper',
+    location: '',
     startTime: '08:00',
     endTime: '11:00',
-    dayNumber: 2,
+    dayNumber: 1,
     attendanceRequired: true,
     pointRule: 20,
     capacity: 200,
@@ -129,17 +162,22 @@ export const ScheduleActivityEditor: React.FC = () => {
   };
 
   const handleOpenAddSchedule = () => {
+    if (!eventDays.length) {
+      showToast('Atur Tanggal Mulai dan Tanggal Selesai event terlebih dahulu di Pengaturan Umum Event.');
+      return;
+    }
+    const selected = eventDays.find(day => day.day === selectedDay) || eventDays[0];
     setEditingScheduleId(null);
     setScheduleForm({
       title: '',
       category: 'pioneering',
-      time: '08:00 - 10:00',
-      date: '2026-10-11',
-      dayNumber: typeof selectedDay === 'number' ? selectedDay : 1,
-      location: 'Lapangan Utama Selogiri',
+      time: '',
+      date: selected.date,
+      dayNumber: selected.day,
+      location: '',
       description: '',
-      mandatoryFor: ['Semua Peserta'],
-      xpReward: 20,
+      mandatoryFor: [],
+      xpReward: 0,
       status: 'upcoming',
     });
     setShowScheduleModal(true);
@@ -164,12 +202,17 @@ export const ScheduleActivityEditor: React.FC = () => {
 
   const handleSaveSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!scheduleForm.title) return;
-
+    if (!scheduleForm.title.trim()) return;
+    const selectedDate = eventDays.find(day => day.day === scheduleForm.dayNumber);
+    if (!selectedDate) {
+      showToast('Tanggal event belum valid atau hari agenda berada di luar rentang event.');
+      return;
+    }
+    const payload = { ...scheduleForm, date: selectedDate.date };
     try {
       if (editingScheduleId) {
         const prevItem = scheduleList.find(s => s.id === editingScheduleId);
-        await eventStudioService.updateSchedule(editingScheduleId, scheduleForm);
+        await eventStudioService.updateSchedule(editingScheduleId, payload);
         showToast('✅ Agenda jadwal berhasil diperbarui!');
         if (
           prevItem &&
@@ -184,7 +227,7 @@ export const ScheduleActivityEditor: React.FC = () => {
           });
         }
       } else {
-        await eventStudioService.addSchedule(scheduleForm);
+        await eventStudioService.addSchedule(payload);
         showToast('✅ Agenda jadwal baru berhasil ditambahkan!');
       }
       setScheduleList([...eventStudioService.getSchedule()]);
@@ -251,8 +294,10 @@ export const ScheduleActivityEditor: React.FC = () => {
   };
 
   const handleMoveDay = async (id: string, newDay: number) => {
+    const target = eventDays.find(day => day.day === newDay);
+    if (!target) return;
     try {
-      await eventStudioService.moveScheduleDay(id, newDay);
+      await eventStudioService.updateSchedule(id, { dayNumber: newDay, date: target.date });
       setScheduleList([...eventStudioService.getSchedule()]);
       showToast(`📅 Jadwal dipindahkan ke Hari ke-${newDay}`);
     } catch (err: any) {
@@ -365,19 +410,19 @@ export const ScheduleActivityEditor: React.FC = () => {
         </div>
       </div>
 
+      {!eventDays.length && (
+        <div role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-200">
+          Tanggal kegiatan belum tersedia atau tidak valid. Atur tanggal mulai dan selesai di Pengaturan Umum Event untuk membuat agenda. Agenda lama tetap ditampilkan melalui Semua Hari dan dapat dilihat tanpa perubahan data.
+        </div>
+      )}
+
       {/* SUB-TAB 1: SCHEDULE MANAGEMENT */}
       {subTab === 'schedule' && (
         <div className="space-y-4">
           {/* Day & View Switcher */}
           <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white dark:bg-[#141418] rounded-[24px] border border-[#ECECEF] dark:border-white/10 shadow-xs">
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-              {[
-                { day: 1, label: 'Hari 1 (10 Okt)' },
-                { day: 2, label: 'Hari 2 (11 Okt)' },
-                { day: 3, label: 'Hari 3 (12 Okt)' },
-                { day: 4, label: 'Hari 4 (13 Okt)' },
-                { day: 'all', label: 'Semua Hari' },
-              ].map(d => (
+              {[...eventDays, { day: 'all' as const, label: 'Semua Hari', date: '' }].map(d => (
                 <button
                   key={d.day.toString()}
                   onClick={() => setSelectedDay(d.day as any)}
@@ -484,7 +529,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                     {/* Move Day quick dropdown */}
                     <div className="flex items-center gap-1 text-[11px] text-slate-400">
                       <span>Pindah:</span>
-                      {[1, 2, 3, 4].filter(d => d !== item.dayNumber).map(d => (
+                      {eventDays.filter(d => d.day !== item.dayNumber).map(({ day: d }) => (
                         <button
                           key={d}
                           type="button"
@@ -540,6 +585,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                         title="Edit Agenda"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
+                        <span className="ml-1 text-[11px] font-semibold">Edit</span>
                       </button>
                       <button
                         type="button"
@@ -643,103 +689,101 @@ export const ScheduleActivityEditor: React.FC = () => {
       {/* SCHEDULE MODAL (ADD / EDIT) */}
       {showScheduleModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="w-full max-w-lg bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-lg bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90dvh] overflow-y-auto max-h-[90dvh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-[#171717] dark:text-white">
                 {editingScheduleId ? 'Edit Agenda Jadwal' : '+ Tambah Agenda Jadwal Baru'}
               </h3>
               <button
                 onClick={() => setShowScheduleModal(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 flex items-center justify-center cursor-pointer"
+                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-300 flex items-center justify-center cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSaveSchedule} className="space-y-3.5 text-xs">
+            <form onSubmit={handleSaveSchedule} className="space-y-4 text-sm">
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">Judul Kegiatan / Agenda:</label>
+                <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Judul Kegiatan / Agenda:</label>
                 <input
                   type="text"
                   value={scheduleForm.title}
                   onChange={e => setScheduleForm({ ...scheduleForm, title: e.target.value })}
                   placeholder="Contoh: Apel Senja & Penurunan Bendera"
-                  className="w-full px-3.5 py-2.5 bg-black/40 border border-white/10 rounded-2xl text-white focus:border-emerald-500 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 focus:outline-none"
                   required
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-slate-300 font-semibold block mb-1">Hari ke-:</label>
+                  <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Hari ke-:</label>
                   <select
                     value={scheduleForm.dayNumber}
                     onChange={e => setScheduleForm({ ...scheduleForm, dayNumber: Number(e.target.value) })}
-                    className="w-full px-3 py-2.5 bg-black/40 border border-white/10 rounded-2xl text-white"
+                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                   >
-                    <option value={1}>Hari 1 (Sabtu, 10 Okt)</option>
-                    <option value={2}>Hari 2 (Minggu, 11 Okt)</option>
-                    <option value={3}>Hari 3 (Senin, 12 Okt)</option>
-                    <option value={4}>Hari 4 (Selasa, 13 Okt)</option>
+                    {!eventDays.length && <option value={scheduleForm.dayNumber}>Tanggal event belum diatur</option>}
+                    {eventDays.map(day => <option key={day.date} value={day.day}>{day.label} · {day.date}</option>)}
                   </select>
                 </div>
 
                 <div>
-                  <label className="text-slate-300 font-semibold block mb-1">Rentang Waktu:</label>
+                  <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Rentang Waktu:</label>
                   <input
                     type="text"
                     value={scheduleForm.time}
                     onChange={e => setScheduleForm({ ...scheduleForm, time: e.target.value })}
                     placeholder="08:00 - 10:00 WIB"
-                    className="w-full px-3 py-2.5 bg-black/40 border border-white/10 rounded-2xl text-white font-mono"
+                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 font-mono"
                     required
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">Lokasi Kegiatan / Venue:</label>
+                <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Lokasi Kegiatan / Venue:</label>
                 <input
                   type="text"
                   value={scheduleForm.location}
                   onChange={e => setScheduleForm({ ...scheduleForm, location: e.target.value })}
-                  placeholder="Lapangan Utama Selogiri / Zona Pioneering"
-                  className="w-full px-3.5 py-2.5 bg-black/40 border border-white/10 rounded-2xl text-white"
+                  placeholder="Masukkan lokasi kegiatan"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                   required
                 />
               </div>
 
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">Sasaran / Peserta Wajib:</label>
+                <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Sasaran / Peserta Wajib:</label>
                 <input
                   type="text"
                   value={scheduleForm.mandatoryFor.join(', ')}
                   onChange={e => setScheduleForm({ ...scheduleForm, mandatoryFor: e.target.value.split(',').map(s => s.trim()) })}
                   placeholder="Semua Peserta, Penegak, Pembina Pendamping"
-                  className="w-full px-3.5 py-2.5 bg-black/40 border border-white/10 rounded-2xl text-white"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-slate-300 font-semibold block mb-1">Reward XP Peserta:</label>
+                  <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Reward XP Peserta:</label>
                   <div className="relative">
                     <input
                       type="number"
                       value={scheduleForm.xpReward}
                       onChange={e => setScheduleForm({ ...scheduleForm, xpReward: Number(e.target.value) })}
-                      className="w-full px-3 py-2.5 bg-black/40 border border-white/10 rounded-2xl text-amber-400 font-mono font-bold"
+                      className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-amber-700 dark:text-amber-400 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                     />
                     <span className="absolute right-3 top-2.5 text-slate-500 font-bold">XP</span>
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-slate-300 font-semibold block mb-1">Kategori Agenda:</label>
+                  <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Kategori Agenda:</label>
                   <select
                     value={scheduleForm.category}
                     onChange={e => setScheduleForm({ ...scheduleForm, category: e.target.value as any })}
-                    className="w-full px-3 py-2.5 bg-black/40 border border-white/10 rounded-2xl text-white"
+                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                   >
                     <option value="ceremony">Upacara / Apel</option>
                     <option value="pioneering">Pioneering</option>
@@ -752,13 +796,13 @@ export const ScheduleActivityEditor: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">Keterangan & Petunjuk Teknis:</label>
+                <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Keterangan & Petunjuk Teknis:</label>
                 <textarea
                   rows={2}
                   value={scheduleForm.description}
                   onChange={e => setScheduleForm({ ...scheduleForm, description: e.target.value })}
                   placeholder="Petunjuk pakaian, perlengkapan yang dibawa, dan formasi apel..."
-                  className="w-full px-3.5 py-2 bg-black/40 border border-white/10 rounded-2xl text-white"
+                  className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                 />
               </div>
 
@@ -766,7 +810,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowScheduleModal(false)}
-                  className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-xl"
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-slate-200 rounded-xl"
                 >
                   Batal
                 </button>
@@ -786,38 +830,38 @@ export const ScheduleActivityEditor: React.FC = () => {
       {/* ACTIVITY MODAL */}
       {showActivityModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="w-full max-w-lg bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-lg bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90dvh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-[#171717] dark:text-white">+ Tambah Jenis Aktivitas Kemah</h3>
               <button
                 onClick={() => setShowActivityModal(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 flex items-center justify-center cursor-pointer"
+                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-300 flex items-center justify-center cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSaveActivity} className="space-y-3.5 text-xs">
+            <form onSubmit={handleSaveActivity} className="space-y-4 text-sm">
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">Nama Aktivitas:</label>
+                <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Nama Aktivitas:</label>
                 <input
                   type="text"
                   value={activityForm.name}
                   onChange={e => setActivityForm({ ...activityForm, name: e.target.value })}
                   placeholder="Contoh: Wide Game Penjelajahan Rimba"
-                  className="w-full px-3.5 py-2.5 bg-black/40 border border-white/10 rounded-2xl text-white"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                   required
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="text-slate-300 font-semibold block">Tipe Kegiatan:</label>
+                    <label className="text-slate-700 dark:text-slate-200 font-semibold block">Tipe Kegiatan:</label>
                     <button
                       type="button"
                       onClick={() => setShowAddTypeModal(true)}
-                      className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold underline"
+                      className="text-[10px] text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 font-bold underline"
                     >
                       + Buat Tipe
                     </button>
@@ -825,7 +869,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                   <select
                     value={activityForm.type}
                     onChange={e => setActivityForm({ ...activityForm, type: e.target.value })}
-                    className="w-full px-3 py-2.5 bg-black/40 border border-white/10 rounded-2xl text-white font-medium"
+                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 font-medium"
                   >
                     {activityTypes.map(t => (
                       <option key={t.id} value={t.name}>
@@ -836,23 +880,23 @@ export const ScheduleActivityEditor: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="text-slate-300 font-semibold block mb-1">Poin XP Reward:</label>
+                  <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Poin XP Reward:</label>
                   <input
                     type="number"
                     value={activityForm.pointRule}
                     onChange={e => setActivityForm({ ...activityForm, pointRule: Number(e.target.value) })}
-                    className="w-full px-3 py-2.5 bg-black/40 border border-white/10 rounded-2xl text-amber-400 font-mono font-bold"
+                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-amber-700 dark:text-amber-400 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">Deskripsi Singkat:</label>
+                <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Deskripsi Singkat:</label>
                 <textarea
                   rows={2}
                   value={activityForm.description}
                   onChange={e => setActivityForm({ ...activityForm, description: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-black/40 border border-white/10 rounded-2xl text-white"
+                  className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                 />
               </div>
 
@@ -860,7 +904,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowActivityModal(false)}
-                  className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-xl"
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-slate-200 rounded-xl"
                 >
                   Batal
                 </button>
@@ -879,38 +923,41 @@ export const ScheduleActivityEditor: React.FC = () => {
       {/* CREATE ACTIVITY TYPE MODAL */}
       {showAddTypeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="w-full max-w-md bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-lg bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90dvh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-[#171717] dark:text-white">+ Buat Tipe Aktivitas Baru</h3>
+              <h3 className="text-base font-bold text-[#171717] dark:text-white">+ Buat Tipe Aktivitas Baru</h3>
               <button
                 type="button"
                 onClick={() => setShowAddTypeModal(false)}
-                className="w-7 h-7 rounded-full bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 flex items-center justify-center cursor-pointer"
+                aria-label="Tutup form tipe aktivitas"
+                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-300 flex items-center justify-center cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSaveType} className="space-y-3 text-xs">
+            <form onSubmit={handleSaveType} className="space-y-4 text-sm">
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">Nama Tipe Aktivitas:</label>
+                <label htmlFor="new-activity-type-name" className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Nama Tipe Aktivitas:</label>
                 <input
+                  id="new-activity-type-name"
                   type="text"
                   value={newTypeForm.name}
                   onChange={e => setNewTypeForm({ ...newTypeForm, name: e.target.value })}
                   placeholder="Contoh: Survival Laut, Drone Scouting..."
-                  className="w-full px-3 py-2 bg-black/50 border border-white/10 rounded-xl text-white"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                   required
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-slate-300 font-semibold block mb-1">Kategori Utama:</label>
+                  <label htmlFor="new-activity-type-category" className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Kategori Utama:</label>
                   <select
+                    id="new-activity-type-category"
                     value={newTypeForm.category}
                     onChange={e => setNewTypeForm({ ...newTypeForm, category: e.target.value })}
-                    className="w-full px-3 py-2 bg-black/50 border border-white/10 rounded-xl text-white"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                   >
                     <option value="scout_craft">Keterampilan</option>
                     <option value="adventure">Petualangan</option>
@@ -921,23 +968,26 @@ export const ScheduleActivityEditor: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="text-slate-300 font-semibold block mb-1">Default XP:</label>
+                  <label htmlFor="new-activity-type-xp" className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Default XP:</label>
                   <input
+                    id="new-activity-type-xp"
                     type="number"
+                    min={0}
                     value={newTypeForm.defaultXp}
                     onChange={e => setNewTypeForm({ ...newTypeForm, defaultXp: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-black/50 border border-white/10 rounded-xl text-amber-400 font-mono font-bold"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-amber-700 dark:text-amber-400 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">Deskripsi Ringkas:</label>
+                <label htmlFor="new-activity-type-description" className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Deskripsi Ringkas:</label>
                 <textarea
-                  rows={2}
+                  id="new-activity-type-description"
+                  rows={3}
                   value={newTypeForm.description}
                   onChange={e => setNewTypeForm({ ...newTypeForm, description: e.target.value })}
-                  className="w-full px-3 py-2 bg-black/50 border border-white/10 rounded-xl text-white"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                   placeholder="Penjelasan sasaran dan materi..."
                 />
               </div>
@@ -946,7 +996,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowAddTypeModal(false)}
-                  className="px-4 py-2 bg-white/5 hover:bg-white/10 text-slate-300 rounded-xl"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-slate-200 rounded-xl"
                 >
                   Batal
                 </button>
@@ -1066,8 +1116,8 @@ export const ScheduleActivityEditor: React.FC = () => {
                   className="w-full px-2.5 py-1.5 bg-[#0e1711] border border-white/10 rounded-xl text-white font-medium"
                 >
                   <option value="all">Semua Hari Perkemahan</option>
-                  {[1, 2, 3, 4].map(d => (
-                    <option key={d} value={d}>Hari ke-{d}</option>
+                  {eventDays.map(d => (
+                    <option key={d.date} value={d.day}>{d.label}</option>
                   ))}
                 </select>
               </div>
