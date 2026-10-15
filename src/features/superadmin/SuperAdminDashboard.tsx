@@ -8,7 +8,6 @@ import {
   Building2,
   Calendar,
   CheckCircle2,
-  Cpu,
   Plus,
   Server,
   ShieldCheck,
@@ -29,7 +28,6 @@ import { OrganizationManagement } from '../organizations/OrganizationManagement'
 import { UserManagementView } from '../users/UserManagementView';
 import { DatabaseStorageManager } from '../database/DatabaseStorageManager';
 import { AdminBrandingManager } from '../branding/AdminBrandingManager';
-import { AdminInstallationCenter } from '../installation/AdminInstallationCenter';
 import { SystemUpdateCenter } from '../system/SystemUpdateCenter';
 
 export const SuperAdminDashboard: React.FC = () => {
@@ -37,7 +35,7 @@ export const SuperAdminDashboard: React.FC = () => {
   const [showWizard, setShowWizard] = useState(false);
   const [preselectedOrgId, setPreselectedOrgId] = useState<string | undefined>();
   const [searchQuery, setSearchQuery] = useState('');
-  const [subTab, setSubTab] = useState<'workspaces' | 'organizations' | 'users' | 'database' | 'branding' | 'installation' | 'system_update' | 'audit'>('workspaces');
+  const [subTab, setSubTab] = useState<'workspaces' | 'organizations' | 'users' | 'database' | 'branding' | 'system_update' | 'audit'>('workspaces');
 
   const auditLogs = workspaceService.getAuditLogs();
 
@@ -135,17 +133,6 @@ export const SuperAdminDashboard: React.FC = () => {
           <span>Branding & Drive Customer</span>
         </button>
 
-        <button
-          onClick={() => setSubTab('installation')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 min-h-[40px] cursor-pointer ${
-            subTab === 'installation'
-              ? 'bg-[#171717] text-white dark:bg-white dark:text-[#171717] shadow-xs'
-              : 'text-[#6B7280] hover:text-[#171717] dark:text-slate-400 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5'
-          }`}
-        >
-          <Cpu className="w-4 h-4" />
-          <span>Instalasi Mandiri (GAS)</span>
-        </button>
 
         <button
           onClick={() => setSubTab('system_update')}
@@ -178,8 +165,6 @@ export const SuperAdminDashboard: React.FC = () => {
       {/* SUB-TAB: BRANDING & CUSTOMER DRIVE */}
       {subTab === 'branding' && <AdminBrandingManager />}
 
-      {/* SUB-TAB: INSTALLATION */}
-      {subTab === 'installation' && <AdminInstallationCenter />}
 
       {/* SUB-TAB: SYSTEM UPDATE */}
       {subTab === 'system_update' && <SystemUpdateCenter />}
