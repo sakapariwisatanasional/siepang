@@ -48,6 +48,7 @@ import { workspaceService } from '../../services/workspaceService';
 import { organizationService } from '../../services/organizationService';
 import { onlineSessionService } from '../../services/onlineSessionService';
 import { profilePhotoService } from '../../services/profilePhotoService';
+import { eventCommitteeService, type CommitteeMember } from '../../services/eventCommitteeService';
 import { ProfilePhotoUploader } from '../../components/media/ProfilePhotoUploader';
 
 /**
@@ -146,6 +147,29 @@ const ROLE_LABELS: Record<UserRole, { label: string; badge: string; desc: string
   },
 };
 
+// Jabatan organisasi tidak sama dengan role GAS. Rekomendasi di bawah tidak otomatis
+// memberikan izin, agar akun yang ada tidak berubah tanpa tindakan admin.
+const COMMITTEE_ROLE_GUIDANCE: ReadonlyArray<{ title: string; roles: UserRole[] }> = [
+  { title: 'Pelindung', roles: ['viewer'] },
+  { title: 'Penasehat', roles: ['viewer'] },
+  { title: 'Ketua pelaksana', roles: ['event_admin'] },
+  { title: 'Sekretaris', roles: ['committee'] },
+  { title: 'Bendahara', roles: ['committee'] },
+  { title: 'Koordinator lapangan', roles: ['committee'] },
+  { title: 'Bid. Kesekretariatan, kerjasama dan pameran', roles: ['committee'] },
+  { title: 'Bid. Kegiatan', roles: ['committee', 'judge', 'attendance_officer'] },
+  { title: 'Bid. Perkemahan', roles: ['committee'] },
+  { title: 'Bid. Keagamaan', roles: ['committee'] },
+  { title: 'Bid. Sarana, prasarana dan keamanan', roles: ['logistic_officer'] },
+  { title: 'Bid. Kesehatan', roles: ['health_officer'] },
+  { title: 'Bid. Pengawasan dan Evaluasi', roles: ['viewer'] },
+  { title: 'Bid. Konsumsi', roles: ['logistic_officer'] },
+  { title: 'Bid. Humas', roles: ['publication_officer'] },
+  { title: 'Bid. Dokumentasi dan publikasi', roles: ['documentation_officer', 'publication_officer'] },
+  { title: 'Sangga kerja', roles: ['committee'] },
+];
+const normalizeCommitteeTitle = (value: string) => value.toLocaleLowerCase('id-ID').trim().replace(/\s+/g, ' ');
+
 export const UserManagementView: React.FC = () => {
   const [users, setUsers] = useState<ManagedUser[]>(userManagementService.getUsers());
   const [workspaces, setWorkspaces] = useState<Workspace[]>(workspaceService.getWorkspaces());
@@ -160,6 +184,8 @@ export const UserManagementView: React.FC = () => {
   const [usersError, setUsersError] = useState('');
   const [candidateSearch, setCandidateSearch] = useState('');
   const [editingUser, setEditingUser] = useState<Partial<ManagedUser> | null>(null);
+  const [committeeMembers, setCommitteeMembers] = useState<CommitteeMember[]>([]);
+  const [committeeError, setCommitteeError] = useState('');
 
   // User Detail Modal State (Requirement 15)
   const [detailUser, setDetailUser] = useState<ManagedUser | null>(null);
@@ -286,6 +312,25 @@ export const UserManagementView: React.FC = () => {
     setIsModalOpen(true);
     void loadRegisteredUsers();
   };
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+    let active = true;
+    setCommitteeError('');
+    void eventCommitteeService.load().then(doc => {
+      if (active) setCommitteeMembers(doc.members);
+    }).catch(error => {
+      if (active) { setCommitteeMembers([]); setCommitteeError(error instanceof Error ? error.message : 'Tidak dapat membaca jabatan dari GAS.'); }
+    });
+    return () => { active = false; };
+  }, [isModalOpen]);
+
+  const linkedCommitteePositions = editingUser?.id
+    ? committeeMembers.filter(member => member.userId === editingUser.id).map(member => member.position)
+    : [];
+  const linkedRoleRecommendations = Array.from(new Set(linkedCommitteePositions.flatMap(position =>
+    COMMITTEE_ROLE_GUIDANCE.find(entry => normalizeCommitteeTitle(entry.title) === normalizeCommitteeTitle(position))?.roles || []
+  )));
 
   const handleSelectRegisteredUser = (user: ManagedUser) => {
     setEditingUser({ ...user });
@@ -819,12 +864,27 @@ export const UserManagementView: React.FC = () => {
                   <div className="text-xs text-slate-500 dark:text-slate-300">{editingUser.email}</div>
                   <div className="text-xs text-slate-500 dark:text-slate-300">{editingUser.organizationName}</div>
                 </div>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/30">
+                  <p className="text-sm font-bold text-emerald-900 dark:text-emerald-200">Jabatan resmi kepanitiaan (dibaca dari GAS)</p>
+                  {committeeError ? (
+                    <p role="alert" className="mt-1 text-xs text-amber-700 dark:text-amber-300">Gagal membaca struktur panitia: {committeeError}</p>
+                  ) : linkedCommitteePositions.length ? (
+                    <div className="mt-2 space-y-1">{linkedCommitteePositions.map((position, index) => <p key={`${position}-${index}`} className="text-sm text-emerald-900 dark:text-emerald-200">{position}</p>)}</div>
+                  ) : (
+                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">Akun ini belum tertaut pada struktur panitia event aktif. Tetapkan jabatan pada menu Susunan Panitia terlebih dahulu.</p>
+                  )}
+                  {linkedRoleRecommendations.length > 0 && <div className="mt-3 space-y-2">
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Rekomendasi role teknis (tidak otomatis disimpan):</p>
+                    <div className="flex flex-wrap gap-2">{linkedRoleRecommendations.map(role => <button key={role} type="button" onClick={() => setEditingUser(old => old ? { ...old, role } : old)} className="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-900 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-100">{ROLE_LABELS[role]?.label || role}</button>)}</div>
+                    {linkedRoleRecommendations.length > 1 && <p className="text-xs text-amber-800 dark:text-amber-300">Form GAS saat ini hanya menyimpan satu role tiap tindakan. Role tambahan tidak boleh diasumsikan aktif; diperlukan pengamanan multi-role di backend.</p>}
+                  </div>}
+                </div>
                 <label className="block text-sm font-semibold text-slate-900 dark:text-white">Peran Akses
                   <select required value={editingUser.role || 'viewer'} onChange={e => setEditingUser({ ...editingUser, role: e.target.value as UserRole })} className="block w-full mt-2 rounded-xl px-3 py-2.5 bg-white dark:bg-[#1A1A1E] border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white">
                     {Object.entries(ROLE_LABELS).filter(([role]) => role !== 'superadmin').map(([role, detail]) => <option key={role} value={role}>{detail.label}</option>)}
                   </select>
                 </label>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Identitas pengguna tidak dapat diubah di sini. Yang disimpan hanya role ke backend GAS. Susunan jabatan kepanitiaan dikelola pada modul Kepanitiaan Event.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Jabatan panitia dibaca dari struktur event, bukan dari daftar role ini. Tombol Simpan hanya mengirim satu role ke GAS dan tidak mengubah jabatan. Perubahan multi-role belum diaktifkan hingga otorisasi backend diperbaiki.</p>
                 <div className="flex justify-end gap-2">
                   <button type="button" onClick={() => { setEditingUser(null); setCandidateSearch(''); }} className="px-4 py-2 rounded-xl border border-slate-300 dark:border-white/20 text-slate-700 dark:text-slate-200">Kembali</button>
                   <button disabled={isSavingUser} type="submit" className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-semibold disabled:opacity-50">{isSavingUser ? 'Menyimpan ke GAS…' : 'Simpan Peran ke GAS'}</button>
