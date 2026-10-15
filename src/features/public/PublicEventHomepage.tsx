@@ -261,6 +261,18 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
     'section-official-competitions': 'competitions',
   };
   const openPublicPage = (id: string) => {
+    // Galeri memakai halaman khusus /gallery yang sudah didaftarkan di App.tsx.
+    // Jangan tampilkan lagi panel galeri memanjang di bawah beranda publik.
+    if (id === 'section-photo-gallery' || id === 'section-video-gallery') {
+      setMobileMenuOpen(false);
+      if (onNavigateToGallery) {
+        onNavigateToGallery(id === 'section-video-gallery' ? 'videos' : 'photos');
+        return;
+      }
+      // Fallback navigasi untuk penggunaan komponen di luar App router.
+      if (typeof window !== 'undefined') window.location.assign('/gallery');
+      return;
+    }
     const page = pageBySection[id] || 'home';
     setActivePublicPage(page);
     setMobileMenuOpen(false);
