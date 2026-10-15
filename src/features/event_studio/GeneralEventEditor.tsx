@@ -43,6 +43,9 @@ export const GeneralEventEditor: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [eventLoadStatus, setEventLoadStatus] = useState(eventStudioService.getEventLoadStatus());
   const [isReloading, setIsReloading] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [newEvent, setNewEvent] = useState({ name: '', shortName: '', startDate: '', endDate: '', location: '' });
   const hasEditedForm = useRef(false);
   const buildForm = (event: ReturnType<typeof eventStudioService.getEvent>) => ({
     name: event.name,
@@ -152,6 +155,29 @@ export const GeneralEventEditor: React.FC = () => {
         }} className="mt-4 rounded-xl bg-emerald-600 px-4 py-2 text-white text-sm font-bold disabled:opacity-50">
           {isReloading ? 'Memuat…' : 'Muat Ulang Data Event'}
         </button>
+        {eventLoadStatus.notFound && (
+          <div className="mt-5 rounded-xl border border-emerald-200 bg-white p-4 dark:border-emerald-900 dark:bg-slate-900">
+            <h3 className="font-bold">Buat Event Baru</h3>
+            <p className="mt-1 text-sm">GAS memastikan belum ada event pada workspace aktif. Hanya pengguna yang berwenang dapat membuat event.</p>
+            <form className="mt-3 grid gap-3" onSubmit={async (e) => {
+              e.preventDefault();
+              setCreateError(''); setIsCreating(true);
+              try { await eventStudioService.createNewEvent(newEvent); }
+              catch (err: any) { setCreateError(err?.message || 'Gagal membuat event.'); }
+              finally { setIsCreating(false); }
+            }}>
+              <label className="text-sm font-medium">Nama Event *<input required maxLength={150} value={newEvent.name} onChange={e => setNewEvent(s => ({ ...s, name: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white" /></label>
+              <label className="text-sm font-medium">Nama Singkat<input value={newEvent.shortName} onChange={e => setNewEvent(s => ({ ...s, shortName: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white" /></label>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="text-sm font-medium">Tanggal Mulai *<input type="date" required value={newEvent.startDate} onChange={e => setNewEvent(s => ({ ...s, startDate: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white" /></label>
+                <label className="text-sm font-medium">Tanggal Selesai *<input type="date" required min={newEvent.startDate || undefined} value={newEvent.endDate} onChange={e => setNewEvent(s => ({ ...s, endDate: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white" /></label>
+              </div>
+              <label className="text-sm font-medium">Lokasi<input value={newEvent.location} onChange={e => setNewEvent(s => ({ ...s, location: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white" /></label>
+              {createError && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{createError}</p>}
+              <button type="submit" disabled={isCreating || !newEvent.name.trim() || !newEvent.startDate || !newEvent.endDate} className="rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50">{isCreating ? 'Menyimpan ke GAS…' : 'Buat Event dan Simpan ke GAS'}</button>
+            </form>
+          </div>
+        )}
       </div>
     );
   }
