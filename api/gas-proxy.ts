@@ -2,7 +2,7 @@
  * SiEpang — Vercel server-side Google Apps Script gateway.
  * Source of truth remains GAS. No caching, no mock responses, no token/OTP logging.
  * Place at repository root: api/gas-proxy.ts
- * Required Vercel Environment Variable: SIEPANG_GAS_WEB_APP_URL
+ * GAS deployment URL is configured server-side in this file (no environment variable).
  */
 
 const MAX_REQUEST_BYTES = 4_000_000;
@@ -22,9 +22,9 @@ export default async function handler(req: any, res: any) {
     return sendJson(res, 405, { ok: false, data: null, error: { code: 'METHOD_NOT_ALLOWED', message: 'Gunakan POST.' } });
   }
 
-  const backendUrl = process.env.SIEPANG_GAS_WEB_APP_URL?.trim();
+  const backendUrl = 'https://script.google.com/macros/s/AKfycbwoIhDY_gyZuxDZZSj4I3C9fLIg1orvmHTyfubr4brpbr-JtsQIBCAsMXxyi7_IeWO0Fg/exec';
   if (!backendUrl || !/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(?:\?.*)?$/.test(backendUrl)) {
-    return sendJson(res, 503, { ok: false, data: null, error: { code: 'GAS_NOT_CONFIGURED', message: 'Endpoint backend belum dikonfigurasi pada Vercel.' } });
+    return sendJson(res, 503, { ok: false, data: null, error: { code: 'GAS_NOT_CONFIGURED', message: 'URL backend GAS dalam proxy tidak valid.' } });
   }
 
   // Vercel normally parses application/json automatically; text/plain may be unparsed.
