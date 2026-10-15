@@ -1,513 +1,89 @@
-/**
- * @license
- * SiEpang - Publication & Media Center (Sections 2 & 3)
- * Centralized administration entry for:
- * - Photo Documentation
- * - Video Documentation
- * - Albums
- * - Hero Banner
- * - Information Banner
- * - Sponsor Banner
- * - Sponsor & Partner Directory
- * - Public Homepage Layout
- * - Media Health / Broken Sources
- * - Public Preview
+/** SiEpang — Pusat Publikasi & Media. Layout-only navigation refresh.
+ * Existing GAS-backed documentation and banner services are unchanged.
  */
-
 import React, { useState } from 'react';
-import {
-  Image as ImageIcon,
-  Film,
-  Sparkles,
-  Layers,
-  Award,
-  Globe,
-  ExternalLink,
-  CheckCircle2,
-  AlertTriangle,
-  Eye,
-  Plus,
-  ArrowRight,
-  Monitor,
-  Smartphone,
-  RefreshCw,
-  Bell,
-  HeartHandshake,
-  Check,
-  ShieldCheck,
-} from 'lucide-react';
+import { Image as ImageIcon, Film, Layers, Award, Globe, ExternalLink, AlertTriangle, ChevronLeft, ShieldCheck, RefreshCw, CheckCircle2, Sparkles } from 'lucide-react';
 import { documentationService } from '../../services/documentationService';
-import { bannerSponsorService } from '../../services/bannerSponsorService';
 import { eventService } from '../../services/eventService';
 import { DocumentationManager } from './DocumentationManager';
 import { BannerSponsorManager } from './BannerSponsorManager';
-import { IOSSegmentedControl } from '../../components/ios';
 
-interface PublicationMediaCenterProps {
-  onNavigateTab?: (tab: string) => void;
-}
+interface PublicationMediaCenterProps { onNavigateTab?: (tab: string) => void; }
+type Section = 'overview' | 'albums' | 'photos' | 'videos' | 'hero_banner' | 'info_banner' | 'sponsors' | 'homepage_layout' | 'media_health';
 
-type MediaSubSection =
-  | 'overview'
-  | 'albums'
-  | 'photos'
-  | 'videos'
-  | 'hero_banner'
-  | 'info_banner'
-  | 'sponsors'
-  | 'homepage_layout'
-  | 'media_health';
+const sections: Array<{ id: Exclude<Section,'overview'>; title: string; description: string; icon: typeof Film; group: string }> = [
+  { id:'albums', title:'Album Foto', description:'Buat, edit, dan publikasikan album kegiatan.', icon:Layers, group:'Dokumentasi' },
+  { id:'photos', title:'Foto Kegiatan', description:'Lihat dan kelola dokumentasi foto.', icon:ImageIcon, group:'Dokumentasi' },
+  { id:'videos', title:'Video Kegiatan', description:'Unggah tautan video dan atur publikasi melalui Galeri GAS.', icon:Film, group:'Dokumentasi' },
+  { id:'hero_banner', title:'Banner Utama', description:'Atur visual utama pada portal kegiatan.', icon:Sparkles, group:'Tampilan Portal' },
+  { id:'info_banner', title:'Banner Informasi', description:'Kelola pengumuman dan banner informasi.', icon:ImageIcon, group:'Tampilan Portal' },
+  { id:'sponsors', title:'Sponsor & Mitra', description:'Kelola sponsor dan banner mitra kegiatan.', icon:Award, group:'Tampilan Portal' },
+  { id:'homepage_layout', title:'Pratinjau Portal Publik', description:'Buka tampilan yang dilihat pengunjung.', icon:Globe, group:'Tampilan Portal' },
+  { id:'media_health', title:'Periksa Sumber Media', description:'Tinjau tautan media yang bermasalah.', icon:ShieldCheck, group:'Alat Bantu' },
+];
 
-export const PublicationMediaCenter: React.FC<PublicationMediaCenterProps> = ({
-  onNavigateTab,
-}) => {
-  const [activeSection, setActiveSection] = useState<MediaSubSection>('overview');
-  const [toast, setToast] = useState<string | null>(null);
-
+export const PublicationMediaCenter: React.FC<PublicationMediaCenterProps> = ({onNavigateTab}) => {
+  const [activeSection,setActiveSection] = useState<Section>('overview');
+  const [notice,setNotice] = useState<string | null>(null);
   const event = eventService.getCurrentEvent();
   const albums = documentationService.getAlbums();
-  const photos = documentationService.getMediaItems({ type: 'PHOTO' });
-  const videos = documentationService.getMediaItems({ type: 'VIDEO' });
-  const banners = bannerSponsorService.getBanners();
-  const sponsors = bannerSponsorService.getSponsors();
-  const activeBannersCount = banners.filter(b => b.publication_status === 'PUBLISHED').length;
-
-  // Media Health & Broken source monitor logic (Section 3 & 6)
-  const brokenAlbums = albums.filter(
-    a =>
-      a.folder_access_status === 'PRIVATE' ||
-      a.folder_access_status === 'BROKEN_SOURCE' ||
-      a.folder_access_status === 'INVALID_URL'
-  );
-  const brokenPhotos = photos.filter(
-    p =>
-      p.metadata_status === 'BROKEN_SOURCE' ||
-      p.metadata_status === 'INVALID_URL' ||
-      p.metadata_status === 'PRIVATE'
-  );
-  const brokenCount = brokenAlbums.length + brokenPhotos.length;
-
-  const handleCheckSources = () => {
-    const res = documentationService.refreshMediaMetadata();
-    setToast(`Hasil verifikasi: ${res.refreshedCount} media aktif, ${res.brokenCount} sumber bermasalah.`);
-    setTimeout(() => setToast(null), 4000);
+  const photos = documentationService.getMediaItems({type:'PHOTO'});
+  const brokenCount = albums.filter(a=> ['PRIVATE','BROKEN_SOURCE','INVALID_URL'].includes(a.folder_access_status)).length +
+    photos.filter(p=>['BROKEN_SOURCE','INVALID_URL','PRIVATE'].includes(p.metadata_status)).length;
+  const active = sections.find(section=>section.id===activeSection);
+  const checkSources = () => {
+    const result = documentationService.refreshMediaMetadata();
+    setNotice(`Pemeriksaan metadata lokal selesai: ${result.refreshedCount} entri diperiksa, ${result.brokenCount} terindikasi bermasalah. Status publikasi GAS diperiksa terpisah.`);
   };
-
-  return (
-    <div className="space-y-6">
-      {/* Toast Notification */}
-      {toast && (
-        <div className="p-3.5 rounded-2xl bg-slate-900 text-white dark:bg-white dark:text-slate-950 text-xs font-semibold flex items-center justify-between shadow-xl animate-in fade-in z-50">
-          <span>{toast}</span>
-          <button type="button" onClick={() => setToast(null)} className="text-slate-400 hover:text-white dark:hover:text-black">✕</button>
+  return <div className="space-y-5 pb-8">
+    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:p-6">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Pusat Publikasi & Media</p>
+          <h1 className="mt-1 text-xl font-extrabold text-slate-900 dark:text-white sm:text-2xl">{active ? active.title : 'Apa yang ingin Anda kelola?'}</h1>
+          <p className="mt-2 max-w-xl text-sm text-slate-600 dark:text-slate-300">{active ? active.description : 'Pilih satu pekerjaan di bawah. Hanya fitur yang Anda pilih akan ditampilkan, sehingga halaman lebih mudah digunakan.'}</p>
         </div>
-      )}
-
-      {/* 1. Header with Public Preview Launcher */}
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 sm:p-6 rounded-[28px] bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 shadow-xs">
-          <div className="space-y-1">
-            <div className="text-[11px] font-bold text-[#F47743] uppercase tracking-wider flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Pusat Publikasi & Media Resmi</span>
-            </div>
-            <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
-              Publikasi & Media
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-2xl leading-relaxed">
-              Pusat komando terpadu untuk galeri dokumentasi foto/video, hero banner, sponsor resmi, dan portal publik kegiatan.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onNavigateTab?.('public_home')}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#208C60] to-[#F47743] text-white font-bold text-xs flex items-center gap-2 shadow-xs hover:opacity-90 active:scale-98 transition-all"
-            >
-              <Globe className="w-4 h-4" />
-              <span>Buka Portal Publik</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-
-        {/* 2. MAIN CARDS (Section 2) */}
-        {/* Modern Grouped Mobile Layout */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          {/* Card 1: Dokumentasi Foto */}
-          <div
-            onClick={() => setActiveSection(activeSection === 'albums' ? 'overview' : 'albums')}
-            className={`p-4 rounded-3xl border transition-all cursor-pointer select-none flex flex-col justify-between ${
-              activeSection === 'albums' || activeSection === 'photos'
-                ? 'bg-[#208C60]/10 border-[#208C60]/40 shadow-xs ring-2 ring-[#208C60]/20'
-                : 'bg-white dark:bg-[#121215] border-black/5 dark:border-white/10 hover:border-[#208C60]/30 shadow-xs'
-            }`}
-          >
-            <div className="flex items-center justify-between text-xs text-purple-600 dark:text-purple-400 mb-2">
-              <ImageIcon className="w-5 h-5" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Foto</span>
-            </div>
-            <div>
-              <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">
-                {albums.length} <span className="text-sm font-semibold text-slate-500">Album</span>
-              </div>
-              <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                Dokumentasi Foto ({photos.length} Foto)
-              </div>
-            </div>
-          </div>
-
-          {/* Card 2: Video Kegiatan */}
-          <div
-            onClick={() => setActiveSection(activeSection === 'videos' ? 'overview' : 'videos')}
-            className={`p-4 rounded-3xl border transition-all cursor-pointer select-none flex flex-col justify-between ${
-              activeSection === 'videos'
-                ? 'bg-[#F47743]/10 border-[#F47743]/40 shadow-xs ring-2 ring-[#F47743]/20'
-                : 'bg-white dark:bg-[#121215] border-black/5 dark:border-white/10 hover:border-[#F47743]/30 shadow-xs'
-            }`}
-          >
-            <div className="flex items-center justify-between text-xs text-pink-600 dark:text-pink-400 mb-2">
-              <Film className="w-5 h-5" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Video</span>
-            </div>
-            <div>
-              <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">
-                {videos.length} <span className="text-sm font-semibold text-slate-500">Video</span>
-              </div>
-              <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                Video Kegiatan
-              </div>
-            </div>
-          </div>
-
-          {/* Card 3: Hero & Banner */}
-          <div
-            onClick={() => setActiveSection(activeSection === 'hero_banner' ? 'overview' : 'hero_banner')}
-            className={`p-4 rounded-3xl border transition-all cursor-pointer select-none flex flex-col justify-between ${
-              activeSection === 'hero_banner' || activeSection === 'info_banner'
-                ? 'bg-[#F4A53A]/10 border-[#F4A53A]/40 shadow-xs ring-2 ring-[#F4A53A]/20'
-                : 'bg-white dark:bg-[#121215] border-black/5 dark:border-white/10 hover:border-[#F4A53A]/30 shadow-xs'
-            }`}
-          >
-            <div className="flex items-center justify-between text-xs text-orange-600 dark:text-orange-400 mb-2">
-              <Layers className="w-5 h-5" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Banner</span>
-            </div>
-            <div>
-              <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">
-                {activeBannersCount} <span className="text-sm font-semibold text-slate-500">Aktif</span>
-              </div>
-              <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                Hero & Banner
-              </div>
-            </div>
-          </div>
-
-          {/* Card 4: Sponsor & Partner */}
-          <div
-            onClick={() => setActiveSection(activeSection === 'sponsors' ? 'overview' : 'sponsors')}
-            className={`p-4 rounded-3xl border transition-all cursor-pointer select-none flex flex-col justify-between ${
-              activeSection === 'sponsors'
-                ? 'bg-[#FFD36A]/10 border-[#FFD36A]/40 shadow-xs ring-2 ring-[#FFD36A]/20'
-                : 'bg-white dark:bg-[#121215] border-black/5 dark:border-white/10 hover:border-[#FFD36A]/30 shadow-xs'
-            }`}
-          >
-            <div className="flex items-center justify-between text-xs text-amber-600 dark:text-amber-400 mb-2">
-              <Award className="w-5 h-5" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Sponsor</span>
-            </div>
-            <div>
-              <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">
-                {sponsors.length} <span className="text-sm font-semibold text-slate-500">Sponsor</span>
-              </div>
-              <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                Sponsor & Partner
-              </div>
-            </div>
-          </div>
-
-          {/* Card 5: Halaman Publik */}
-          <div
-            onClick={() => setActiveSection(activeSection === 'homepage_layout' ? 'overview' : 'homepage_layout')}
-            className={`p-4 rounded-3xl border transition-all cursor-pointer select-none flex flex-col justify-between col-span-2 sm:col-span-1 ${
-              activeSection === 'homepage_layout'
-                ? 'bg-emerald-500/10 border-emerald-500/40 shadow-xs ring-2 ring-emerald-500/20'
-                : 'bg-white dark:bg-[#121215] border-black/5 dark:border-white/10 hover:border-emerald-500/30 shadow-xs'
-            }`}
-          >
-            <div className="flex items-center justify-between text-xs text-emerald-600 dark:text-emerald-400 mb-2">
-              <Globe className="w-5 h-5" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Status</span>
-            </div>
-            <div>
-              <div className="text-sm font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Published</span>
-              </div>
-              <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                Halaman Publik
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 3. PUBLICATION CENTER SECTIONS NAVIGATION (Section 3) */}
-        <div className="space-y-2">
-          <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1">
-            Akses Langsung Bagian Publikasi:
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none text-xs">
-            <button
-              type="button"
-              onClick={() => setActiveSection('overview')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors border ${
-                activeSection === 'overview'
-                  ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-transparent shadow-xs'
-                  : 'bg-white dark:bg-[#121215] text-slate-600 dark:text-slate-300 border-black/5 dark:border-white/10 hover:border-black/20'
-              }`}
-            >
-              Semua Menu
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveSection('albums')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors border flex items-center gap-1.5 ${
-                activeSection === 'albums'
-                  ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                  : 'bg-white dark:bg-[#121215] text-slate-600 dark:text-slate-300 border-black/5 dark:border-white/10 hover:border-purple-500/40'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Albums ({albums.length})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveSection('photos')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors border flex items-center gap-1.5 ${
-                activeSection === 'photos'
-                  ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                  : 'bg-white dark:bg-[#121215] text-slate-600 dark:text-slate-300 border-black/5 dark:border-white/10 hover:border-purple-500/40'
-              }`}
-            >
-              <ImageIcon className="w-3.5 h-3.5" />
-              <span>Photo Documentation</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveSection('videos')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors border flex items-center gap-1.5 ${
-                activeSection === 'videos'
-                  ? 'bg-[#F47743] text-white border-[#F47743] shadow-xs'
-                  : 'bg-white dark:bg-[#121215] text-slate-600 dark:text-slate-300 border-black/5 dark:border-white/10 hover:border-[#F47743]/40'
-              }`}
-            >
-              <Film className="w-3.5 h-3.5" />
-              <span>Video Documentation</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveSection('hero_banner')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors border flex items-center gap-1.5 ${
-                activeSection === 'hero_banner'
-                  ? 'bg-[#F4A53A] text-white border-[#F4A53A] shadow-xs'
-                  : 'bg-white dark:bg-[#121215] text-slate-600 dark:text-slate-300 border-black/5 dark:border-white/10 hover:border-[#F4A53A]/40'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Hero Banner</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveSection('info_banner')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors border flex items-center gap-1.5 ${
-                activeSection === 'info_banner'
-                  ? 'bg-[#F4A53A] text-white border-[#F4A53A] shadow-xs'
-                  : 'bg-white dark:bg-[#121215] text-slate-600 dark:text-slate-300 border-black/5 dark:border-white/10 hover:border-[#F4A53A]/40'
-              }`}
-            >
-              <Bell className="w-3.5 h-3.5" />
-              <span>Information Banner</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveSection('sponsors')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors border flex items-center gap-1.5 ${
-                activeSection === 'sponsors'
-                  ? 'bg-[#FFD36A] text-slate-900 border-[#FFD36A] shadow-xs'
-                  : 'bg-white dark:bg-[#121215] text-slate-600 dark:text-slate-300 border-black/5 dark:border-white/10 hover:border-[#FFD36A]/40'
-              }`}
-            >
-              <Award className="w-3.5 h-3.5" />
-              <span>Sponsor Banner & Directory</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveSection('homepage_layout')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors border flex items-center gap-1.5 ${
-                activeSection === 'homepage_layout'
-                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                  : 'bg-white dark:bg-[#121215] text-slate-600 dark:text-slate-300 border-black/5 dark:border-white/10 hover:border-emerald-500/40'
-              }`}
-            >
-              <Monitor className="w-3.5 h-3.5" />
-              <span>Public Homepage Layout</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveSection('media_health')}
-              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors border flex items-center gap-1.5 ${
-                activeSection === 'media_health'
-                  ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
-                  : brokenCount > 0
-                  ? 'bg-rose-500/10 text-rose-600 border-rose-500/30'
-                  : 'bg-white dark:bg-[#121215] text-slate-600 dark:text-slate-300 border-black/5 dark:border-white/10 hover:border-black/20'
-              }`}
-            >
-              <AlertTriangle className="w-3.5 h-3.5" />
-              <span>Media Health ({brokenCount})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onNavigateTab?.('public_home')}
-              className="px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30 flex items-center gap-1.5"
-            >
-              <Eye className="w-3.5 h-3.5" />
-              <span>Public Preview</span>
-            </button>
-          </div>
-        </div>
+        <button type="button" onClick={()=>onNavigateTab?.('public_home')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800">
+          <Globe size={17}/> Lihat Portal Publik <ExternalLink size={14}/>
+        </button>
       </div>
-
-      {/* 4. Section Renderers */}
-      {/* Media Health Monitor (Section 3 & 6) */}
-      {(activeSection === 'overview' || activeSection === 'media_health') && (
-        <div
-          className={`p-4 rounded-3xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-            brokenCount > 0
-              ? 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-300'
-              : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <div
-              className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${
-                brokenCount > 0
-                  ? 'bg-rose-500/20 text-rose-600 dark:text-rose-400'
-                  : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
-              }`}
-            >
-              {brokenCount > 0 ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
-            </div>
-            <div>
-              <div className="text-xs font-bold">
-                {brokenCount > 0
-                  ? `${brokenCount} sumber media memerlukan perhatian (Media Health Alert)`
-                  : 'Seluruh sumber media foto & video terverifikasi dapat diakses publik'}
-              </div>
-              <div className="text-[11px] opacity-80 mt-0.5">
-                {brokenCount > 0
-                  ? 'Terdapat tautan Google Drive berstatus PRIVATE atau BROKEN_SOURCE yang belum dapat diakses pengunjung.'
-                  : 'Folder Google Drive publik, CDN thumbnail, dan embed YouTube berjalan lancar.'}
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleCheckSources}
-            className="px-3.5 py-2 rounded-xl bg-white dark:bg-[#1C1C1E] border border-black/10 dark:border-white/10 text-xs font-bold text-slate-800 dark:text-slate-200 hover:text-black dark:hover:text-white transition-colors flex items-center gap-1.5 self-start sm:self-auto shrink-0 shadow-xs"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Periksa Sumber</span>
-          </button>
-        </div>
-      )}
-
-      {/* Render Documentation Manager for photo/video/album workflows */}
-      {(activeSection === 'overview' ||
-        activeSection === 'albums' ||
-        activeSection === 'photos' ||
-        activeSection === 'videos') && (
-        <div className="space-y-4">
-          <DocumentationManager />
-        </div>
-      )}
-
-      {/* Render Banner & Sponsor Manager for hero/info/sponsor workflows */}
-      {(activeSection === 'overview' ||
-        activeSection === 'hero_banner' ||
-        activeSection === 'info_banner' ||
-        activeSection === 'sponsors') && (
-        <div className="space-y-4 pt-4 border-t border-black/5 dark:border-white/10">
-          <BannerSponsorManager
-            initialTab={
-              activeSection === 'sponsors'
-                ? 'sponsors'
-                : activeSection === 'info_banner'
-                ? 'info_banners'
-                : 'hero'
-            }
-          />
-        </div>
-      )}
-
-      {/* Render Public Homepage Layout Info */}
-      {(activeSection === 'overview' || activeSection === 'homepage_layout') && (
-        <div className="p-6 rounded-3xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 shadow-xs space-y-6 animate-in fade-in">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-black/5 dark:border-white/10 pb-4">
-            <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Tata Letak & Portal Microsite Publik Kegiatan
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Dapat diakses langsung oleh orang tua, pembina, pengunjung umum, sponsor, dan media tanpa perlu login.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => onNavigateTab?.('public_home')}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#208C60] to-[#F47743] text-white font-bold text-xs flex items-center gap-2 shadow-xs shrink-0 hover:opacity-90"
-            >
-              <span>Buka Pratinjau Penuh</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-black/30 border border-black/5 dark:border-white/5 space-y-1">
-              <span className="text-slate-400 text-[11px] block">URL Portal Publik:</span>
-              <span className="font-bold text-slate-900 dark:text-white font-mono break-all">
-                https://buper.siepang.id/{event.id}
-              </span>
-            </div>
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-black/30 border border-black/5 dark:border-white/5 space-y-1">
-              <span className="text-slate-400 text-[11px] block">Registrasi Pengunjung:</span>
-              <span className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Tiket Digital Online Aktif</span>
-              </span>
-            </div>
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-black/30 border border-black/5 dark:border-white/5 space-y-1">
-              <span className="text-slate-400 text-[11px] block">Galeri Foto & Video:</span>
-              <span className="font-bold text-[#F47743] flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Terhubung ke Google Drive</span>
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
-  );
+
+    {activeSection !== 'overview' && <button type="button" onClick={()=>setActiveSection('overview')} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-white"><ChevronLeft size={17}/> Kembali ke Pilihan Publikasi</button>}
+
+    {activeSection === 'overview' && <div className="space-y-5">
+      {['Dokumentasi','Tampilan Portal','Alat Bantu'].map(group=><section key={group} className="space-y-3">
+        <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100">{group}</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {sections.filter(section=>section.group===group).map(section=>{
+            const Icon = section.icon;
+            return <button key={section.id} type="button" onClick={()=>setActiveSection(section.id)} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-emerald-500 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500 dark:border-slate-700 dark:bg-slate-900">
+              <span className="rounded-xl bg-emerald-50 p-2.5 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"><Icon size={21}/></span>
+              <span className="min-w-0"><span className="block font-bold text-slate-900 dark:text-white">{section.title}</span><span className="mt-1 block text-sm leading-relaxed text-slate-600 dark:text-slate-300">{section.description}</span>
+                {section.id==='albums' && <span className="mt-2 block text-xs text-slate-500">Album terdaftar: {albums.length}</span>}
+                {section.id==='videos' && <span className="mt-2 block text-xs text-slate-500">Jumlah video resmi dilihat di Galeri GAS</span>}
+                {section.id==='media_health' && <span className="mt-2 block text-xs text-slate-500">Indikasi masalah lokal: {brokenCount}</span>}
+              </span>
+            </button>;
+          })}
+        </div>
+      </section>)}
+      <p className="text-xs text-slate-500 dark:text-slate-400">Data foto/video resmi dan status Terbit mengikuti Galeri GAS. Ringkasan lama dari memori browser tidak digunakan sebagai angka publikasi.</p>
+    </div>}
+
+    {(activeSection==='albums'||activeSection==='photos'||activeSection==='videos') && <DocumentationManager key={activeSection} initialTab={activeSection} embedded/>}
+    {(activeSection==='hero_banner'||activeSection==='info_banner'||activeSection==='sponsors') && <BannerSponsorManager key={activeSection} initialTab={activeSection==='sponsors'?'sponsors':activeSection==='info_banner'?'info_banners':'hero'}/>}
+    {activeSection==='media_health' && <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+      <div className="flex items-center gap-2 text-slate-900 dark:text-white">{brokenCount>0?<AlertTriangle className="text-amber-600" size={21}/>:<CheckCircle2 className="text-emerald-600" size={21}/>}<h2 className="font-bold">{brokenCount} indikasi masalah pada metadata lokal</h2></div>
+      <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Pemeriksaan ini hanya melihat metadata lama dalam sesi aplikasi, bukan bukti bahwa seluruh tautan Galeri GAS dapat dibuka oleh pengunjung.</p>
+      <button type="button" onClick={checkSources} className="mt-4 inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800 dark:border-slate-600 dark:text-white"><RefreshCw size={16}/> Periksa Metadata</button>
+      {notice&&<p role="status" className="mt-3 rounded-xl bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">{notice}</p>}
+    </section>}
+    {activeSection==='homepage_layout' && <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+      <h2 className="font-bold text-slate-900 dark:text-white">Portal Publik Kegiatan</h2>
+      <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Pratinjau menampilkan konten yang tersedia bagi pengunjung tanpa masuk ke panel admin.</p>
+      <p className="mt-3 break-all text-xs text-slate-500">Event aktif: {event.id}</p>
+      <button type="button" onClick={()=>onNavigateTab?.('public_home')} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white"><Globe size={16}/> Buka Portal Publik <ExternalLink size={14}/></button>
+    </section>}
+  </div>;
 };
