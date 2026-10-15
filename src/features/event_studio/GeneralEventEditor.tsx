@@ -83,7 +83,8 @@ export const GeneralEventEditor: React.FC = () => {
   const handleFieldChange = (updates: Partial<typeof formData>) => {
     const next = { ...formData, ...updates };
     setFormData(next);
-    eventStudioService.markDirty(next);
+    // This editor saves explicitly. Avoid a competing debounced autosave.
+    eventStudioService.markDirty(next, false);
   };
 
   const handleSave = async (e?: React.FormEvent) => {
