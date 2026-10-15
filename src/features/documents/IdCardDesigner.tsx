@@ -18,6 +18,39 @@ const fields:{value:Field;label:string}[]=[
   {value:'participant.qr',label:'QR peserta'}, {value:'event.name',label:'Nama event'},
   {value:'event.location',label:'Lokasi event'}, {value:'text.static',label:'Teks bebas'}
 ];
+// Preset adalah pilihan UI; ukuran akhir tetap disimpan dalam widthMm/heightMm ke GAS.
+const cardSizePresets = [
+  { id:'cr80', label:'Kartu PVC CR80 (85,6 × 54 mm)', w:85.6, h:54 },
+  { id:'badge54', label:'ID Card 54 × 86 mm', w:54, h:86 },
+  { id:'badge70', label:'ID Card 70 × 100 mm', w:70, h:100 },
+  { id:'badge90', label:'ID Card 90 × 120 mm', w:90, h:120 },
+  { id:'badge100', label:'ID Card 100 × 150 mm', w:100, h:150 },
+  { id:'badge125', label:'ID Card 125 × 164 mm', w:125, h:164 },
+  { id:'a7', label:'Kertas A7 (74 × 105 mm)', w:74, h:105 },
+  { id:'a6', label:'Kertas A6 (105 × 148 mm)', w:105, h:148 },
+];
+function selectedSizePreset(widthMm:number,heightMm:number):string {
+  const found=cardSizePresets.find(p => (Math.abs(p.w-widthMm)<0.01 && Math.abs(p.h-heightMm)<0.01) || (Math.abs(p.h-widthMm)<0.01 && Math.abs(p.w-heightMm)<0.01));
+  return found?.id || 'custom';
+}
+type BackgroundCandidate = { url: string; label: string };
+function backgroundCandidates(raw: string): BackgroundCandidate[] {
+  const value = raw.trim();
+  if (!value) return [];
+  try {
+    const u = new URL(value);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return [];
+    const host = u.hostname.toLowerCase();
+    if (host === 'drive.google.com' || host === 'www.drive.google.com' || host === 'drive.usercontent.google.com') {
+      const fileId = u.pathname.match(/\/file\/d\/([A-Za-z0-9_-]+)/)?.[1] || u.searchParams.get('id') || u.pathname.match(/\/d\/([A-Za-z0-9_-]+)/)?.[1];
+      if (fileId) return [
+        {url:`https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1600`,label:'Google Drive thumbnail'},
+        {url:`https://lh3.googleusercontent.com/d/${encodeURIComponent(fileId)}=w1600`,label:'Google Drive image'},
+      ];
+    }
+    return [{url:value,label:'URL gambar'}];
+  } catch { return []; }
+}
 function fieldLabel(f:Field) {return fields.find(x=>x.value===f)?.label || f;}
 function blankTemplate():Template {return {id:'',name:'',category:'ID_CARD_PARTICIPANT',status:'DRAFT',widthMm:54,heightMm:86,backgroundUrl:'',backgroundFileId:'',elements:[]};}
 function newElement(field:Field):Element {let image=field==='participant.photo'||field==='participant.qr';return {id:'el_'+(typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():String(Date.now())+'_'+Math.random()),field,x:20,y:25,w:image?40:60,h:image?28:9,fontSize:13,color:'#153B30',align:'center',text:''};}
@@ -25,12 +58,17 @@ export const IdCardDesigner:React.FC=()=>{
   const [showLegacy,setShowLegacy]=useState(false),[templates,setTemplates]=useState<Template[]>([]),[editing,setEditing]=useState<Template|null>(null);
   const [selectedId,setSelectedId]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const [selectedField,setSelectedField]=useState<Field>('participant.full_name');const [previewMode,setPreviewMode]=useState(false);
+  const [imageCandidateIndex,setImageCandidateIndex]=useState(0),[backgroundError,setBackgroundError]=useState(''),[backgroundLoaded,setBackgroundLoaded]=useState(false);
   const [drag,setDrag]=useState<{id:string;offsetX:number;offsetY:number}|null>(null),canvasRef=useRef<HTMLDivElement>(null),fileRef=useRef<HTMLInputElement>(null);
   const load=useCallback(async()=>{setLoading(true);setError('');try{const r=await apiTransport.send<Template[]>('idcard.templates.list',{}, {timeoutMs:30000});if(!r.ok)throw new Error(r.error?.message||'Gagal membaca template dari GAS.');setTemplates(Array.isArray(r.data)?r.data:[]);}catch(e:any){setError(e.message||String(e));}finally{setLoading(false);}},[]);
   useEffect(()=>{void load();},[load]);
   const update=(patch:Partial<Template>)=>setEditing(prev=>prev?{...prev,...patch}:prev);
   const updateElement=(id:string,patch:Partial<Element>)=>setEditing(prev=>prev?{...prev,elements:prev.elements.map(el=>el.id===id?{...el,...patch}:el)}:prev);
   const selected=editing?.elements.find(e=>e.id===selectedId);
+  const candidates=backgroundCandidates(editing?.backgroundUrl||'');
+  const candidate=candidates[imageCandidateIndex];
+  useEffect(()=>{setImageCandidateIndex(0);setBackgroundError('');setBackgroundLoaded(false);},[editing?.backgroundUrl]);
+  const onBackgroundError=()=>{if(imageCandidateIndex+1<candidates.length){setImageCandidateIndex(i=>i+1);setBackgroundLoaded(false);}else{setBackgroundError('Gambar latar tidak dapat ditampilkan. Periksa izin akses Google Drive (Siapa saja yang memiliki link → Pelihat), atau gunakan tautan HTTPS langsung ke gambar PNG/JPG/WebP.');setBackgroundLoaded(false);}};
   const save=async(status:'DRAFT'|'ACTIVE')=>{
     if(!editing||busy)return;
     if(!editing.name.trim()){setError('Nama template wajib diisi.');return;}
@@ -62,10 +100,31 @@ export const IdCardDesigner:React.FC=()=>{
           <label className="block text-xs space-y-1">Nama template *<input className={control} maxLength={120} value={editing.name} onChange={e=>update({name:e.target.value})} placeholder="Masukkan nama template"/></label>
           <label className="block text-xs space-y-1">Jenis kartu<select className={control} value={editing.category} onChange={e=>update({category:e.target.value as Category})}>{categories.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}</select></label>
           <div className="grid grid-cols-2 gap-2"><label className="block text-xs space-y-1">Lebar (mm)<input className={control} type="number" min={30} max={300} value={editing.widthMm} onChange={e=>update({widthMm:Number(e.target.value)})}/></label><label className="block text-xs space-y-1">Tinggi (mm)<input className={control} type="number" min={30} max={300} value={editing.heightMm} onChange={e=>update({heightMm:Number(e.target.value)})}/></label></div>
-          <button type="button" className="w-full rounded-xl border px-3 py-2 text-sm" onClick={()=>update({widthMm:54,heightMm:86})}>Preset 54 × 86 mm</button>
+          <div className="space-y-2 rounded-2xl border border-slate-200 dark:border-white/10 p-3">
+            <label className="block text-xs font-semibold" htmlFor="idcard-size-preset">Preset Ukuran Kartu</label>
+            <select
+              id="idcard-size-preset"
+              className={control}
+              value={selectedSizePreset(editing.widthMm,editing.heightMm)}
+              onChange={e=>{
+                const p=cardSizePresets.find(item=>item.id===e.target.value);
+                if(p) update({widthMm:p.w,heightMm:p.h});
+              }}
+            >
+              {cardSizePresets.map(p=><option key={p.id} value={p.id}>{p.label}</option>)}
+              <option value="custom">Ukuran kustom — isi lebar & tinggi</option>
+            </select>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={()=>update({widthMm:Math.min(editing.widthMm,editing.heightMm),heightMm:Math.max(editing.widthMm,editing.heightMm)})} className="rounded-xl border border-slate-300 dark:border-white/20 px-2 py-2 text-xs hover:border-emerald-500">Vertikal (Portrait)</button>
+              <button type="button" onClick={()=>update({widthMm:Math.max(editing.widthMm,editing.heightMm),heightMm:Math.min(editing.widthMm,editing.heightMm)})} className="rounded-xl border border-slate-300 dark:border-white/20 px-2 py-2 text-xs hover:border-emerald-500">Horizontal (Landscape)</button>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Memilih preset hanya mengubah lebar dan tinggi. Elemen, latar, dan status template tidak berubah. Ukuran tersimpan saat klik Simpan ke GAS.</p>
+          </div>
           <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={e=>{const f=e.target.files?.[0];if(f)void upload(f);}}/>
           <button type="button" disabled={busy} onClick={()=>fileRef.current?.click()} className="w-full rounded-xl bg-sky-600 text-white px-3 py-2 text-sm flex items-center justify-center gap-2 disabled:opacity-50"><Upload size={16}/> Unggah latar ke Drive</button>
-          <label className="block text-xs space-y-1">URL latar (opsional)<input className={control} value={editing.backgroundUrl||''} onChange={e=>update({backgroundUrl:e.target.value})} placeholder="URL gambar dari Drive atau HTTPS"/></label>
+          <label className="block text-xs space-y-1">URL latar (opsional)<input className={control} value={editing.backgroundUrl||''} onChange={e=>update({backgroundUrl:e.target.value,backgroundFileId:''})} placeholder="Tautan file Google Drive atau gambar HTTPS"/></label>
+          {editing.backgroundUrl&&<p className="text-xs text-slate-500">{backgroundLoaded?'✓ Gambar latar berhasil dimuat':backgroundError||'Memeriksa gambar latar…'}</p>}
+          {editing.backgroundUrl&&!candidates.length&&<p role="alert" className="text-xs text-rose-600">URL gambar tidak valid. Gunakan tautan HTTPS.</p>}
           <p className="text-xs text-slate-500">Template disimpan ke sheet DocumentTemplates. File gambar disimpan di folder Drive yang ditetapkan Admin.</p>
           <hr className="dark:border-white/10"/><h3 className="text-sm font-bold">Tambah Field Dinamis</h3>
           <select className={control} value={selectedField} onChange={e=>setSelectedField(e.target.value as Field)}>{fields.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}</select>
@@ -75,8 +134,10 @@ export const IdCardDesigner:React.FC=()=>{
         <section className="rounded-3xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#17181C] p-4 space-y-3 min-w-0"><div className="flex flex-wrap justify-between gap-2 items-center"><h2 className="font-bold flex gap-2 items-center"><Move size={16}/> Canvas Kartu</h2><label className="text-sm flex gap-2 items-center"><input type="checkbox" checked={previewMode} onChange={e=>setPreviewMode(e.target.checked)}/> Pratinjau kosong</label></div>
           <p className="text-xs text-slate-500">Geser kotak untuk menempatkan elemen. Label field adalah placeholder, bukan data peserta dummy.</p>
           <div className="min-h-[430px] bg-slate-100 dark:bg-[#0D0F13] rounded-2xl flex items-center justify-center p-4 overflow-hidden">
-            <div ref={canvasRef} className="relative bg-white shadow-xl border border-slate-300 overflow-hidden" style={{aspectRatio:`${editing.widthMm}/${editing.heightMm}`,width:editing.widthMm>editing.heightMm?'min(100%, 490px)':'min(100%, 320px)',maxHeight:600,backgroundImage:editing.backgroundUrl?`url(${JSON.stringify(editing.backgroundUrl)})`:undefined,backgroundSize:'100% 100%',backgroundPosition:'center'}}>
-              {!editing.backgroundUrl&&<div className="absolute inset-0 flex items-center justify-center text-slate-300 text-xs">Latar belum diunggah</div>}
+            <div ref={canvasRef} className="relative bg-white shadow-xl border border-slate-300 overflow-hidden" style={{aspectRatio:`${editing.widthMm}/${editing.heightMm}`,width:editing.widthMm>editing.heightMm?'min(100%, 490px)':'min(100%, 320px)',maxHeight:600}}>
+              {candidate&&<img key={candidate.url} src={candidate.url} alt="Latar desain ID Card" draggable={false} onLoad={()=>{setBackgroundLoaded(true);setBackgroundError('');}} onError={onBackgroundError} className="absolute inset-0 h-full w-full object-fill pointer-events-none select-none" />}
+              {!editing.backgroundUrl&&<div className="absolute inset-0 flex items-center justify-center text-slate-400 text-xs">Latar belum diunggah</div>}
+              {editing.backgroundUrl&&(!candidates.length||backgroundError)&&<div role="alert" className="absolute inset-0 flex items-center justify-center bg-white/90 p-4 text-center text-xs text-rose-700">{backgroundError||'Format URL gambar tidak valid.'}</div>}
               {editing.elements.map(el=><div key={el.id} role="button" tabIndex={0} aria-label={`Pindahkan ${fieldLabel(el.field)}`} onPointerDown={e=>beginDrag(e,el)} onPointerMove={e=>moveDrag(e,el)} onPointerUp={()=>setDrag(null)} onPointerCancel={()=>setDrag(null)} className={`absolute select-none touch-none flex justify-center items-center overflow-hidden cursor-move border ${selectedId===el.id?'border-emerald-600 ring-1 ring-emerald-600':'border-dashed border-slate-400/70'}`} style={{left:`${el.x}%`,top:`${el.y}%`,width:`${el.w}%`,height:`${el.h}%`,color:el.color,textAlign:el.align,fontSize:Math.max(9,el.fontSize*0.8)}}>{!previewMode?(el.field==='participant.photo'?'FOTO':el.field==='participant.qr'?'QR':el.field==='text.static'?(el.text||'TEKS'):fieldLabel(el.field)):(el.field==='text.static'?el.text:'')}</div>)}
             </div>
           </div>
