@@ -16,7 +16,6 @@ import {
   Boxes,
   Globe,
   Sliders,
-  ShieldCheck,
   UserCheck,
   Database,
   Award,
@@ -31,8 +30,6 @@ import {
 import { NavTab } from './MobileNavigation';
 import { featureControlService } from '../../services/featureControlService';
 import { brandingService, AppearanceMode } from '../../services/brandingService';
-import { canReadInstallation } from '../../backend/rbac/permissions';
-import { UserRole } from '../../types';
 
 interface MobileMoreMenuSheetProps {
   isOpen: boolean;
@@ -144,15 +141,12 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
         { id: 'demo_center' as NavTab, label: 'Pusat Demonstrasi', icon: MonitorPlay, adminOnly: true },
         { id: 'database_storage', label: 'Database Spreadsheet', icon: Database, adminOnly: true },
         { id: 'branding_settings', label: 'Branding & Tampilan', icon: Sparkles, adminOnly: true },
-        { id: 'installation', label: 'Konfigurasi Sistem', icon: ShieldCheck, adminOnly: true },
         { id: 'users', label: 'Akses Panitia', icon: UserCheck, adminOnly: true },
       ],
     },
   ];
 
   const currentGroups = isParticipant ? participantGroups : staffGroups;
-  const userRole = (role || 'viewer') as UserRole;
-  const isInstallationAdmin = canReadInstallation(userRole);
   const isStaffAdmin = ['superadmin', 'workspace_admin', 'event_admin'].includes(role);
   const isGalleryManager = [...['superadmin', 'workspace_admin', 'event_admin', 'publication_officer', 'documentation_officer']].includes(role);
 
@@ -162,9 +156,6 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
       ...grp,
       items: grp.items.filter(item => {
         if (item.id === ('gallery_admin' as NavTab) && !isGalleryManager) {
-          return false;
-        }
-        if (item.id === 'installation' && !isInstallationAdmin) {
           return false;
         }
         if (item.adminOnly && !isStaffAdmin) {
