@@ -66,6 +66,15 @@ const ROLE_ALLOWED_TABS: Record<UserRole, ReadonlyArray<NavTab>> = {
   viewer: ['home', 'public_home', 'public_gallery'],
 };
 
+// Page IDs that can be opened through navigation URLs. GAS remains the source of app data.
+const VALID_NAV_TABS = new Set<NavTab>(Object.values(ROLE_ALLOWED_TABS).flat());
+const readInternalTab = (): NavTab | null => {
+  try {
+    const candidate = new URLSearchParams(window.location.search).get('tab') as NavTab | null;
+    return candidate && VALID_NAV_TABS.has(candidate) ? candidate : null;
+  } catch { return null; }
+};
+
 const TAB_FEATURE_REQUIREMENTS: Partial<Record<NavTab, SystemFeatureKey>> = {
   schedule: 'SCHEDULE',
   attendance: 'ATTENDANCE',
@@ -87,6 +96,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>(() => {
     try {
       const path = window.location.pathname;
+      const requested = readInternalTab();
+      if (requested && authService.isAuthenticated()) return requested;
       if (path === '/bootstrap' || path === '/bootstrap/') {
         return 'bootstrap';
       }
@@ -107,6 +118,26 @@ export default function App() {
     } catch {}
     return 'public_home';
   });
+  // All grid cards, desktop/mobile menus and feature buttons navigate to one page.
+  // Browser history stores only the page ID; sensitive app data always comes from GAS.
+  const navigateToTab = (tab: NavTab) => {
+    if (tab === activeTab) return;
+    try {
+      const url = tab === 'public_home' ? '/'
+        : tab === 'public_gallery' ? '/gallery'
+        : tab === 'bootstrap' ? '/bootstrap'
+        : tab === 'installation' ? '/install'
+        : `/?tab=${encodeURIComponent(tab)}`;
+      window.history.pushState({ siepangTab: tab }, '', url);
+    } catch { /* navigation still works if browser history is unavailable */ }
+    setActiveTab(tab);
+  };
+
+  useEffect(() => {
+    // Scroll only on page changes, not whenever GAS refreshes a card.
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [activeTab]);
+
   const [currentRole, setCurrentRole] = useState<UserRole>(authService.getCurrentUser()?.role || 'viewer');
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isSyncCenterOpen, setIsSyncCenterOpen] = useState(false);
@@ -257,7 +288,10 @@ export default function App() {
     const handlePopState = () => {
       try {
         const path = window.location.pathname;
-        if (path === '/bootstrap' || path === '/bootstrap/') {
+        const internalTab = readInternalTab();
+        if (internalTab && authService.isAuthenticated()) {
+          setActiveTab(internalTab);
+        } else if (path === '/bootstrap' || path === '/bootstrap/') {
           setActiveTab('bootstrap');
         } else if (path === '/install' || path === '/install/') {
           if (!authService.isAuthenticated()) {
@@ -862,7 +896,7 @@ export default function App() {
               <div className="pt-2 border-t border-[#ECECEF] dark:border-white/10 space-y-2">
                 <button
                   type="button"
-                  onClick={() => setActiveTab('public_home')}
+                  onClick={() => navigateToTab('public_home')}
                   className="w-full py-2.5 px-3 rounded-xl border border-dashed border-[#ECECEF] dark:border-white/10 hover:border-slate-400 dark:hover:border-white/20 text-slate-600 dark:text-slate-300 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
                 >
                   <Globe className="w-4 h-4 text-purple-600" />
@@ -987,7 +1021,7 @@ export default function App() {
               <div className="pt-2 border-t border-[#ECECEF] dark:border-white/10">
                 <button
                   type="button"
-                  onClick={() => setActiveTab('public_home')}
+                  onClick={() => navigateToTab('public_home')}
                   className="w-full py-2.5 px-3 rounded-xl border border-dashed border-[#ECECEF] dark:border-white/10 hover:border-slate-400 dark:hover:border-white/20 text-slate-600 dark:text-slate-300 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
                 >
                   <Globe className="w-4 h-4 text-purple-600" />
@@ -1071,7 +1105,7 @@ export default function App() {
   return (
     <AppLayout
       activeTab={activeTab}
-      onTabChange={setActiveTab}
+      onTabChange={navigateToTab}
       role={currentRole}
       onOpenScanner={() => setIsScannerOpen(true)}
       onOpenSyncCenter={() => setIsSyncCenterOpen(true)}
@@ -1093,7 +1127,7 @@ export default function App() {
           </div>
           <button
             type="button"
-            onClick={() => setActiveTab('home')}
+            onClick={() => navigateToTab('home')}
             className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#208C60] to-[#F47743] text-white text-xs font-bold shadow-xs hover:opacity-95 transition-opacity inline-flex items-center gap-1.5 cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -1116,7 +1150,7 @@ export default function App() {
           </div>
           <button
             type="button"
-            onClick={() => setActiveTab('home')}
+            onClick={() => navigateToTab('home')}
             className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs transition-colors inline-flex items-center gap-1.5 cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -1129,7 +1163,7 @@ export default function App() {
           {activeTab === 'home' && (
             <RoleHomeRouter
               role={currentRole}
-              onNavigate={setActiveTab}
+              onNavigate={navigateToTab}
               onOpenScanner={() => setIsScannerOpen(true)}
               onOpenSyncCenter={() => setIsSyncCenterOpen(true)}
             />
@@ -1137,10 +1171,10 @@ export default function App() {
 
           {activeTab === 'public_home' && (
             <PublicEventHomepage
-              onNavigateToGallery={tab => setActiveTab('public_gallery')}
-              onNavigateToVisitorRegister={() => setActiveTab('home')}
-              onNavigateToSchedule={() => setActiveTab('schedule')}
-              onNavigateToLeaderboard={() => setActiveTab('leaderboard')}
+              onNavigateToGallery={() => navigateToTab('public_gallery')}
+              onNavigateToVisitorRegister={() => navigateToTab('home')}
+              onNavigateToSchedule={() => navigateToTab('schedule')}
+              onNavigateToLeaderboard={() => navigateToTab('leaderboard')}
               onOpenScanner={() => setIsScannerOpen(true)}
               onNavigateToLogin={(email?: string) => {
                 if (typeof email === 'string' && email.trim()) {
@@ -1160,20 +1194,20 @@ export default function App() {
 
           {activeTab === 'public_gallery' && (
             <PublicDocumentationGallery
-              onBackToHome={() => setActiveTab('public_home')}
+              onBackToHome={() => navigateToTab('public_home')}
             />
           )}
 
           {activeTab === 'admin_dashboard' && (
             <AdminDaerahDashboard
-              onNavigate={setActiveTab}
+              onNavigate={navigateToTab}
               onOpenScanner={() => setIsScannerOpen(true)}
               onOpenSyncCenter={() => setIsSyncCenterOpen(true)}
             />
           )}
 
           {activeTab === 'event_studio' && (
-            <EventManagementStudio onNavigateToTab={setActiveTab} />
+            <EventManagementStudio onNavigateToTab={navigateToTab} />
           )}
 
           {activeTab === 'superadmin' && <SuperAdminDashboard />}
@@ -1200,7 +1234,7 @@ export default function App() {
           )}
 
           {activeTab === 'installation' && (
-            <AdminInstallationCenter onBackToHome={() => setActiveTab('public_home')} />
+            <AdminInstallationCenter onBackToHome={() => navigateToTab('public_home')} />
           )}
 
           {activeTab === 'system_update' && <SystemUpdateCenter />}
