@@ -247,12 +247,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           roles: ['superadmin', 'workspace_admin'],
         },
         {
-          id: 'installation',
-          label: 'Konfigurasi Sistem',
-          icon: ShieldCheck,
-          roles: ['superadmin', 'workspace_admin', 'event_admin'],
-        },
-        {
           id: 'superadmin',
           label: 'SuperAdmin Hub',
           icon: ShieldCheck,
