@@ -5,7 +5,7 @@
  * capacity, venue, status, and contacts without spreadsheet edits.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Calendar,
   MapPin,
@@ -27,12 +27,15 @@ import { EventCategory, EventStatus, OrganizationalLevel, ParticipationScope } f
 export const GeneralEventEditor: React.FC = () => {
   const event = eventStudioService.getEvent();
   const [isSaving, setIsSaving] = useState(false);
-  const [formData, setFormData] = useState({
+  const [eventLoadStatus, setEventLoadStatus] = useState(eventStudioService.getEventLoadStatus());
+  const [isReloading, setIsReloading] = useState(false);
+  const hasEditedForm = useRef(false);
+  const buildForm = (event: ReturnType<typeof eventStudioService.getEvent>) => ({
     name: event.name,
     shortName: event.shortName,
     eventCode: event.eventCode || '',
     category: event.category,
-    organizationalLevel: event.organizationalLevel || ('Kwarran' as OrganizationalLevel),
+    organizationalLevel: event.organizationalLevel || ('' as OrganizationalLevel),
     organizer: event.organizer || '',
     description: event.description || '',
     theme: event.theme,
@@ -43,26 +46,36 @@ export const GeneralEventEditor: React.FC = () => {
     location: event.location,
     venue: event.venue || '',
     campGround: event.campGround,
-    participantCapacity: event.participantCapacity || 1500,
-    status: event.status || ('ONGOING' as EventStatus),
+    participantCapacity: event.participantCapacity ?? 0,
+    status: event.status || ('' as EventStatus),
     participation_scope: (event.participation_scope || 'CHILD_ORGANIZATIONS') as ParticipationScope,
-    allowed_organization_ids: event.allowed_organization_ids || ['org_kwarran_glagah', 'org_kwarran_rogojampi', 'org_kwarran_genteng', 'org_kwarran_banyuwangi'],
+    allowed_organization_ids: event.allowed_organization_ids ?? [],
     logoUrl: event.logoUrl || '',
     bannerUrl: event.bannerUrl || '',
     contacts: {
-      medical: event.contacts?.medical || '0812-3456-7891 (Posko Medis)',
-      security: event.contacts?.security || '0812-3456-7892 (Pos Keamanan)',
-      info: event.contacts?.info || '0812-3456-7893 (Pusat Informasi)',
-      emergency: event.contacts?.emergency || '0811-999-112 (Piket Darurat)',
-      helpdesk: event.contacts?.helpdesk || '0812-3456-7894 (Sekretariat)',
+      medical: event.contacts?.medical || '',
+      security: event.contacts?.security || '',
+      info: event.contacts?.info || '',
+      emergency: event.contacts?.emergency || '',
+      helpdesk: event.contacts?.helpdesk || '',
     },
   });
+  const [formData, setFormState] = useState(() => buildForm(event));
+  const setFormData: typeof setFormState = (value) => {
+    hasEditedForm.current = true;
+    setFormState(value);
+  };
 
   const [saveState, setSaveState] = useState(eventStudioService.getSaveState());
 
   useEffect(() => {
     const unsub = eventStudioService.subscribe(() => {
       setSaveState(eventStudioService.getSaveState());
+      const nextStatus = eventStudioService.getEventLoadStatus();
+      setEventLoadStatus(nextStatus);
+      if (nextStatus.ready && !hasEditedForm.current) {
+        setFormState(buildForm(eventStudioService.getEvent()));
+      }
     });
     return () => {
       unsub();
@@ -91,7 +104,18 @@ export const GeneralEventEditor: React.FC = () => {
     if (e) e.preventDefault();
     setIsSaving(true);
     try {
+      if (!formData.name.trim() || !formData.startDate || !formData.endDate) {
+        throw new Error('Nama event, tanggal mulai, dan tanggal selesai harus diisi.');
+      }
+      if (formData.endDate < formData.startDate) {
+        throw new Error('Tanggal selesai tidak boleh mendahului tanggal mulai.');
+      }
+      if (!eventStudioService.getEventLoadStatus().ready) {
+        throw new Error('Pengaturan event belum berhasil dimuat dari GAS. Muat ulang data terlebih dahulu.');
+      }
       await eventStudioService.updateGeneralSettings(formData);
+      hasEditedForm.current = false;
+      setFormState(buildForm(eventStudioService.getEvent()));
       setToast({ msg: '✅ Pengaturan umum event berhasil disimpan ke cloud database!', type: 'success' });
     } catch (err: any) {
       setToast({ msg: `❌ Gagal menyimpan: ${err.message}`, type: 'error' });
@@ -100,6 +124,23 @@ export const GeneralEventEditor: React.FC = () => {
       setTimeout(() => setToast(null), 4000);
     }
   };
+
+  if (!eventLoadStatus.ready) {
+    return (
+      <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-slate-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-slate-100">
+        <h2 className="font-bold text-base">Pengaturan Event belum tersedia</h2>
+        <p className="mt-2 text-sm">{eventLoadStatus.error || 'Sedang mengambil data event resmi dari Google Apps Script. Form dinonaktifkan untuk mencegah penyimpanan data sementara.'}</p>
+        <button type="button" disabled={isReloading} onClick={async () => {
+          setIsReloading(true);
+          try { await eventStudioService.refreshGeneralEvent(); }
+          catch (error) { console.error('Gagal memuat data event:', error); }
+          finally { setIsReloading(false); }
+        }} className="mt-4 rounded-xl bg-emerald-600 px-4 py-2 text-white text-sm font-bold disabled:opacity-50">
+          {isReloading ? 'Memuat…' : 'Muat Ulang Data Event'}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSave} className="space-y-6">
@@ -379,7 +420,7 @@ export const GeneralEventEditor: React.FC = () => {
                 type="number"
                 min="10"
                 max="50000"
-                value={formData.participantCapacity}
+                value={formData.participantCapacity || ''}
                 onChange={e => setFormData({ ...formData, participantCapacity: Number(e.target.value) })}
                 className="w-full px-3.5 py-2.5 bg-[#FAFAFA] dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-2xl text-[#171717] dark:text-white font-mono focus:border-emerald-500 focus:bg-white dark:focus:bg-black/60 focus:outline-none"
               />
