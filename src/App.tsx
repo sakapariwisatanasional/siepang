@@ -25,6 +25,7 @@ import { MyProfile } from './features/profile/MyProfile';
 import { EventManagementStudio } from './features/event_studio/EventManagementStudio';
 import { PublicEventHomepage } from './features/public/PublicEventHomepage';
 import { PublicDocumentationGallery } from './features/documentation/PublicDocumentationGallery';
+import { AdminPublicGalleryManager } from './features/documentation/AdminPublicGalleryManager';
 import { OrganizationManagement } from './features/organizations/OrganizationManagement';
 import { UserManagementView } from './features/users/UserManagementView';
 import { AdminBrandingManager } from './features/branding/AdminBrandingManager';
@@ -42,6 +43,10 @@ import { canReadInstallation } from './backend/rbac/permissions';
 import { bootstrapService } from './services/bootstrapService';
 import { Lock, ArrowLeft, ShieldAlert, Globe, UserCheck, AlertCircle, ShieldCheck } from 'lucide-react';
 
+// Route ID internal; will be added to shared NavTab menus in a subsequent navigation update.
+const GALLERY_ADMIN_TAB = 'gallery_admin' as NavTab;
+const GALLERY_MANAGER_ROLES: ReadonlyArray<UserRole> = ['superadmin', 'workspace_admin', 'event_admin', 'publication_officer', 'documentation_officer'];
+
 export const PUBLIC_ROUTES: ReadonlyArray<NavTab> = [
   'public_home',
   'public_gallery',
@@ -49,9 +54,9 @@ export const PUBLIC_ROUTES: ReadonlyArray<NavTab> = [
 ];
 
 const ROLE_ALLOWED_TABS: Record<UserRole, ReadonlyArray<NavTab>> = {
-  superadmin: ['home', 'public_home', 'public_gallery', 'admin_dashboard', 'event_studio', 'superadmin', 'branding_settings', 'database_storage', 'installation', 'system_update', 'organizations', 'users', 'schedule', 'participants', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
-  workspace_admin: ['home', 'public_home', 'public_gallery', 'admin_dashboard', 'event_studio', 'branding_settings', 'database_storage', 'installation', 'system_update', 'organizations', 'users', 'schedule', 'participants', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
-  event_admin: ['home', 'public_home', 'public_gallery', 'admin_dashboard', 'event_studio', 'installation', 'organizations', 'schedule', 'participants', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
+  superadmin: ['home', 'public_home', 'public_gallery', GALLERY_ADMIN_TAB, 'admin_dashboard', 'event_studio', 'superadmin', 'branding_settings', 'database_storage', 'installation', 'system_update', 'organizations', 'users', 'schedule', 'participants', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
+  workspace_admin: ['home', 'public_home', 'public_gallery', GALLERY_ADMIN_TAB, 'admin_dashboard', 'event_studio', 'branding_settings', 'database_storage', 'installation', 'system_update', 'organizations', 'users', 'schedule', 'participants', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
+  event_admin: ['home', 'public_home', 'public_gallery', GALLERY_ADMIN_TAB, 'admin_dashboard', 'event_studio', 'installation', 'organizations', 'schedule', 'participants', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
   kontingen_admin: ['home', 'public_home', 'public_gallery', 'schedule', 'participants', 'competitions', 'leaderboard', 'profile'],
   registration_officer: ['home', 'public_home', 'public_gallery', 'schedule', 'participants', 'attendance', 'profile', 'templates'],
   attendance_officer: ['home', 'public_home', 'public_gallery', 'schedule', 'attendance', 'participants', 'profile'],
@@ -61,8 +66,8 @@ const ROLE_ALLOWED_TABS: Record<UserRole, ReadonlyArray<NavTab>> = {
   committee: ['home', 'public_home', 'public_gallery', 'schedule', 'attendance', 'participants', 'competitions', 'profile'],
   participant: ['home', 'public_home', 'public_gallery', 'schedule', 'competitions', 'leaderboard', 'profile'],
   ceremony_officer: ['home', 'public_home', 'public_gallery', 'schedule', 'attendance', 'profile'],
-  documentation_officer: ['home', 'public_home', 'public_gallery', 'schedule', 'profile'],
-  publication_officer: ['home', 'public_home', 'public_gallery', 'schedule', 'profile'],
+  documentation_officer: ['home', 'public_home', 'public_gallery', GALLERY_ADMIN_TAB, 'schedule', 'profile'],
+  publication_officer: ['home', 'public_home', 'public_gallery', GALLERY_ADMIN_TAB, 'schedule', 'profile'],
   viewer: ['home', 'public_home', 'public_gallery'],
 };
 
@@ -84,6 +89,7 @@ const TAB_FEATURE_REQUIREMENTS: Partial<Record<NavTab, SystemFeatureKey>> = {
   health: 'HEALTH',
   logistics: 'LOGISTICS',
   public_gallery: 'PUBLIC_DOCUMENTATION',
+  [GALLERY_ADMIN_TAB]: 'PUBLIC_DOCUMENTATION',
   public_home: 'PUBLIC_EVENT_PAGE',
 };
 
@@ -1160,6 +1166,16 @@ export default function App() {
       ) : (
         <>
           {/* Route Switcher with Role-Based Home Experience */}
+          {activeTab === 'home' && GALLERY_MANAGER_ROLES.includes(currentRole) && (
+            <div className="mx-auto w-full max-w-7xl px-4 pt-4 sm:px-6">
+              <button type="button" onClick={() => navigateToTab(GALLERY_ADMIN_TAB)}
+                className="flex w-full items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-left font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-100">
+                <span>Manajemen Galeri — Kelola URL Foto & Video</span>
+                <span aria-hidden="true">→</span>
+              </button>
+            </div>
+          )}
+
           {activeTab === 'home' && (
             <RoleHomeRouter
               role={currentRole}
@@ -1190,6 +1206,16 @@ export default function App() {
               installationState={installationState}
               installationError={installationError}
             />
+          )}
+
+          {activeTab === GALLERY_ADMIN_TAB && (
+            <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+              <button type="button" onClick={() => navigateToTab('home')}
+                className="mb-5 inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/20 dark:text-white dark:hover:bg-white/10">
+                <ArrowLeft className="h-4 w-4" /> Kembali ke Beranda
+              </button>
+              <AdminPublicGalleryManager />
+            </div>
           )}
 
           {activeTab === 'public_gallery' && (
