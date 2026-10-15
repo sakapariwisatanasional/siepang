@@ -99,6 +99,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
   const [isRetrying, setIsRetrying] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activePublicPage, setActivePublicPage] = useState<string>('home');
+  const [scheduleRevision, setScheduleRevision] = useState(0);
   const [officialCompetitions, setOfficialCompetitions] = useState<Array<{id:string;title:string;category:string;scheduleTime:string;location:string}>>([]);
   const [competitionLoading, setCompetitionLoading] = useState(true);
   const [competitionError, setCompetitionError] = useState('');
@@ -172,7 +173,10 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
 
     const unsubFeature = featureControlService.subscribe(updateAll);
     const unsubPortal = portalConfigService.subscribe(updateAll);
-    const unsubEvent = eventService.subscribe(updateAll);
+    const unsubEvent = eventService.subscribe(() => {
+      updateAll();
+      setScheduleRevision(n => n + 1);
+    });
     const unsubDoc = documentationService.subscribe(updateAll);
     const unsubBanner = bannerSponsorService.subscribe(updateAll);
 
@@ -191,11 +195,16 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
     return isConfigured ? eventService.getAnnouncements().slice(0, 4) : [];
   }, [isConfigured]);
 
+  const scheduleEventId = eventService.getCurrentEvent().id;
+  useEffect(() => {
+    if (!isConfigured || !scheduleEventId) return;
+    void eventService.refreshPublicSchedule();
+  }, [isConfigured, scheduleEventId]);
+
   const scheduleList: ScheduleItem[] = useMemo(() => {
     if (!isConfigured) return [];
-    const all = eventService.getSchedule();
-    return all.slice(0, 4);
-  }, [isConfigured]);
+    return eventService.getSchedule().filter(item => item.isPublished === true).slice(0, 4);
+  }, [isConfigured, scheduleRevision]);
 
   const leaderboardList: LeaderboardEntry[] = useMemo(() => {
     if (!isConfigured) return [];
