@@ -21,6 +21,7 @@ import {
   Database,
   Award,
   LayoutDashboard,
+  MonitorPlay,
   Sun,
   Moon,
   Sparkles,
@@ -131,6 +132,7 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
       title: 'Publikasi & Dokumen',
       items: [
         { id: 'public_gallery', label: 'Galeri Liputan', icon: ImageIcon, feature: 'PUBLIC_DOCUMENTATION' },
+        { id: 'gallery_admin' as NavTab, label: 'Manajemen Galeri', icon: ImageIcon, feature: 'PUBLIC_DOCUMENTATION' },
         { id: 'templates', label: 'ID Card & Sertifikat', icon: CreditCard, feature: 'ID_CARD' },
       ],
     },
@@ -139,6 +141,7 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
       items: [
         { id: 'profile', label: 'Profil Saya', icon: Award },
         { id: 'admin_dashboard', label: 'Ringkasan Admin', icon: LayoutDashboard, adminOnly: true },
+        { id: 'demo_center' as NavTab, label: 'Pusat Demonstrasi', icon: MonitorPlay, adminOnly: true },
         { id: 'database_storage', label: 'Database Spreadsheet', icon: Database, adminOnly: true },
         { id: 'branding_settings', label: 'Branding & Tampilan', icon: Sparkles, adminOnly: true },
         { id: 'installation', label: 'Konfigurasi Sistem', icon: ShieldCheck, adminOnly: true },
@@ -151,12 +154,16 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
   const userRole = (role || 'viewer') as UserRole;
   const isInstallationAdmin = canReadInstallation(userRole);
   const isStaffAdmin = ['superadmin', 'workspace_admin', 'event_admin'].includes(role);
+  const isGalleryManager = [...['superadmin', 'workspace_admin', 'event_admin', 'publication_officer', 'documentation_officer']].includes(role);
 
   // Filter items through feature control and RBAC permissions
   const filteredGroups = currentGroups
     .map(grp => ({
       ...grp,
       items: grp.items.filter(item => {
+        if (item.id === ('gallery_admin' as NavTab) && !isGalleryManager) {
+          return false;
+        }
         if (item.id === 'installation' && !isInstallationAdmin) {
           return false;
         }
