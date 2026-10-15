@@ -42,6 +42,7 @@ export const DocumentationManager: React.FC = () => {
 
   // Modal: Add Album State (Section 5 & 6)
   const [showAddAlbumModal, setShowAddAlbumModal] = useState(false);
+  const [editingAlbumId, setEditingAlbumId] = useState<string | null>(null);
   const [albumForm, setAlbumForm] = useState({
     album_name: '',
     description: '',
@@ -134,6 +135,32 @@ export const DocumentationManager: React.FC = () => {
     showToast('Tautan folder disimpan sebagai metadata; verifikasi akses Drive tidak mengimpor foto.');
   };
 
+  const resetAlbumEditor = () => {
+    setShowAddAlbumModal(false);
+    setEditingAlbumId(null);
+    setValidationState(null);
+  };
+
+  const openCreateAlbum = () => {
+    setEditingAlbumId(null);
+    setAlbumError('');
+    setAlbumForm({ album_name: '', description: '', source_folder_url: '', cover_image_url: '', publication_status: 'DRAFT' });
+    setShowAddAlbumModal(true);
+  };
+
+  const openEditAlbum = (album: PhotoAlbum) => {
+    setEditingAlbumId(album.album_id);
+    setAlbumError('');
+    setAlbumForm({
+      album_name: album.album_name,
+      description: album.description || '',
+      source_folder_url: album.source_folder_url || '',
+      cover_image_url: album.cover_image_url || '',
+      publication_status: album.publication_status,
+    });
+    setShowAddAlbumModal(true);
+  };
+
   const handleCreateAlbum = async (e: React.FormEvent) => {
     e.preventDefault();
     if (savingAlbum) return;
@@ -142,23 +169,34 @@ export const DocumentationManager: React.FC = () => {
     setAlbumError('');
     setAlbumReceipt(null);
     try {
-      const album = await documentationService.createAlbum({
+      const values = {
         album_name: albumForm.album_name.trim(),
         description: albumForm.description.trim(),
         source_folder_url: albumForm.source_folder_url.trim(),
-        // Explicit cover only; no thumbnails from Drive or fake media.
+        // The cover is URL metadata only: do not import or create media.
         cover_image_url: albumForm.cover_image_url.trim(),
         publication_status: albumForm.publication_status,
-      });
+      };
+      const album = editingAlbumId
+        ? await documentationService.updateAlbum(editingAlbumId, values)
+        : await documentationService.createAlbum(values);
       const receipt = documentationService.getLastAlbumReceipt();
       if (!receipt || receipt.album_id !== album.album_id || receipt.sheet !== 'DocumentationAlbums') {
         throw new Error('Bukti verifikasi album tidak lengkap. Periksa Spreadsheet sebelum mencoba lagi.');
       }
       await documentationService.loadAlbumsFromGas();
+      const confirmed = documentationService.getAlbumById(album.album_id);
+      if (!confirmed || confirmed.album_name !== values.album_name ||
+          (confirmed.cover_image_url || '') !== values.cover_image_url ||
+          (confirmed.source_folder_url || '') !== values.source_folder_url ||
+          (confirmed.description || '') !== values.description ||
+          confirmed.publication_status !== values.publication_status) {
+        throw new Error('Perubahan belum cocok dengan data yang dibaca ulang dari Spreadsheet. Periksa sebelum menyimpan ulang.');
+      }
       setAlbumReceipt(receipt);
-      setShowAddAlbumModal(false);
+      resetAlbumEditor();
       setAlbumForm({ album_name: '', description: '', source_folder_url: '', cover_image_url: '', publication_status: 'DRAFT' });
-      showToast(`Album '${album.album_name}' tersimpan di Spreadsheet. Tidak ada foto/video yang dibuat.`);
+      showToast(`Album '${album.album_name}' ${editingAlbumId ? 'diperbarui' : 'dibuat'} dan diverifikasi di Spreadsheet.`);
     } catch (err: any) {
       setAlbumError(err?.message || 'Penyimpanan album belum dapat diverifikasi. Jangan klik Simpan berulang kali.');
     } finally {
@@ -279,7 +317,7 @@ export const DocumentationManager: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => setShowAddAlbumModal(true)}
+            onClick={openCreateAlbum}
             className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#208C60] to-[#F47743] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs hover:opacity-90 active:scale-98 transition-all"
           >
             <FolderPlus className="w-4 h-4" />
@@ -345,7 +383,7 @@ export const DocumentationManager: React.FC = () => {
 
       {albumError && <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 text-rose-800 p-3 text-xs">{albumError}</div>}
       {albumReceipt && <div role="status" className="rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-900 p-3 text-xs space-y-1">
-        <p className="font-bold">Album tersimpan dan terbaca ulang dari Google Sheets — tanpa foto/video otomatis.</p>
+        <p className="font-bold">Data album tersimpan dan terbaca ulang dari Google Sheets — tanpa penambahan foto/video otomatis.</p>
         <p>Album ID: {albumReceipt.album_id}</p><p>Sheet: {albumReceipt.sheet} · Baris: {albumReceipt.row}</p>
         <p>Event: {albumReceipt.event_id} · Terverifikasi: {albumReceipt.verified_at}</p>
       </div>}
@@ -439,6 +477,11 @@ export const DocumentationManager: React.FC = () => {
                     )}
 
                     <div className="flex items-center gap-1.5">
+                      <button type="button" onClick={() => openEditAlbum(album)}
+                        className="text-xs font-semibold text-purple-700 dark:text-purple-300 hover:underline px-2 py-1 rounded-md flex items-center gap-1"
+                        aria-label={`Edit album ${album.album_name}`}>
+                        <Edit2 className="w-3.5 h-3.5" /> Edit Album
+                      </button>
                       <button
                         type="button"
                         onClick={async () => {
@@ -741,13 +784,12 @@ export const DocumentationManager: React.FC = () => {
             <div className="flex items-center justify-between pb-2 border-b border-black/5 dark:border-white/10">
               <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <FolderPlus className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                <span>Tambah Album Google Drive</span>
+                <span>{editingAlbumId ? 'Edit Detail Album' : 'Buat Album Kosong'}</span>
               </h3>
               <button
                 type="button"
                 onClick={() => {
-                  setShowAddAlbumModal(false);
-                  setValidationState(null);
+                  resetAlbumEditor();
                 }}
                 className="text-slate-400 hover:text-black dark:hover:text-white"
               >
@@ -817,8 +859,7 @@ export const DocumentationManager: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => {
-                    setShowAddAlbumModal(false);
-                    setValidationState(null);
+                    resetAlbumEditor();
                   }}
                   className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-slate-300 font-bold"
                 >
@@ -829,7 +870,7 @@ export const DocumentationManager: React.FC = () => {
                   disabled={savingAlbum}
                   className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#208C60] to-[#F47743] text-white font-bold shadow-xs hover:opacity-90 disabled:opacity-50"
                 >
-                  {savingAlbum ? 'Menyimpan ke Spreadsheet...' : 'Simpan Album Kosong'}
+                  {savingAlbum ? 'Menyimpan & memverifikasi...' : editingAlbumId ? 'Simpan Perubahan Album' : 'Simpan Album Kosong'}
                 </button>
               </div>
             </form>
