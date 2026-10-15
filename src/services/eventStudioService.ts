@@ -381,6 +381,20 @@ class EventStudioService {
   /**
    * Initializes cache by pulling live data through the API Client.
    */
+  /** Limit GAS calls during initial sync to avoid flooding the proxy and Apps Script. */
+  private async runLimitedSync_<T extends readonly (() => Promise<any>)[]>(tasks: T): Promise<{ [K in keyof T]: Awaited<ReturnType<T[K]>> }> {
+    const results: any[] = new Array(tasks.length);
+    let nextIndex = 0;
+    const worker = async () => {
+      while (nextIndex < tasks.length) {
+        const index = nextIndex++;
+        results[index] = await tasks[index]();
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(3, tasks.length) }, () => worker()));
+    return results as { [K in keyof T]: Awaited<ReturnType<T[K]>> };
+  }
+
   public async initialSync(): Promise<void> {
     try {
       const [
@@ -407,30 +421,30 @@ class EventStudioService {
         cntRes,
         audRes,
         orgRes,
-      ] = await Promise.all([
-        apiTransport.send<ScoutEvent>('events.get', {}, { timeoutMs: 30000 }),
-        this.request<ScheduleItem[]>('/api/schedules/list'),
-        this.request<CampActivity[]>('/api/activities/list'),
-        this.request<ActivityType[]>('/api/activities/types/list'),
-        this.request<CampsiteSubcamp[]>('/api/campsite/subcamps/list'),
-        this.request<CampsiteZone[]>('/api/campsite/zones/list'),
-        this.request<CampsiteBlock[]>('/api/campsite/blocks/list'),
-        this.request<CampsiteLot[]>('/api/campsite/lots/list'),
-        this.request<CampFacility[]>('/api/campsite/facilities/list'),
-        this.request<CompetitionType[]>('/api/competitions/types/list'),
-        this.request<Competition[]>('/api/competitions/list'),
-        this.request<JudgingCriterion[]>('/api/competitions/criteria/list'),
-        this.request<CompetitionJudge[]>('/api/competitions/judges/list'),
-        this.request<VotingConfig>('/api/competitions/voting/get'),
-        this.request<RegistrationSettings>('/api/registration/settings/get'),
-        this.request<RegistrationFieldConfig[]>('/api/registration/fields/list'),
-        this.request<PointRuleConfig[]>('/api/gamification/points/list'),
-        this.request<BadgeConfig[]>('/api/gamification/badges/list'),
-        this.request<QrCheckpoint[]>('/api/gamification/checkpoints/list'),
-        this.request<CustomInfoPage[]>('/api/content/pages/list'),
-        this.request<EventContactItem[]>('/api/content/contacts/list'),
-        this.request<AuditLog[]>('/api/audit/list'),
-        this.request<Organization[]>('/api/organizations/list'),
+      ] = await this.runLimitedSync_([
+        () => apiTransport.send<ScoutEvent>('events.get', {}, { timeoutMs: 30000 }),
+        () => this.request<ScheduleItem[]>('/api/schedules/list'),
+        () => this.request<CampActivity[]>('/api/activities/list'),
+        () => this.request<ActivityType[]>('/api/activities/types/list'),
+        () => this.request<CampsiteSubcamp[]>('/api/campsite/subcamps/list'),
+        () => this.request<CampsiteZone[]>('/api/campsite/zones/list'),
+        () => this.request<CampsiteBlock[]>('/api/campsite/blocks/list'),
+        () => this.request<CampsiteLot[]>('/api/campsite/lots/list'),
+        () => this.request<CampFacility[]>('/api/campsite/facilities/list'),
+        () => this.request<CompetitionType[]>('/api/competitions/types/list'),
+        () => this.request<Competition[]>('/api/competitions/list'),
+        () => this.request<JudgingCriterion[]>('/api/competitions/criteria/list'),
+        () => this.request<CompetitionJudge[]>('/api/competitions/judges/list'),
+        () => this.request<VotingConfig>('/api/competitions/voting/get'),
+        () => this.request<RegistrationSettings>('/api/registration/settings/get'),
+        () => this.request<RegistrationFieldConfig[]>('/api/registration/fields/list'),
+        () => this.request<PointRuleConfig[]>('/api/gamification/points/list'),
+        () => this.request<BadgeConfig[]>('/api/gamification/badges/list'),
+        () => this.request<QrCheckpoint[]>('/api/gamification/checkpoints/list'),
+        () => this.request<CustomInfoPage[]>('/api/content/pages/list'),
+        () => this.request<EventContactItem[]>('/api/content/contacts/list'),
+        () => this.request<AuditLog[]>('/api/audit/list'),
+        () => this.request<Organization[]>('/api/organizations/list'),
       ]);
 
       if (evRes.ok && evRes.data) {
@@ -473,7 +487,7 @@ class EventStudioService {
     return this.saveState;
   }
 
-  public markDirty(draftPayload?: any) {
+  public markDirty(draftPayload?: any, autosave = true) {
     this.pendingDraft = draftPayload || { event: this.event };
     this.saveState = {
       ...this.saveState,
@@ -484,9 +498,12 @@ class EventStudioService {
 
     // Debounced safe autosave (2000ms delay to avoid spreadsheet throttling)
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
-    this.debounceTimer = setTimeout(() => {
-      this.saveAll();
-    }, 2500);
+    this.debounceTimer = null;
+    if (autosave) {
+      this.debounceTimer = setTimeout(() => {
+        this.saveAll();
+      }, 2500);
+    }
   }
 
   public async saveAll(): Promise<boolean> {
@@ -563,6 +580,11 @@ class EventStudioService {
   }
 
   public async updateEvent(updates: Partial<ScoutEvent>): Promise<ScoutEvent> {
+    // Manual save supersedes a pending autosave of an earlier draft.
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
     this.saveState = { ...this.saveState, status: 'Saving…' };
     this.notify();
 
@@ -593,6 +615,7 @@ class EventStudioService {
 
     if (res.ok && res.data) {
       this.event = this.normalizeEvent(res.data);
+      this.pendingDraft = null;
       this.saveState = {
         hasUnsaved: false,
         status: 'Saved ✓',
