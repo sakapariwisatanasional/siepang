@@ -47,7 +47,7 @@ export const DocumentationManager: React.FC = () => {
     description: '',
     source_folder_url: '',
     cover_image_url: '',
-    publication_status: 'PUBLISHED' as MediaPublicationStatus,
+    publication_status: 'DRAFT' as MediaPublicationStatus,
   });
   const [validationState, setValidationState] = useState<{
     status: MediaAccessStatus;
@@ -61,6 +61,10 @@ export const DocumentationManager: React.FC = () => {
     }>;
   } | null>(null);
   const [isValidating, setIsValidating] = useState(false);
+  const [savingAlbum, setSavingAlbum] = useState(false);
+  const [loadingAlbums, setLoadingAlbums] = useState(true);
+  const [albumError, setAlbumError] = useState('');
+  const [albumReceipt, setAlbumReceipt] = useState<ReturnType<typeof documentationService.getLastAlbumReceipt>>(null);
 
   // Modal: Add Photo State
   const [showAddPhotoModal, setShowAddPhotoModal] = useState(false);
@@ -110,87 +114,61 @@ export const DocumentationManager: React.FC = () => {
     return () => unsub();
   }, []);
 
-  // Live Drive folder validation & preview (Section 5 & 6)
+  // Spreadsheet is authoritative. On every fresh mount, load albums from GAS.
+  useEffect(() => {
+    let active = true;
+    setLoadingAlbums(true);
+    void documentationService.loadAlbumsFromGas()
+      .then(() => { if (active) setAlbumError(''); })
+      .catch(err => { if (active) setAlbumError(err instanceof Error ? err.message : 'Gagal memuat album dari Spreadsheet.'); })
+      .finally(() => { if (active) setLoadingAlbums(false); });
+    return () => { active = false; };
+  }, []);
+
+  // NEVER scan the folder, resolve photos, or populate cover when creating an album.
   const handleValidateDriveUrl = (url: string) => {
     setAlbumForm(prev => ({ ...prev, source_folder_url: url }));
-    if (!url.trim()) {
-      setValidationState(null);
-      return;
-    }
-
-    setIsValidating(true);
-    setValidationState({
-      status: 'CHECKING',
-      message: 'Memeriksa izin akses folder Google Drive...',
-    });
-
-    setTimeout(() => {
-      const val = mediaResolverService.validateDriveFolder(url);
-      if (val.status === 'ACCESSIBLE') {
-        const resolved = mediaResolverService.resolveDriveFolderPhotos(val.resolvedFolderId || 'fld', url);
-        setValidationState({
-          status: 'ACCESSIBLE',
-          message: val.message,
-          resolvedPhotos: resolved,
-        });
-        if (!albumForm.cover_image_url && resolved[0]?.thumbnail_url) {
-          setAlbumForm(prev => ({ ...prev, cover_image_url: resolved[0].thumbnail_url }));
-        }
-      } else {
-        setValidationState({
-          status: val.status,
-          message: val.message,
-        });
-      }
-      setIsValidating(false);
-    }, 400);
+    setValidationState(null);
   };
-
   const handleRetryValidation = () => {
-    if (albumForm.source_folder_url) {
-      handleValidateDriveUrl(albumForm.source_folder_url);
-    }
+    showToast('Tautan folder disimpan sebagai metadata; verifikasi akses Drive tidak mengimpor foto.');
   };
 
-  const handleCreateAlbum = (e: React.FormEvent) => {
+  const handleCreateAlbum = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!albumForm.album_name) return;
-
-    if (albumForm.source_folder_url && validationState && validationState.status !== 'ACCESSIBLE') {
-      showToast('⚠️ Folder Google Drive belum dapat diakses publik. Periksa hak akses sebelum mempublikasikan.');
-      return;
-    }
-
+    if (savingAlbum) return;
+    if (!albumForm.album_name.trim()) { setAlbumError('Nama album wajib diisi.'); return; }
+    setSavingAlbum(true);
+    setAlbumError('');
+    setAlbumReceipt(null);
     try {
-      const album = documentationService.createAlbum(albumForm);
-      setShowAddAlbumModal(false);
-      setAlbumForm({
-        album_name: '',
-        description: '',
-        source_folder_url: '',
-        cover_image_url: '',
-        publication_status: 'PUBLISHED',
+      const album = await documentationService.createAlbum({
+        album_name: albumForm.album_name.trim(),
+        description: albumForm.description.trim(),
+        source_folder_url: albumForm.source_folder_url.trim(),
+        // Explicit cover only; no thumbnails from Drive or fake media.
+        cover_image_url: albumForm.cover_image_url.trim(),
+        publication_status: albumForm.publication_status,
       });
-      setValidationState(null);
-      showToast(`✓ Album '${album.album_name}' berhasil dipublikasikan (${album.photo_count} foto tersinkron).`);
+      const receipt = documentationService.getLastAlbumReceipt();
+      if (!receipt || receipt.album_id !== album.album_id || receipt.sheet !== 'DocumentationAlbums') {
+        throw new Error('Bukti verifikasi album tidak lengkap. Periksa Spreadsheet sebelum mencoba lagi.');
+      }
+      await documentationService.loadAlbumsFromGas();
+      setAlbumReceipt(receipt);
+      setShowAddAlbumModal(false);
+      setAlbumForm({ album_name: '', description: '', source_folder_url: '', cover_image_url: '', publication_status: 'DRAFT' });
+      showToast(`Album '${album.album_name}' tersimpan di Spreadsheet. Tidak ada foto/video yang dibuat.`);
     } catch (err: any) {
-      showToast(err.message || 'Gagal membuat album.');
+      setAlbumError(err?.message || 'Penyimpanan album belum dapat diverifikasi. Jangan klik Simpan berulang kali.');
+    } finally {
+      setSavingAlbum(false);
     }
   };
 
-  // Google Drive folder refresh (Section 7)
-  const handleSyncAlbum = (album: PhotoAlbum) => {
-    setSyncingAlbumId(album.album_id);
-    setTimeout(() => {
-      try {
-        const res = documentationService.syncAlbumDriveFolder(album.album_id);
-        showToast(res.message);
-      } catch (err: any) {
-        showToast(err.message || 'Gagal menyinkronkan album.');
-      } finally {
-        setSyncingAlbumId(null);
-      }
-    }, 600);
+  // Existing media sync only mutates frontend memory: keep unavailable until GAS media persistence exists.
+  const handleSyncAlbum = (_album: PhotoAlbum) => {
+    showToast('Sinkronisasi media belum tersedia: album tetap kosong sampai media ditambahkan dan disimpan permanen melalui GAS.');
   };
 
   const handleAddPhoto = (e: React.FormEvent) => {
@@ -365,6 +343,13 @@ export const DocumentationManager: React.FC = () => {
         </button>
       </div>
 
+      {albumError && <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 text-rose-800 p-3 text-xs">{albumError}</div>}
+      {albumReceipt && <div role="status" className="rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-900 p-3 text-xs space-y-1">
+        <p className="font-bold">Album tersimpan dan terbaca ulang dari Google Sheets — tanpa foto/video otomatis.</p>
+        <p>Album ID: {albumReceipt.album_id}</p><p>Sheet: {albumReceipt.sheet} · Baris: {albumReceipt.row}</p>
+        <p>Event: {albumReceipt.event_id} · Terverifikasi: {albumReceipt.verified_at}</p>
+      </div>}
+      {loadingAlbums && <p role="status" className="text-xs text-slate-500">Memuat album dari Spreadsheet...</p>}
       {/* TAB 1: ALBUMS LIST */}
       {activeTab === 'albums' && (
         <div className="space-y-4">
@@ -390,7 +375,7 @@ export const DocumentationManager: React.FC = () => {
               >
                 <div className="aspect-[16/9] w-full bg-slate-100 dark:bg-black/40 relative overflow-hidden">
                   <img
-                    src={album.cover_image_url}
+                    src={album.cover_image_url || undefined}
                     alt={album.album_name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     loading="lazy"
@@ -442,12 +427,12 @@ export const DocumentationManager: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleSyncAlbum(album)}
-                        disabled={syncingAlbumId === album.album_id}
+                        disabled
                         className="px-2.5 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                        title="Periksa dan sinkronkan foto baru dari Google Drive"
+                        title="Sinkronisasi ditahan sampai penyimpanan media GAS tersedia"
                       >
                         <RefreshCw className={`w-3 h-3 ${syncingAlbumId === album.album_id ? 'animate-spin' : ''}`} />
-                        <span>{syncingAlbumId === album.album_id ? 'Sinkron...' : 'Sinkronkan Sumber'}</span>
+                        <span>{'Sinkronisasi belum tersedia'}</span>
                       </button>
                     ) : (
                       <span className="text-[10px] text-slate-400">Manual Album</span>
@@ -456,28 +441,21 @@ export const DocumentationManager: React.FC = () => {
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
                           const nextStatus: MediaPublicationStatus =
                             album.publication_status === 'PUBLISHED' ? 'ARCHIVED' : 'PUBLISHED';
-                          documentationService.updateAlbum(album.album_id, { publication_status: nextStatus });
-                          showToast(`Status album diubah ke ${nextStatus}.`);
+                          try {
+                            await documentationService.updateAlbum(album.album_id, { publication_status: nextStatus });
+                            await documentationService.loadAlbumsFromGas();
+                            showToast(`Status album terverifikasi di Spreadsheet: ${nextStatus}.`);
+                          } catch (err: any) { showToast(err?.message || 'Status gagal disimpan ke GAS.'); }
                         }}
                         className="text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-black dark:hover:text-white px-2 py-1 rounded-md"
                       >
                         {album.publication_status === 'PUBLISHED' ? 'Arsipkan' : 'Publikasikan'}
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirm(`Hapus album '${album.album_name}' beserta seluruh fotonya?`)) {
-                            documentationService.deleteAlbum(album.album_id);
-                            showToast('Album berhasil dihapus.');
-                          }
-                        }}
-                        className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 text-xs transition-colors"
-                        title="Hapus Album"
-                      >
+                      <button type="button" disabled title="Penghapusan dinonaktifkan sampai API GAS menyediakan pengarsipan permanen" className="p-1.5 rounded-lg bg-slate-100 text-slate-400 cursor-not-allowed">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -778,6 +756,7 @@ export const DocumentationManager: React.FC = () => {
             </div>
 
             <form onSubmit={handleCreateAlbum} className="space-y-3.5 text-xs">
+              {albumError && <div role="alert" className="rounded-xl bg-rose-50 text-rose-800 p-2">{albumError}</div>}
               <div>
                 <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
                   Judul Album Kegiatan *
@@ -808,67 +787,17 @@ export const DocumentationManager: React.FC = () => {
               {/* Tautan Google Drive Folder & Live Access Validation (Section 5 & 6) */}
               <div>
                 <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                  Tautan Google Drive Folder *
+                  Tautan Folder Google Drive (Opsional)
                 </label>
                 <input
                   type="text"
-                  required
-                  placeholder="https://drive.google.com/drive/folders/..."
+                  placeholder="Opsional: https://drive.google.com/drive/folders/..."
                   value={albumForm.source_folder_url}
                   onChange={e => handleValidateDriveUrl(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-black/30 border border-black/10 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
                 />
 
-                {/* Validation State Box */}
-                {validationState && (
-                  <div className={`mt-2 p-3 rounded-2xl border text-xs space-y-2 transition-all ${
-                    validationState.status === 'ACCESSIBLE'
-                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300'
-                      : validationState.status === 'PRIVATE'
-                      ? 'bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300'
-                      : 'bg-rose-500/10 border-rose-500/30 text-rose-800 dark:text-rose-300'
-                  }`}>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        {validationState.status === 'ACCESSIBLE' ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                        ) : (
-                          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                        )}
-                        <span className="font-semibold">{validationState.message}</span>
-                      </div>
-
-                      {/* Explicit "Periksa Lagi" button for PRIVATE or BROKEN states (Section 6) */}
-                      {validationState.status !== 'ACCESSIBLE' && (
-                        <button
-                          type="button"
-                          onClick={handleRetryValidation}
-                          className="px-2.5 py-1 rounded-lg bg-white dark:bg-black/40 border border-black/10 dark:border-white/10 font-bold text-[10px] shrink-0 hover:opacity-80 flex items-center gap-1 shadow-xs"
-                        >
-                          <RefreshCw className="w-3 h-3" />
-                          <span>Periksa Lagi</span>
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Photo Resolution Preview (Section 5) */}
-                    {validationState.status === 'ACCESSIBLE' && validationState.resolvedPhotos && (
-                      <div className="pt-2 border-t border-emerald-500/20 space-y-1.5">
-                        <div className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
-                          <FolderCheck className="w-3.5 h-3.5" />
-                          <span>{validationState.resolvedPhotos.length} foto siap diimpor otomatis ke galeri publik:</span>
-                        </div>
-                        <div className="grid grid-cols-4 gap-1.5">
-                          {validationState.resolvedPhotos.slice(0, 4).map((p, i) => (
-                            <div key={i} className="aspect-square rounded-lg overflow-hidden bg-black/20">
-                              <img src={p.thumbnail_url} alt={p.title} className="w-full h-full object-cover" />
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                <p className="mt-2 text-[11px] text-slate-500">Opsional. Tautan folder hanya dicatat, tidak dibaca, tidak disinkronkan, dan tidak membuat file/folder Drive otomatis.</p>
               </div>
 
               <div>
@@ -877,7 +806,7 @@ export const DocumentationManager: React.FC = () => {
                 </label>
                 <input
                   type="text"
-                  placeholder="Otomatis diambil dari foto pertama dalam folder"
+                  placeholder="Opsional; kosongkan untuk album tanpa cover"
                   value={albumForm.cover_image_url}
                   onChange={e => setAlbumForm({ ...albumForm, cover_image_url: e.target.value })}
                   className="w-full px-3.5 py-2 bg-slate-50 dark:bg-black/30 border border-black/10 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:border-purple-500 text-xs"
@@ -897,10 +826,10 @@ export const DocumentationManager: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={isValidating || (Boolean(validationState) && validationState?.status !== 'ACCESSIBLE')}
+                  disabled={savingAlbum}
                   className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#208C60] to-[#F47743] text-white font-bold shadow-xs hover:opacity-90 disabled:opacity-50"
                 >
-                  Simpan & Publikasikan Album
+                  {savingAlbum ? 'Menyimpan ke Spreadsheet...' : 'Simpan Album Kosong'}
                 </button>
               </div>
             </form>
