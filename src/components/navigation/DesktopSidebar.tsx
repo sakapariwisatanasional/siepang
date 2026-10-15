@@ -33,6 +33,8 @@ import {
   FileText,
   Building2,
   LogOut,
+  Search,
+  X,
 } from 'lucide-react';
 import { NavTab } from './MobileNavigation';
 import { GlobalFooter } from '../layout/GlobalFooter';
@@ -70,6 +72,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
 }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [tick, setTick] = useState(0);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     const unsub = featureControlService.subscribe(() => setTick(t => t + 1));
@@ -259,6 +262,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         return true;
       }),
     }))
+    .map(grp => ({
+      ...grp,
+      items: grp.items.filter(item =>
+        `${item.label} ${grp.label}`.toLocaleLowerCase('id').includes(search.trim().toLocaleLowerCase('id'))
+      ),
+    }))
     .filter(grp => grp.items.length > 0);
 
   return (
@@ -298,6 +307,24 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         </button>
       </div>
 
+      {/* Quick pages: page navigation, not scroll-to-section */}
+      {!collapsed && (
+        <div className="px-3 pt-3 grid grid-cols-2 gap-2">
+          {[{ id: 'home' as NavTab, label: 'Beranda', icon: LayoutDashboard }, { id: 'profile' as NavTab, label: 'Profil Saya', icon: UserRound }].map(item => {
+            const Icon = item.icon;
+            const active = activeTab === item.id;
+            return (
+              <button key={item.id} type="button" onClick={() => onTabChange(item.id)}
+                aria-current={active ? 'page' : undefined}
+                className={`rounded-2xl border px-2 py-3 flex flex-col items-center gap-1.5 transition-colors text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 ${active ? 'border-emerald-500/40 bg-emerald-50 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300' : 'border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5'}`}>
+                <Icon className="w-5 h-5" aria-hidden="true" />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Quick Scan Action */}
       <div className="p-3">
         <button
@@ -312,8 +339,21 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         </button>
       </div>
 
+      {!collapsed && (
+        <div className="px-3 pb-2">
+          <label htmlFor="siepang-sidebar-search" className="sr-only">Cari menu</label>
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 px-2.5 focus-within:ring-2 focus-within:ring-emerald-500/40">
+            <Search className="w-4 h-4 text-slate-400 shrink-0" aria-hidden="true" />
+            <input id="siepang-sidebar-search" type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari fitur..." autoComplete="off"
+              className="min-w-0 w-full py-2 bg-transparent outline-none text-xs text-slate-800 dark:text-white placeholder:text-slate-400" />
+            {search && <button type="button" onClick={() => setSearch('')} title="Hapus pencarian" aria-label="Hapus pencarian"><X className="w-4 h-4" /></button>}
+          </div>
+        </div>
+      )}
+
       {/* Grouped Navigation Menu (Requirement 34, 35) */}
-      <div className="flex-1 overflow-y-auto px-3 py-1 space-y-4 no-scrollbar">
+      <div className="flex-1 overflow-y-auto px-3 py-1 space-y-3 no-scrollbar" aria-label="Menu SiEpang">
+        {filteredGroups.length === 0 && !collapsed && <p className="p-3 text-xs text-slate-500">Tidak ada menu yang cocok.</p>}
         {filteredGroups.map(group => (
           <div key={group.id} className="space-y-1">
             {!collapsed && (
@@ -329,11 +369,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
               return (
                 <button
                   key={item.id + item.label}
+                  type="button"
                   onClick={() => onTabChange(item.id)}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer group relative ${
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer group relative focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 ${
                     isActive
-                      ? 'bg-[#208C60]/10 text-[#208C60] dark:text-[#F47743] font-bold shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-[#171717] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5'
+                      ? 'bg-emerald-50 dark:bg-emerald-900/25 text-emerald-800 dark:text-emerald-300 font-bold ring-1 ring-emerald-200 dark:ring-emerald-800/50'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-[#171717] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5'
                   } ${collapsed ? 'justify-center' : ''}`}
                   title={collapsed ? item.label : undefined}
                 >
