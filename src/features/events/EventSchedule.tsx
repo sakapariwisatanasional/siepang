@@ -5,7 +5,7 @@
  * Standardized to Light-First, Instagram-inspired accent system, and 44px touch targets.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Calendar,
   Clock,
@@ -21,10 +21,17 @@ import { eventService } from '../../services/eventService';
 import { ScheduleItem } from '../../types';
 
 export const EventSchedule: React.FC = () => {
+  const [, setScheduleRevision] = useState(0);
   const [selectedDay, setSelectedDay] = useState<number | 'all'>(1);
-  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set(['sch_01', 'sch_02']));
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
 
-  const scheduleItems = eventService.getSchedule(selectedDay === 'all' ? undefined : selectedDay);
+  useEffect(() => {
+    const unsubscribe = eventService.subscribe(() => setScheduleRevision(n => n + 1));
+    void eventService.refreshPublicSchedule();
+    return unsubscribe;
+  }, []);
+  const scheduleItems = eventService.getSchedule(selectedDay === 'all' ? undefined : selectedDay)
+    .filter(item => item.isPublished === true);
 
   const toggleBookmark = (id: string) => {
     setBookmarkedIds(prev => {
@@ -97,7 +104,7 @@ export const EventSchedule: React.FC = () => {
             <Calendar className="w-8 h-8 text-slate-300 mx-auto" />
             <h4 className="text-sm font-bold text-[#171717] dark:text-white">Belum ada jadwal</h4>
             <p className="text-xs text-[#6B7280] dark:text-slate-400">
-              Jadwal kegiatan untuk hari ini belum tersedia.
+              {eventService.getPublicScheduleError() || 'Belum ada agenda resmi yang dipublikasikan untuk hari ini.'}
             </p>
           </div>
         ) : (
