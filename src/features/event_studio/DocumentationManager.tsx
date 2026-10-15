@@ -35,8 +35,10 @@ import { AdminPublicGalleryManager } from '../documentation/AdminPublicGalleryMa
 import { mediaResolverService } from '../../services/mediaResolverService';
 import { PhotoAlbum, MediaItem, MediaAccessStatus, MediaPublicationStatus } from '../../types';
 
-export const DocumentationManager: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'albums' | 'photos' | 'videos' | 'resolver'>('albums');
+type DocumentationManagerProps = { initialTab?: 'albums' | 'photos' | 'videos' | 'resolver'; embedded?: boolean };
+
+export const DocumentationManager: React.FC<DocumentationManagerProps> = ({ initialTab = 'albums', embedded = false }) => {
+  const [activeTab, setActiveTab] = useState<'albums' | 'photos' | 'videos' | 'resolver'>(initialTab);
   const [albums, setAlbums] = useState<PhotoAlbum[]>(documentationService.getAlbums());
   const [photos, setPhotos] = useState<MediaItem[]>(documentationService.getMediaItems({ type: 'PHOTO' }));
   const [videos, setVideos] = useState<MediaItem[]>(documentationService.getMediaItems({ type: 'VIDEO' }));
@@ -291,7 +293,7 @@ export const DocumentationManager: React.FC = () => {
       )}
 
       {/* Header Banner with Actions */}
-      <div className="p-5 sm:p-6 rounded-[28px] bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs">
+      {!embedded && <div className="p-5 sm:p-6 rounded-[28px] bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs">
         <div className="space-y-1">
           <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 text-[10px] font-bold uppercase tracking-wider">
             <ShieldCheck className="w-3.5 h-3.5" />
@@ -325,10 +327,10 @@ export const DocumentationManager: React.FC = () => {
             <span>Tambah Album Drive</span>
           </button>
         </div>
-      </div>
+      </div>}
 
       {/* Modern Navigation Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-b border-black/5 dark:border-white/10 text-xs">
+      {!embedded && <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-b border-black/5 dark:border-white/10 text-xs">
         <button
           type="button"
           onClick={() => setActiveTab('albums')}
@@ -380,7 +382,7 @@ export const DocumentationManager: React.FC = () => {
           <Sparkles className="w-4 h-4" />
           <span>MediaResolver Diagnostic</span>
         </button>
-      </div>
+      </div>}
 
       {albumError && <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 text-rose-800 p-3 text-xs">{albumError}</div>}
       {albumReceipt && <div role="status" className="rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-900 p-3 text-xs space-y-1">
