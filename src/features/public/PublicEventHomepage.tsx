@@ -98,6 +98,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
   const [activeVideoModal, setActiveVideoModal] = useState<MediaItem | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [activePublicPage, setActivePublicPage] = useState<string>('home');
   const [officialCompetitions, setOfficialCompetitions] = useState<Array<{id:string;title:string;category:string;scheduleTime:string;location:string}>>([]);
   const [competitionLoading, setCompetitionLoading] = useState(true);
   const [competitionError, setCompetitionError] = useState('');
@@ -246,12 +247,30 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
     setCertResult(res);
   };
 
-  const scrollToSection = (id: string) => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
-    }
+  // Public navigation is page-based: no scroll-to-section and no stacked feature pages.
+  const pageBySection: Record<string, string> = {
+    'section-hero': 'home',
+    'section-announcements': 'announcements',
+    'section-schedule': 'schedule',
+    'section-leaderboard': 'leaderboard',
+    'section-photo-gallery': 'photo_gallery',
+    'section-video-gallery': 'video_gallery',
+    'section-qr-scanner': 'qr_scanner',
+    'section-visitor': 'visitor',
+    'section-verification': 'verification',
+    'section-official-competitions': 'competitions',
+  };
+  const openPublicPage = (id: string) => {
+    const page = pageBySection[id] || 'home';
+    setActivePublicPage(page);
     setMobileMenuOpen(false);
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'instant' });
+  };
+  const publicPageTitle: Record<string, string> = {
+    home: 'Beranda', announcements: 'Informasi & Pengumuman', schedule: 'Jadwal Kegiatan',
+    leaderboard: 'Peringkat', photo_gallery: 'Galeri Foto', video_gallery: 'Galeri Video',
+    qr_scanner: 'Scan QR', visitor: 'Registrasi Tamu', verification: 'Verifikasi Sertifikat',
+    competitions: 'Mata Lomba Resmi', sponsors: 'Sponsor',
   };
 
   const viewportWidthClass = {
@@ -1205,49 +1224,49 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
             <div className="hidden md:flex items-center gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
               <button
                 type="button"
-                onClick={() => scrollToSection('section-hero')}
+                onClick={() => openPublicPage('section-hero')}
                 className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Beranda
               </button>
               <button
                 type="button"
-                onClick={() => scrollToSection('section-schedule')}
+                onClick={() => openPublicPage('section-schedule')}
                 className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Jadwal
               </button>
               <button
                 type="button"
-                onClick={() => scrollToSection('section-leaderboard')}
+                onClick={() => openPublicPage('section-leaderboard')}
                 className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Ranking
               </button>
               <button
                 type="button"
-                onClick={() => scrollToSection('section-photo-gallery')}
+                onClick={() => openPublicPage('section-photo-gallery')}
                 className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Galeri
               </button>
               <button
                 type="button"
-                onClick={() => scrollToSection('section-qr-scanner')}
+                onClick={() => openPublicPage('section-qr-scanner')}
                 className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Scan QR
               </button>
               <button
                 type="button"
-                onClick={() => scrollToSection('section-visitor')}
+                onClick={() => openPublicPage('section-visitor')}
                 className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Visitor
               </button>
               <button
                 type="button"
-                onClick={() => scrollToSection('section-verification')}
+                onClick={() => openPublicPage('section-verification')}
                 className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Verifikasi
@@ -1295,63 +1314,63 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               )}
               <button
                 type="button"
-                onClick={() => scrollToSection('section-hero')}
+                onClick={() => openPublicPage('section-hero')}
                 className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 font-semibold"
               >
                 Beranda
               </button>
               <button
                 type="button"
-                onClick={() => scrollToSection('section-announcements')}
+                onClick={() => openPublicPage('section-announcements')}
                 className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 font-semibold"
               >
                 Pengumuman
               </button>
               <button
                 type="button"
-                onClick={() => scrollToSection('section-schedule')}
+                onClick={() => openPublicPage('section-schedule')}
                 className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 font-semibold"
               >
                 Jadwal Kegiatan
               </button>
               <button
                 type="button"
-                onClick={() => scrollToSection('section-leaderboard')}
+                onClick={() => openPublicPage('section-leaderboard')}
                 className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 font-semibold"
               >
                 Ranking Peserta
               </button>
               <button
                 type="button"
-                onClick={() => scrollToSection('section-photo-gallery')}
+                onClick={() => openPublicPage('section-photo-gallery')}
                 className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 font-semibold"
               >
                 Galeri Foto
               </button>
               <button
                 type="button"
-                onClick={() => scrollToSection('section-video-gallery')}
+                onClick={() => openPublicPage('section-video-gallery')}
                 className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 font-semibold"
               >
                 Galeri Video
               </button>
               <button
                 type="button"
-                onClick={() => scrollToSection('section-qr-scanner')}
+                onClick={() => openPublicPage('section-qr-scanner')}
                 className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 font-semibold"
               >
                 Scan QR Presensi
               </button>
               <button
                 type="button"
-                onClick={() => scrollToSection('section-visitor')}
+                onClick={() => openPublicPage('section-visitor')}
                 className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 font-semibold"
               >
                 Registrasi Tamu (Visitor)
               </button>
               <button
                 type="button"
-                onClick={() => scrollToSection('section-verification')}
+                onClick={() => openPublicPage('section-verification')}
                 className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 font-semibold"
               >
                 Verifikasi Sertifikat
@@ -1379,7 +1398,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
             <div className="rounded-2xl bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 text-xs text-amber-800 dark:text-amber-200 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-                <span>Beberapa informasi belum dapat dimuat. Menampilkan data tersimpan di perangkat.</span>
+                <span>Informasi terbaru belum dapat dimuat dari GAS. Silakan coba kembali.</span>
               </div>
               {onRetryConnection && (
                 <button
@@ -1394,7 +1413,14 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
             </div>
           )}
 
-          {/* Mobile-first app launchpad: preserves all original public sections and actions. */}
+          {activePublicPage !== 'home' && (
+            <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#141418]">
+              <button type="button" onClick={() => openPublicPage('section-hero')} className="rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-bold text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-200" aria-label="Kembali ke beranda">← Kembali</button>
+              <h1 className="font-bold text-lg">{publicPageTitle[activePublicPage] || 'Layanan Publik'}</h1>
+            </div>
+          )}
+          {/* Modern grid launchpad shown only on the public home page. */}
+          {activePublicPage === 'home' && (
           <section aria-label="Akses cepat SiEpang" className="mb-7 space-y-5">
             <div className="relative overflow-hidden rounded-[28px] bg-[#172E2B] px-5 py-6 sm:px-7 sm:py-8 text-white shadow-lg">
               <div aria-hidden="true" className="absolute -top-12 -right-12 h-44 w-44 rounded-full bg-[#F4B62C]/20 blur-2xl" />
@@ -1404,7 +1430,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                 <h1 className="text-2xl sm:text-3xl font-black leading-tight tracking-tight">{isConfigured ? event.name : 'Selamat Datang di SiEpang'}</h1>
                 <p className="text-sm text-slate-200 leading-relaxed">Jelajahi kegiatan, informasi resmi, dan layanan perkemahan dengan mudah.</p>
                 <div className="flex flex-wrap gap-2 pt-1">
-                  <button type="button" onClick={() => scrollToSection('section-schedule')} className="min-h-11 inline-flex items-center gap-2 rounded-full bg-[#F7BD36] px-5 py-2.5 font-bold text-sm text-[#272019] hover:bg-[#FFD36A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"><Calendar className="h-4 w-4"/> Lihat Jadwal <ArrowRight className="h-4 w-4"/></button>
+                  <button type="button" onClick={() => openPublicPage('section-schedule')} className="min-h-11 inline-flex items-center gap-2 rounded-full bg-[#F7BD36] px-5 py-2.5 font-bold text-sm text-[#272019] hover:bg-[#FFD36A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"><Calendar className="h-4 w-4"/> Lihat Jadwal <ArrowRight className="h-4 w-4"/></button>
                   {onNavigateToLogin && <button type="button" onClick={() => onNavigateToLogin()} className="min-h-11 inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-4 py-2.5 font-semibold text-sm text-white hover:bg-white/20"><LogIn className="h-4 w-4"/> Masuk</button>}
                 </div>
               </div>
@@ -1429,7 +1455,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                 return !section || portalConfig.section_visibility[section];
               }).map(item => {
                 const Icon = item.icon;
-                return <button key={item.label} type="button" onClick={() => item.label === 'Scan QR' && onOpenScanner ? onOpenScanner() : scrollToSection(item.section)} className="group flex min-h-[88px] flex-col items-center gap-2 rounded-2xl p-1.5 text-center hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#E9A929]" aria-label={`Buka ${item.label}`}>
+                return <button key={item.label} type="button" onClick={() => item.label === 'Scan QR' && onOpenScanner ? onOpenScanner() : openPublicPage(item.section)} className="group flex min-h-[88px] flex-col items-center gap-2 rounded-2xl p-1.5 text-center hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#E9A929]" aria-label={`Buka ${item.label}`}>
                   <span className={`flex h-14 w-14 items-center justify-center rounded-[19px] shadow-sm transition-transform group-active:scale-95 ${item.color}`}><Icon className="h-6 w-6"/></span>
                   <span className="text-[11px] sm:text-xs font-semibold leading-tight text-slate-800 dark:text-slate-100">{item.label}</span>
                 </button>;
@@ -1437,7 +1463,9 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
             </div>
           </section>
 
-          {/* Mata lomba hanya ditampilkan jika sudah disahkan panitia di Spreadsheet. */}
+          )}
+          {/* Mata lomba resmi ditampilkan sebagai halaman tersendiri. */}
+          {activePublicPage === 'competitions' && (
           <section id="section-official-competitions" className="mb-8 scroll-mt-24 rounded-3xl bg-white dark:bg-[#141418] border border-slate-200 dark:border-white/10 p-5 sm:p-6 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="font-bold text-lg flex items-center gap-2"><Trophy className="w-5 h-5 text-amber-500"/> Mata Lomba Resmi</h2>
@@ -1455,9 +1483,14 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               ))}</div>}
           </section>
 
-          {/* DYNAMIC ORDERED PORTAL SECTIONS */}
+          )}
+          {/* Only render the selected public page. Do not stack all sections below the homepage. */}
           <div className="space-y-10">
-            {portalConfig.section_order.map(key => renderSectionByKey(key))}
+            {activePublicPage === 'home'
+              ? renderSectionByKey('hero')
+              : activePublicPage !== 'competitions'
+                ? renderSectionByKey(activePublicPage as PortalSectionKey)
+                : null}
           </div>
         </div>
 
