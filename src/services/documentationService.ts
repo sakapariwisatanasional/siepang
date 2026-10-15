@@ -151,102 +151,98 @@ class DocumentationService {
     };
   }
 
-  // ==================== ALBUM OPERATIONS ====================
+  // ==================== PERSISTENT ALBUM OPERATIONS ====================
+
+  private albumReceipt: { album_id: string; event_id: string; sheet: string; row: number; verified_at: string } | null = null;
+
+  public getLastAlbumReceipt() { return this.albumReceipt ? { ...this.albumReceipt } : null; }
+
+  private mapGasAlbum(row: Record<string, unknown>): PhotoAlbum {
+    if (!row || !String(row.album_id || '') || !String(row.event_id || '')) {
+      throw new Error('Record album dari GAS tidak valid.');
+    }
+    return {
+      album_id: String(row.album_id),
+      workspace_id: '',
+      event_id: String(row.event_id),
+      album_name: String(row.album_name || ''),
+      description: String(row.description || ''),
+      source_folder_url: String(row.source_folder_url || ''),
+      cover_image_url: String(row.cover_image_url || ''),
+      folder_access_status: 'ACCESSIBLE',
+      photo_count: 0, // Album metadata never creates media. Count requires a separate persisted media endpoint.
+      display_order: Number(row.display_order || 0),
+      publication_status: (['DRAFT', 'PUBLISHED', 'ARCHIVED'].includes(String(row.publication_status))
+        ? row.publication_status : 'DRAFT') as MediaPublicationStatus,
+      created_at: String(row.created_at || ''),
+      updated_at: String(row.updated_at || ''),
+    };
+  }
+
+  public async loadAlbumsFromGas(): Promise<PhotoAlbum[]> {
+    const result = await apiTransport.send<{ items: Record<string, unknown>[]; total: number }>(
+      'documentation.album.list', {}
+    );
+    if (!result.ok || !result.data || !Array.isArray(result.data.items)) {
+      throw new Error(result.error?.message || 'Gagal membaca album dari Spreadsheet.');
+    }
+    const rows = result.data.items.map(row => this.mapGasAlbum(row));
+    this.albums = new Map(rows.map(row => [row.album_id, row]));
+    this.notify();
+    return this.getAlbums();
+  }
 
   public getAlbums(filterStatus?: MediaPublicationStatus): PhotoAlbum[] {
     let list = Array.from(this.albums.values());
-    if (filterStatus) {
-      list = list.filter(a => a.publication_status === filterStatus);
-    }
+    if (filterStatus) list = list.filter(a => a.publication_status === filterStatus);
     return list.sort((a, b) => a.display_order - b.display_order);
   }
 
-  public getAlbumById(id: string): PhotoAlbum | undefined {
-    return this.albums.get(id);
-  }
+  public getAlbumById(id: string): PhotoAlbum | undefined { return this.albums.get(id); }
 
-  public createAlbum(data: {
+  /** Creates only an empty album record. Never scans Drive or inserts photo/video. */
+  public async createAlbum(data: {
     album_name: string;
     description?: string;
     source_folder_url?: string;
     cover_image_url?: string;
     publication_status?: MediaPublicationStatus;
     createdBy?: string;
-  }): PhotoAlbum {
-    const id = `alb_${Date.now()}`;
-    let accessStatus: MediaAccessStatus = 'ACCESSIBLE';
-    let resolvedFolderId = '';
-
-    if (data.source_folder_url) {
-      const val = mediaResolverService.validateDriveFolder(data.source_folder_url);
-      accessStatus = val.status;
-      resolvedFolderId = val.resolvedFolderId || '';
-    }
-
-    const album: PhotoAlbum = {
-      album_id: id,
-      workspace_id: 'ws_active',
-      event_id: 'evt_active',
-      album_name: data.album_name.trim(),
-      description: data.description?.trim(),
-      source_folder_url: data.source_folder_url?.trim(),
-      cover_image_url: data.cover_image_url || '',
-      folder_access_status: accessStatus,
-      photo_count: 0,
+  }): Promise<PhotoAlbum> {
+    const title = String(data.album_name || '').trim();
+    if (!title) throw new Error('Nama album wajib diisi.');
+    this.albumReceipt = null;
+    const payload = {
+      album_name: title,
+      description: String(data.description || '').trim(),
+      source_folder_url: String(data.source_folder_url || '').trim(),
+      // No automatic first-photo cover, thumbnails, placeholder, or default media.
+      cover_image_url: String(data.cover_image_url || '').trim(),
+      publication_status: data.publication_status || 'DRAFT',
       display_order: this.albums.size + 1,
-      publication_status: data.publication_status || 'PUBLISHED',
-      created_at: new Date().toISOString().replace('T', ' ').slice(0, 16),
     };
-
-    this.albums.set(id, album);
-
-    // If accessible Google Drive folder, automatically resolve photos (Section 5)
-    if (album.source_folder_url && accessStatus === 'ACCESSIBLE') {
-      const resolvedPhotos = mediaResolverService.resolveDriveFolderPhotos(
-        resolvedFolderId || id,
-        album.source_folder_url
-      );
-      resolvedPhotos.forEach((p, idx) => {
-        const pId = `med_p_${Date.now()}_${idx}`;
-        const item: MediaItem = {
-          media_id: pId,
-          workspace_id: 'ws_kwarcab_bwi',
-          event_id: 'ev_jamcab_bwi_2026',
-          album_id: id,
-          media_type: 'PHOTO',
-          provider: 'GOOGLE_DRIVE',
-          source_type: 'GOOGLE_DRIVE_FOLDER',
-          source_url: p.source_url,
-          thumbnail_url: p.thumbnail_url,
-          provider_resource_id: p.provider_resource_id,
-          original_url: p.source_url,
-          title: p.title,
-          caption: p.caption,
-          event_date: p.event_date,
-          display_order: idx + 1,
-          publication_status: 'PUBLISHED',
-          metadata_status: 'ACCESSIBLE',
-          download_control: 'ALLOW_ORIGINAL_LINK',
-          views_count: 0,
-          created_at: new Date().toISOString().replace('T', ' ').slice(0, 16),
-          created_by: data.createdBy || 'Google Drive Sync',
-        };
-        this.mediaItems.set(pId, item);
-      });
-      album.photo_count = resolvedPhotos.length;
-      if (!data.cover_image_url && resolvedPhotos[0]?.thumbnail_url) {
-        album.cover_image_url = resolvedPhotos[0].thumbnail_url;
-      }
+    const response = await apiTransport.send<{
+      saved: boolean; verified: boolean; item: Record<string, unknown>;
+      receipt: { album_id: string; event_id: string; sheet: string; row: number; verified_at: string };
+    }>('documentation.album.save', payload);
+    if (!response.ok || !response.data?.saved || !response.data?.verified || !response.data?.receipt?.album_id) {
+      throw new Error(response.error?.message || 'GAS belum membuktikan album tersimpan di Spreadsheet.');
     }
-
-    eventStudioService.addAuditLogEntry(
-      'ALBUM_CREATED',
-      `Album dokumentasi foto '${album.album_name}' dibuat (${album.photo_count} foto tersinkron).`,
-      data.createdBy || 'Admin'
+    const saved = this.mapGasAlbum(response.data.item);
+    if (saved.album_id !== response.data.receipt.album_id || saved.album_name !== title) {
+      throw new Error('Bukti simpan album tidak cocok dengan data yang dikirim.');
+    }
+    // Verify that a fresh GET endpoint finds the exact album, not only POST success.
+    const check = await apiTransport.send<{ item: Record<string, unknown> }>(
+      'documentation.album.get', { album_id: saved.album_id }
     );
-
+    if (!check.ok || !check.data?.item || String(check.data.item.album_name) !== title) {
+      throw new Error('Album mungkin tersimpan, tetapi pembacaan ulang belum dapat memverifikasinya. Jangan klik Simpan berulang kali.');
+    }
+    this.albums.set(saved.album_id, saved);
+    this.albumReceipt = response.data.receipt;
     this.notify();
-    return album;
+    return saved;
   }
 
   /**
@@ -254,170 +250,41 @@ class DocumentationService {
    * Detects new, removed, or changed photos without creating duplicate records.
    */
   public syncAlbumDriveFolder(albumId: string, syncedBy?: string): {
-    addedCount: number;
-    updatedCount: number;
-    totalCount: number;
-    accessStatus: MediaAccessStatus;
-    message: string;
+    addedCount: number; updatedCount: number; totalCount: number;
+    accessStatus: MediaAccessStatus; message: string;
   } {
-    const album = this.albums.get(albumId);
-    if (!album) {
-      throw new Error('Album tidak ditemukan.');
-    }
-
-    if (!album.source_folder_url) {
-      return {
-        addedCount: 0,
-        updatedCount: 0,
-        totalCount: album.photo_count,
-        accessStatus: 'INVALID_URL',
-        message: 'Album ini belum memiliki tautan Google Drive Folder.',
-      };
-    }
-
-    const validation = mediaResolverService.validateDriveFolder(album.source_folder_url);
-    album.folder_access_status = validation.status;
-
-    if (validation.status !== 'ACCESSIBLE') {
-      this.notify();
-      return {
-        addedCount: 0,
-        updatedCount: 0,
-        totalCount: album.photo_count,
-        accessStatus: validation.status,
-        message: validation.message,
-      };
-    }
-
-    // Resolve photos from Google Drive folder
-    const resolved = mediaResolverService.resolveDriveFolderPhotos(
-      validation.resolvedFolderId || albumId,
-      album.source_folder_url
-    );
-
-    let addedCount = 0;
-    let updatedCount = 0;
-
-    // Existing photos in this album
-    const existingAlbumPhotos = Array.from(this.mediaItems.values()).filter(
-      m => m.album_id === albumId
-    );
-    const existingByResourceId = new Map<string, MediaItem>();
-    existingAlbumPhotos.forEach(p => {
-      if (p.provider_resource_id) {
-        existingByResourceId.set(p.provider_resource_id, p);
-      }
-    });
-
-    resolved.forEach((item, index) => {
-      const match = existingByResourceId.get(item.provider_resource_id);
-      if (match) {
-        // Update metadata without duplicating
-        match.thumbnail_url = item.thumbnail_url;
-        match.metadata_status = 'ACCESSIBLE';
-        match.title = item.title;
-        match.caption = item.caption;
-        updatedCount++;
-      } else {
-        // Add newly discovered photo
-        const pId = `med_p_${Date.now()}_${index}`;
-        const newPhoto: MediaItem = {
-          media_id: pId,
-          workspace_id: 'ws_kwarcab_bwi',
-          event_id: 'ev_jamcab_bwi_2026',
-          album_id: albumId,
-          media_type: 'PHOTO',
-          provider: 'GOOGLE_DRIVE',
-          source_type: 'GOOGLE_DRIVE_FOLDER',
-          source_url: item.source_url,
-          thumbnail_url: item.thumbnail_url,
-          provider_resource_id: item.provider_resource_id,
-          original_url: item.source_url,
-          title: item.title,
-          caption: item.caption,
-          event_date: item.event_date,
-          display_order: existingAlbumPhotos.length + addedCount + 1,
-          publication_status: 'PUBLISHED',
-          metadata_status: 'ACCESSIBLE',
-          download_control: 'ALLOW_ORIGINAL_LINK',
-          views_count: 0,
-          created_at: new Date().toISOString().replace('T', ' ').slice(0, 16),
-          created_by: syncedBy || 'Sinkronisasi Google Drive',
-        };
-        this.mediaItems.set(pId, newPhoto);
-        addedCount++;
-      }
-    });
-
-    const totalCount = Array.from(this.mediaItems.values()).filter(
-      m => m.album_id === albumId
-    ).length;
-    album.photo_count = totalCount;
-    album.updated_at = new Date().toISOString().replace('T', ' ').slice(0, 16);
-
-    eventStudioService.addAuditLogEntry(
-      'ALBUM_SYNCED',
-      `Album '${album.album_name}' disinkronkan dengan Google Drive (+${addedCount} baru, ${updatedCount} diperbarui).`,
-      syncedBy || 'Admin'
-    );
-
-    this.notify();
-
-    return {
-      addedCount,
-      updatedCount,
-      totalCount,
-      accessStatus: 'ACCESSIBLE',
-      message: `Sinkronisasi berhasil: ${addedCount} foto baru ditambahkan, ${updatedCount} foto diperbarui. Total: ${totalCount} foto.`,
-    };
+    throw new Error('Sinkronisasi album ke Drive dinonaktifkan sampai tersedia API media permanen di GAS. Tidak ada media yang ditambahkan.');
   }
 
-  public updateAlbum(id: string, updates: Partial<PhotoAlbum>, updatedBy?: string): PhotoAlbum {
-    const target = this.albums.get(id);
-    if (!target) throw new Error('Album tidak ditemukan.');
-
-    if (updates.source_folder_url && updates.source_folder_url !== target.source_folder_url) {
-      const val = mediaResolverService.validateDriveFolder(updates.source_folder_url);
-      updates.folder_access_status = val.status;
+  public async updateAlbum(id: string, updates: Partial<PhotoAlbum>, updatedBy?: string): Promise<PhotoAlbum> {
+    const old = this.albums.get(id);
+    if (!old) throw new Error('Album tidak ditemukan. Muat ulang data dari GAS.');
+    const response = await apiTransport.send<{
+      saved: boolean; verified: boolean; item: Record<string, unknown>;
+      receipt: { album_id: string; event_id: string; sheet: string; row: number; verified_at: string };
+    }>('documentation.album.save', {
+      album_id: id,
+      album_name: updates.album_name ?? old.album_name,
+      description: updates.description ?? old.description ?? '',
+      source_folder_url: updates.source_folder_url ?? old.source_folder_url ?? '',
+      cover_image_url: updates.cover_image_url ?? old.cover_image_url ?? '',
+      publication_status: updates.publication_status ?? old.publication_status,
+      display_order: updates.display_order ?? old.display_order,
+    });
+    if (!response.ok || !response.data?.saved || !response.data?.verified) {
+      throw new Error(response.error?.message || 'Perubahan album belum terverifikasi di Spreadsheet.');
     }
-
-    const updated = {
-      ...target,
-      ...updates,
-      updated_at: new Date().toISOString().replace('T', ' ').slice(0, 16),
-    };
+    const updated = this.mapGasAlbum(response.data.item);
     this.albums.set(id, updated);
-
-    eventStudioService.addAuditLogEntry(
-      'ALBUM_UPDATED',
-      `Album '${updated.album_name}' diperbarui.`,
-      updatedBy || 'Admin'
-    );
-
+    this.albumReceipt = response.data.receipt;
     this.notify();
     return updated;
   }
 
   public deleteAlbum(id: string, deletedBy?: string): boolean {
-    const target = this.albums.get(id);
-    if (!target) return false;
-
-    // Remove album and update associated media
-    this.albums.delete(id);
-    for (const [mId, item] of this.mediaItems.entries()) {
-      if (item.album_id === id) {
-        this.mediaItems.delete(mId);
-      }
-    }
-
-    eventStudioService.addAuditLogEntry(
-      'ALBUM_DELETED',
-      `Album '${target.album_name}' dan seluruh fotonya dihapus.`,
-      deletedBy || 'Admin'
-    );
-
-    this.notify();
-    return true;
+    // No server-side delete/archive action exists in DocumentationAlbumApi.gs yet.
+    // Never present local-only deletion as a successful persisted mutation.
+    throw new Error('Hapus album belum tersedia di GAS. Data tidak diubah.');
   }
 
   // ==================== MEDIA ITEM OPERATIONS (PHOTOS & VIDEOS) ====================
