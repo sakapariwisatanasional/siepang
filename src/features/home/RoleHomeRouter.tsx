@@ -18,6 +18,7 @@ import { UserRole } from '../../types';
 import { NavTab } from '../../components/navigation/MobileNavigation';
 import { ParticipantHome } from '../participants/ParticipantHome';
 import { CommitteeHome } from './CommitteeHome';
+import { ContingentHome } from './ContingentHome';
 import { JudgeHome } from './JudgeHome';
 import { RegistrationOfficerHome } from './RegistrationOfficerHome';
 import { AttendanceOfficerHome } from './AttendanceOfficerHome';
@@ -65,8 +66,10 @@ export const RoleHomeRouter: React.FC<RoleHomeRouterProps> = ({
         />
       );
 
-    case 'registration_officer':
     case 'kontingen_admin':
+      return <ContingentHome onNavigate={onNavigate} />;
+
+    case 'registration_officer':
       return (
         <RegistrationOfficerHome
           onNavigate={onNavigate}
