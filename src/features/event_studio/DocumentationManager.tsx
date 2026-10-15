@@ -31,6 +31,7 @@ import {
   Check,
 } from 'lucide-react';
 import { documentationService } from '../../services/documentationService';
+import { AdminPublicGalleryManager } from '../documentation/AdminPublicGalleryManager';
 import { mediaResolverService } from '../../services/mediaResolverService';
 import { PhotoAlbum, MediaItem, MediaAccessStatus, MediaPublicationStatus } from '../../types';
 
@@ -364,7 +365,7 @@ export const DocumentationManager: React.FC = () => {
           }`}
         >
           <Film className="w-4 h-4" />
-          <span>Video Highlight ({videos.length})</span>
+          <span>Video Highlight (Galeri GAS)</span>
         </button>
 
         <button
@@ -583,80 +584,18 @@ export const DocumentationManager: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 3: VIDEOS LIST (Section 11) */}
+      {/* TAB 3: GAS-AUTHORITATIVE VIDEO GALLERY.
+          The legacy video addVideo() was browser-memory-only; do not use it for publication.
+          Reuse the existing verified admin gallery workflow and preserve other tabs. */}
       {activeTab === 'videos' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500 dark:text-slate-400">
-              Total {videos.length} video highlight resmi perkemahan.
-            </span>
-            <button
-              type="button"
-              onClick={() => setShowAddVideoModal(true)}
-              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-[#208C60] to-[#F47743] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs hover:opacity-90"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Tambah Video YouTube/Drive</span>
-            </button>
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100">
+            <p className="font-bold">Video resmi tersimpan di Galeri GAS</p>
+            <p className="mt-1">Pilih Tambah Video, kemudian pilih status Terbitkan ke Publik.
+            Video baru ditampilkan pada perangkat lain setelah penyimpanan dan pembacaan ulang dari GAS berhasil.
+            Daftar di bawah menampilkan galeri bersama; gunakan filter Video untuk melihat rekaman saja.</p>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {videos.map(video => (
-              <div
-                key={video.media_id}
-                className="rounded-3xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 overflow-hidden shadow-xs flex flex-col justify-between group"
-              >
-                <div className="aspect-video w-full bg-black/60 relative">
-                  <img
-                    src={video.thumbnail_url}
-                    alt={video.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    loading="lazy"
-                  />
-                  <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                    <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-[#208C60] to-[#F47743] text-white flex items-center justify-center shadow-lg">
-                      <Play className="w-5 h-5 fill-white ml-0.5" />
-                    </div>
-                  </div>
-                  <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/80 text-white text-[10px] font-mono">
-                    {video.duration || '03:00'}
-                  </div>
-                  <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/70 text-purple-300 text-[9px] font-mono">
-                    {video.provider}
-                  </div>
-                </div>
-
-                <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white line-clamp-2">{video.title}</h4>
-                    {video.caption && (
-                      <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mt-1 leading-relaxed">
-                        {video.caption}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="pt-3 border-t border-black/5 dark:border-white/10 flex items-center justify-between text-xs">
-                    <span className="text-[10px] text-slate-400 font-mono">{video.event_date}</span>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (confirm(`Hapus video '${video.title}'?`)) {
-                          documentationService.deleteMedia(video.media_id);
-                          showToast('Video dihapus.');
-                        }
-                      }}
-                      className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20"
-                      title="Hapus Video"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <AdminPublicGalleryManager />
         </div>
       )}
 
