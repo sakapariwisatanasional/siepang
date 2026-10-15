@@ -42,8 +42,9 @@ import {
   School,
   Plus,
   RefreshCw,
+  MoreHorizontal,
 } from 'lucide-react';
-import { participantService } from '../../services/participantService';
+import { participantService, type ParticipantDocumentSummary, type ParticipantDocumentType, type ParticipantDocumentDecision } from '../../services/participantService';
 import { gudepRegistrationService, GudepRecord, GudepRegu } from '../../services/gudepRegistrationService';
 import { authService } from '../../services/authService';
 import { profilePhotoService } from '../../services/profilePhotoService';
@@ -80,6 +81,71 @@ export const ParticipantList: React.FC = () => {
   const [statusHistoryTarget, setStatusHistoryTarget] = useState<Participant | null>(null);
   const [revisionModalTarget, setRevisionModalTarget] = useState<Participant | null>(null);
   const [revisionReasonText, setRevisionReasonText] = useState('Foto KTA atau dokumen izin kurang jelas, mohon unggah ulang.');
+  const [documentTarget, setDocumentTarget] = useState<Participant | null>(null);
+  const [documentSummary, setDocumentSummary] = useState<ParticipantDocumentSummary | null>(null);
+  const [documentLoading, setDocumentLoading] = useState(false);
+  const [documentBusy, setDocumentBusy] = useState(false);
+  const [documentError, setDocumentError] = useState('');
+  const [documentNotes, setDocumentNotes] = useState<Record<string, string>>({});
+  const documentFileInput = useRef<HTMLInputElement | null>(null);
+  const uploadDocumentType = useRef<ParticipantDocumentType>('KTA');
+  const documentLabels: Record<ParticipantDocumentType, string> = {
+    KTA: 'KTA / NTA Pramuka',
+    PARENT_CONSENT: 'Surat izin orang tua',
+    HEALTH_CERTIFICATE: 'Surat keterangan sehat',
+  };
+  const documentTypes: ParticipantDocumentType[] = ['KTA', 'PARENT_CONSENT', 'HEALTH_CERTIFICATE'];
+
+  const openDocumentVerification = async (participant: Participant) => {
+    setDocumentTarget(participant);
+    setDocumentSummary(null);
+    setDocumentError('');
+    setDocumentLoading(true);
+    try {
+      setDocumentSummary(await participantService.listParticipantDocuments(participant.id));
+    } catch (err: any) {
+      setDocumentError(err?.message || 'Gagal membaca berkas dari GAS.');
+    } finally {
+      setDocumentLoading(false);
+    }
+  };
+
+  const runDocumentAction = async (operation: () => Promise<ParticipantDocumentSummary>, message: string) => {
+    setDocumentBusy(true);
+    setDocumentError('');
+    try {
+      const updated = await operation();
+      setDocumentSummary(updated);
+      showToast(message);
+    } catch (err: any) {
+      setDocumentError(err?.message || 'Gagal menyimpan perubahan berkas ke GAS.');
+    } finally {
+      setDocumentBusy(false);
+    }
+  };
+
+  const handleDocumentUpload = async (file: File | undefined) => {
+    if (!file || !documentTarget) return;
+    const type = uploadDocumentType.current;
+    await runDocumentAction(
+      () => participantService.uploadParticipantDocument(documentTarget.id, type, file),
+      'Dokumen berhasil diunggah, menunggu verifikasi digital.'
+    );
+    if (documentFileInput.current) documentFileInput.current.value = '';
+  };
+
+  const handleDocumentDecision = async (type: ParticipantDocumentType, decision: ParticipantDocumentDecision, method: 'DIGITAL' | 'PHYSICAL') => {
+    if (!documentTarget) return;
+    const notes = (documentNotes[type] || '').trim();
+    if (decision !== 'VERIFIED' && !notes) {
+      setDocumentError('Masukkan alasan untuk revisi atau penolakan dokumen.');
+      return;
+    }
+    await runDocumentAction(
+      () => participantService.verifyParticipantDocument(documentTarget.id, type, decision, method, notes),
+      `Status ${documentLabels[type]} tersimpan di GAS.`
+    );
+  };
   const [showImportModal, setShowImportModal] = useState(false);
   const [showStepRegModal, setShowStepRegModal] = useState(false);
   const [showGudepManager, setShowGudepManager] = useState(false);
@@ -124,9 +190,9 @@ export const ParticipantList: React.FC = () => {
     bloodType: 'O+',
     emergencyContact: '',
     medicalNotes: '',
-    docKta: true,
-    docIzin: true,
-    docSehat: true,
+    docKta: false,
+    docIzin: false,
+    docSehat: false,
     photoUrl: '',
     profile_photo_file_id: '',
     profile_photo_status: 'NOT_UPLOADED' as ProfilePhotoStatus,
@@ -266,6 +332,10 @@ export const ParticipantList: React.FC = () => {
     contingentId: contingentFilter,
   });
 
+  const allParticipants = participantService.getParticipants();
+  const verifiedCount = allParticipants.filter(p => p.status === 'approved' || p.status === 'verified').length;
+  const checkedInCount = allParticipants.filter(p => p.checkedIn).length;
+
   const pendingVerificationList = participantService.getParticipants({
     status: 'submitted',
   });
@@ -356,7 +426,7 @@ export const ParticipantList: React.FC = () => {
     }
 
     if (!stepData.docKta || !stepData.docIzin || !stepData.docSehat) {
-      showToast('Lengkapi konfirmasi tiga berkas pendukung wajib sebelum mengirim pendaftaran.');
+      showToast('Konfirmasi bahwa tiga berkas wajib akan disiapkan secara digital atau dibawa fisik.');
       return;
     }
 
@@ -410,9 +480,9 @@ export const ParticipantList: React.FC = () => {
       bloodType: 'O+',
       emergencyContact: '',
       medicalNotes: '',
-      docKta: true,
-      docIzin: true,
-      docSehat: true,
+      docKta: false,
+      docIzin: false,
+      docSehat: false,
       photoUrl: '',
       profile_photo_file_id: '',
       profile_photo_status: 'NOT_UPLOADED',
@@ -469,101 +539,44 @@ export const ParticipantList: React.FC = () => {
         </div>
       )}
 
-      {/* Top Header with Multi-Action Buttons */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 p-5 rounded-[28px] shadow-xs">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full bg-[#FFF0F4] text-[#F47743] border border-[#FFE0E8] text-[10px] font-bold">
-              Manajemen Peserta Online v1.1
-            </span>
-            <span className="text-xs text-[#6B7280] dark:text-slate-400">{loadState === 'loading' ? 'Memuat peserta…' : loadState === 'error' ? 'Gagal memuat' : `Total ${participants.length} Terdaftar`}</span>
+      {/* Navigation and actions are deliberately separate; all existing handlers remain intact. */}
+      <section className="rounded-[24px] border border-[#ECECEF] dark:border-white/10 bg-white dark:bg-[#141418] p-4 sm:p-6 space-y-5 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mb-1">Event Studio / Peserta</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-[#171717] dark:text-white">Manajemen Peserta</h1>
+            <p className="text-sm mt-1 text-[#6B7280] dark:text-slate-400">Pendaftaran, verifikasi, kehadiran, dan data peserta dalam satu tempat.</p>
           </div>
-          <h1 className="text-xl font-bold text-[#171717] dark:text-white tracking-tight">Database & Verifikasi Peserta</h1>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {/* View Switcher: Directory vs Verification Queue */}
-          <div className="p-1 rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 flex">
-            <button
-              type="button"
-              onClick={() => setActiveView('directory')}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer min-h-[40px] ${
-                activeView === 'directory' ? 'bg-[#171717] text-white dark:bg-white dark:text-[#171717] shadow-xs' : 'text-[#6B7280] dark:text-slate-400 hover:text-[#171717] dark:hover:text-white'
-              }`}
-              title="Direktori Peserta"
-              aria-label="Direktori Peserta"
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Direktori</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveView('verification')}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer min-h-[40px] ${
-                activeView === 'verification' ? 'bg-[#171717] text-white dark:bg-white dark:text-[#171717] shadow-xs' : 'text-[#6B7280] dark:text-slate-400 hover:text-[#171717] dark:hover:text-white'
-              }`}
-              title="Verifikasi Berkas"
-              aria-label="Verifikasi Berkas"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Verifikasi Berkas</span>
-              {pendingVerificationList.length > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-[#F47743] text-white font-bold text-[10px]">
-                  {pendingVerificationList.length}
-                </span>
-              )}
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowPhotoConfigModal(true)}
-            className="flex items-center justify-center p-2.5 sm:px-3 sm:py-2 bg-[#FAFAFA] hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 text-[#6B7280] dark:text-slate-300 rounded-xl text-xs font-semibold border border-[#ECECEF] dark:border-white/10 transition-colors min-w-[44px] min-h-[44px] cursor-pointer"
-            title="Kebijakan & Aturan Wajib Foto"
-            aria-label="Kebijakan & Aturan Wajib Foto"
-          >
-            <Camera className="w-4 h-4 text-[#208C60] dark:text-purple-400" />
-            <span className="hidden sm:inline sm:ml-1.5">Kebijakan Foto</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowGudepManager(true)}
-            className="flex items-center justify-center gap-1.5 p-2.5 sm:px-3 sm:py-2 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-bold border border-emerald-200 dark:border-emerald-500/20 transition-colors"
-            title="Daftarkan Gugus Depan dan Regu"
-            aria-label="Kelola Gugus Depan dan Regu"
-          >
-            <School className="w-4 h-4" />
-            <span className="hidden sm:inline">+ Gudep / Regu</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowImportModal(true)}
-            className="flex items-center justify-center p-2.5 sm:px-3 sm:py-2 bg-[#FAFAFA] hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 text-[#6B7280] dark:text-slate-300 rounded-xl text-xs font-semibold border border-[#ECECEF] dark:border-white/10 transition-colors min-w-[44px] min-h-[44px] cursor-pointer"
-            title="Impor CSV Peserta"
-            aria-label="Impor CSV Peserta"
-          >
-            <Upload className="w-4 h-4 text-sky-500" />
-            <span className="hidden sm:inline sm:ml-1.5">Impor CSV</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setRegStep(1);
-              setRegistrationRequestKey(makeRequestKey());
-              setShowStepRegModal(true);
-            }}
-            className="flex items-center justify-center p-2.5 sm:px-4 sm:py-2 bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-pink-500/20 shrink-0 min-w-[44px] min-h-[44px] cursor-pointer"
-            title="Registrasi Peserta Baru"
-            aria-label="Registrasi Peserta Baru"
-          >
-            <UserPlus className="w-4 h-4 stroke-[2.5]" />
-            <span className="hidden sm:inline sm:ml-1.5">+ Registrasi Peserta</span>
+          <button type="button" onClick={() => { setRegStep(1); setRegistrationRequestKey(makeRequestKey()); setShowStepRegModal(true); }}
+            className="w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm min-h-[44px]">
+            <UserPlus className="w-4 h-4" /> Registrasi Peserta
           </button>
         </div>
-      </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3" aria-label="Ringkasan peserta dari data yang dimuat">
+          {[
+            {label:'Total Terdaftar', count:allParticipants.length},
+            {label:'Terverifikasi', count:verifiedCount},
+            {label:'Menunggu Verifikasi', count:pendingVerificationList.length},
+            {label:'Check-in Buper', count:checkedInCount},
+          ].map(stat => <div key={stat.label} className="rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 p-3 sm:p-4">
+            <p className="text-xs text-[#6B7280] dark:text-slate-400">{stat.label}</p>
+            <p className="mt-1 text-2xl font-bold text-[#171717] dark:text-white tabular-nums">{loadState === 'ready' ? stat.count : '—'}</p>
+          </div>)}
+        </div>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Halaman pengelolaan peserta">
+            <button type="button" onClick={() => setActiveView('directory')} aria-current={activeView === 'directory' ? 'page' : undefined}
+              className={`inline-flex items-center gap-2 min-h-[44px] px-4 py-2 rounded-xl text-sm font-semibold ${activeView === 'directory' ? 'bg-emerald-600 text-white' : 'bg-[#FAFAFA] dark:bg-white/5 text-[#171717] dark:text-slate-200 border border-[#ECECEF] dark:border-white/10'}`}><Users className="w-4 h-4"/> Direktori Peserta</button>
+            <button type="button" onClick={() => setActiveView('verification')} aria-current={activeView === 'verification' ? 'page' : undefined}
+              className={`inline-flex items-center gap-2 min-h-[44px] px-4 py-2 rounded-xl text-sm font-semibold ${activeView === 'verification' ? 'bg-emerald-600 text-white' : 'bg-[#FAFAFA] dark:bg-white/5 text-[#171717] dark:text-slate-200 border border-[#ECECEF] dark:border-white/10'}`}><ShieldCheck className="w-4 h-4"/> Verifikasi Berkas {pendingVerificationList.length > 0 && <span className="rounded-full bg-orange-500 px-2 text-white text-xs">{pendingVerificationList.length}</span>}</button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setShowGudepManager(true)} className="min-h-[42px] inline-flex items-center gap-2 rounded-xl border border-[#ECECEF] dark:border-white/10 px-3 py-2 text-xs font-semibold text-[#171717] dark:text-slate-200"><School className="w-4 h-4"/> Gudep & Regu</button>
+            <button type="button" onClick={() => setShowImportModal(true)} className="min-h-[42px] inline-flex items-center gap-2 rounded-xl border border-[#ECECEF] dark:border-white/10 px-3 py-2 text-xs font-semibold text-[#171717] dark:text-slate-200"><Upload className="w-4 h-4"/> Impor CSV</button>
+            <button type="button" onClick={() => setShowPhotoConfigModal(true)} className="min-h-[42px] inline-flex items-center gap-2 rounded-xl border border-[#ECECEF] dark:border-white/10 px-3 py-2 text-xs font-semibold text-[#171717] dark:text-slate-200"><Camera className="w-4 h-4"/> Kebijakan Foto</button>
+          </div>
+        </div>
+      </section>
 
       {/* VIEW 1: DIRECTORY WITH BULK ACTIONS */}
       {activeView === 'directory' && (
@@ -587,7 +600,7 @@ export const ParticipantList: React.FC = () => {
               className="bg-white dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-2xl px-3 py-2 text-base sm:text-xs text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
             >
               <option value="all">Semua Gugus Depan</option>
-              {[...new Map(participants.map(p=>[p.contingentId,{id:p.contingentId,name:p.contingentName}])).values()].filter(c=>c.id).map(c=>(<option key={c.id} value={c.id}>{c.name}</option>))}
+              {[...new Map(allParticipants.map(p=>[p.contingentId,{id:p.contingentId,name:p.contingentName}])).values()].filter(c=>c.id).map(c=>(<option key={c.id} value={c.id}>{c.name}</option>))}
             </select>
 
             <select
@@ -691,7 +704,7 @@ export const ParticipantList: React.FC = () => {
           )}
 
           {/* DIRECTORY TABLE VIEW */}
-          <div className="rounded-[24px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 overflow-x-auto max-w-full shadow-xs">
+          <div className="hidden lg:block rounded-[24px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 overflow-x-auto max-w-full shadow-xs">
             <table className="w-full text-left text-xs min-w-[680px]">
               <thead className="bg-[#FAFAFA] dark:bg-white/5 border-b border-[#ECECEF] dark:border-white/10 text-[#6B7280] dark:text-slate-400 uppercase text-[10px] tracking-wider font-semibold">
                 <tr>
@@ -832,6 +845,30 @@ export const ParticipantList: React.FC = () => {
               </tbody>
             </table>
           </div>
+          {/* Mobile cards: use the SAME filtered GAS-derived records and action handlers as desktop. */}
+          <div className="lg:hidden space-y-3" aria-label="Daftar peserta">
+            {loadState === 'loading' ? <p role="status" className="p-5 rounded-2xl bg-white dark:bg-[#141418] text-sm dark:text-white">Memuat peserta dari GAS…</p>
+            : loadState === 'error' ? <div role="alert" className="rounded-2xl border border-red-500/30 p-4 text-sm text-red-600">Gagal memuat peserta: {loadError}</div>
+            : participants.length === 0 ? <p className="rounded-2xl border border-[#ECECEF] dark:border-white/10 p-5 text-sm text-[#6B7280]">Belum ada peserta yang sesuai dengan filter.</p>
+            : participants.map(p => <article key={p.id} className="rounded-2xl border border-[#ECECEF] dark:border-white/10 bg-white dark:bg-[#141418] p-4 space-y-3">
+              <div className="flex gap-3 items-start">
+                <input type="checkbox" className="mt-3 accent-emerald-600" aria-label={`Pilih ${p.name}`} checked={selectedIds.includes(p.id)} onChange={e => setSelectedIds(prev => e.target.checked ? [...prev.filter(id => id !== p.id),p.id] : prev.filter(id => id !== p.id))}/>
+                <img src={p.photoUrl || profilePhotoService.getPlaceholderUrl(p.name)} onError={e => { const fallback = profilePhotoService.getPlaceholderUrl(p.name); if (e.currentTarget.src !== fallback) e.currentTarget.src = fallback; }} alt="" className="h-11 w-11 rounded-xl object-cover shrink-0"/>
+                <div className="min-w-0 flex-1"><button type="button" onClick={() => setSelectedDetail(p)} className="font-bold text-left text-[#171717] dark:text-white break-words">{p.name}</button><p className="text-xs text-[#6B7280] dark:text-slate-400 break-all">{p.code} · NTA: {p.membershipNumber || '—'}</p><p className="text-xs text-[#6B7280] dark:text-slate-400 mt-1">{p.contingentName || 'Belum ada kontingen'}</p></div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">{getStatusBadge(p.status)}<span className="text-xs text-[#6B7280] dark:text-slate-300">{p.xp} XP · {p.attendanceCount} kegiatan</span></div>
+              <div className="flex gap-2 items-center flex-wrap border-t border-[#ECECEF] dark:border-white/10 pt-3">
+                <button type="button" onClick={() => setSelectedDetail(p)} className="rounded-xl px-3 py-2 text-xs font-bold bg-emerald-600 text-white min-h-[42px]">Lihat Detail</button>
+                <button type="button" onClick={() => setAdminDialog({mode:'edit',participants:[p]})} className="rounded-xl px-3 py-2 text-xs font-semibold min-h-[42px] border border-[#ECECEF] dark:border-white/10 dark:text-white">Edit</button>
+                <details className="relative group"><summary className="list-none cursor-pointer rounded-xl px-3 py-2 text-xs font-semibold min-h-[42px] border border-[#ECECEF] dark:border-white/10 dark:text-white flex items-center gap-1"><MoreHorizontal className="w-4 h-4"/> Lainnya</summary><div className="mt-2 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => setSelectedQrParticipant(p)} className="rounded-xl px-3 py-2 text-xs border border-[#ECECEF] dark:border-white/10 dark:text-white">QR Pass</button>
+                  <button type="button" onClick={() => setStatusHistoryTarget(p)} className="rounded-xl px-3 py-2 text-xs border border-[#ECECEF] dark:border-white/10 dark:text-white">Riwayat</button>
+                  <button type="button" onClick={() => setAdminDialog({mode:'archive',participants:[p]})} className="rounded-xl px-3 py-2 text-xs border border-rose-500/30 text-rose-600">Arsip</button>
+                  <button type="button" onClick={() => handleCheckInToggle(p)} className="rounded-xl px-3 py-2 text-xs border border-[#ECECEF] dark:border-white/10 dark:text-white">{p.checkedIn ? 'Status Check-in' : 'Check-in Buper'}</button>
+                </div></details>
+              </div>
+            </article>)}
+          </div>
         </div>
       )}
 
@@ -845,7 +882,7 @@ export const ParticipantList: React.FC = () => {
                 <span>Antrean Verifikasi Berkas Peserta (Registration Officers Workspace)</span>
               </h3>
               <p className="text-xs text-[#6B7280] dark:text-slate-400 mt-0.5">
-                Periksa kelengkapan KTA, surat mandat, izin orang tua, dan surat sehat sebelum disetujui.
+                Periksa KTA, izin orang tua, dan surat sehat secara digital atau fisik. Status tersimpan di GAS.
               </p>
             </div>
             <span className="px-3 py-1 rounded-full bg-pink-50 text-[#F47743] border border-pink-200 dark:bg-pink-950/40 dark:text-pink-300 dark:border-pink-800 text-xs font-bold shrink-0 self-start sm:self-auto">
@@ -936,54 +973,82 @@ export const ParticipantList: React.FC = () => {
                     </div>
 
                     <div className="pt-1.5 border-t border-[#ECECEF] dark:border-white/5">
-                      <div className="text-[10px] font-bold text-[#6B7280] dark:text-slate-400 uppercase tracking-wider mb-1">
-                        Kelengkapan Berkas:
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-                        <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 flex items-center gap-1">
-                          <Check className="w-3 h-3" /> KTA Pramuka
-                        </span>
-                        <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 flex items-center gap-1">
-                          <Check className="w-3 h-3" /> Izin Ortu
-                        </span>
-                        <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 flex items-center gap-1">
-                          <Check className="w-3 h-3" /> Surat Sehat
-                        </span>
-                      </div>
+                      <button type="button" onClick={() => void openDocumentVerification(p)} className="w-full rounded-xl border border-[#F47743]/40 px-3 py-2 text-xs font-bold text-[#F47743] hover:bg-orange-50 dark:hover:bg-white/5">
+                        Periksa KTA, Izin Orang Tua & Surat Sehat (GAS)
+                      </button>
+                      <p className="mt-2 text-[10px] text-[#6B7280]">Status berkas wajib dibaca dari GAS; tidak diasumsikan lengkap.</p>
                     </div>
                   </div>
 
-                  {/* Actions: Approve / Request Revision / Reject */}
-                  <div className="pt-2 border-t border-[#ECECEF] dark:border-white/5 flex items-center justify-between gap-2">
-                    <button
-                      onClick={() => handleApprove(p)}
-                      className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer min-h-[40px]"
-                    >
-                      <Check className="w-3.5 h-3.5 stroke-[3]" />
-                      <span>Approve</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        setRevisionModalTarget(p);
-                        setRevisionReasonText('Foto KTA atau dokumen izin orang tua kurang jelas, mohon unggah ulang.');
-                      }}
-                      className="py-2 px-3 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 dark:text-amber-300 dark:border-amber-500/30 rounded-xl text-xs font-bold transition-colors cursor-pointer min-h-[40px]"
-                    >
-                      Minta Revisi
-                    </button>
-
-                    <button
-                      onClick={() => handleReject(p)}
-                      className="py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 dark:bg-rose-500/20 dark:hover:bg-rose-500/30 dark:text-rose-300 dark:border-rose-500/30 rounded-xl text-xs font-bold transition-colors cursor-pointer min-h-[40px]"
-                    >
-                      Tolak
-                    </button>
-                  </div>
+                  <button type="button" onClick={() => void openDocumentVerification(p)} className="w-full rounded-xl bg-[#F47743] p-2.5 text-xs font-bold text-white hover:opacity-90">
+                    Buka Pemeriksaan Dokumen
+                  </button>
                 </div>
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* PERSISTENT DOCUMENT VERIFICATION — GAS is the only source of truth */}
+      {documentTarget && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-3" role="dialog" aria-modal="true" aria-label="Verifikasi dokumen peserta">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl dark:bg-[#141418] sm:p-7">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-bold text-[#171717] dark:text-white">Verifikasi Berkas Peserta</h3>
+                <p className="text-xs text-[#6B7280] dark:text-slate-300">{documentTarget.name} — {documentTarget.code}</p>
+              </div>
+              <button type="button" disabled={documentBusy} onClick={() => setDocumentTarget(null)} className="rounded-lg border px-3 py-1 text-sm dark:text-white">Tutup</button>
+            </div>
+            {documentError && <p role="alert" className="mb-3 rounded-xl border border-red-300 bg-red-50 p-3 text-xs text-red-700">{documentError}</p>}
+            {documentLoading && <p className="p-3 text-sm dark:text-white">Memuat status dokumen dari GAS...</p>}
+            {!documentLoading && documentSummary && (
+              <>
+                <p className={`mb-3 rounded-xl p-3 text-xs font-semibold ${documentSummary.all_verified ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>
+                  {documentSummary.all_verified ? 'Ketiga dokumen telah diverifikasi.' : 'Masih ada dokumen yang belum lolos verifikasi.'}
+                </p>
+                <input ref={documentFileInput} type="file" accept="application/pdf,image/jpeg,image/png" className="hidden" onChange={e => void handleDocumentUpload(e.target.files?.[0])} />
+                <div className="space-y-3">
+                  {documentTypes.map(type => {
+                    const doc = documentSummary.documents.find(row => row.document_type === type);
+                    const status = doc?.verification_status || 'NOT_SUBMITTED';
+                    const method = doc?.method || 'NOT_SELECTED';
+                    const verified = status === 'VERIFIED';
+                    return (
+                      <div key={type} className="rounded-2xl border border-[#ECECEF] p-4 dark:border-white/10">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <strong className="text-sm text-[#171717] dark:text-white">{documentLabels[type]}</strong>
+                          <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] text-slate-700">{method} / {status}</span>
+                        </div>
+                        {doc?.original_filename && <p className="mt-1 text-[11px] text-[#6B7280]">Berkas: {doc.original_filename} (tersimpan di Drive)</p>}
+                        {doc?.notes && <p className="mt-1 text-xs text-amber-700">Catatan pemeriksa: {doc.notes}</p>}
+                        {!verified && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button type="button" disabled={documentBusy} onClick={() => { uploadDocumentType.current = type; documentFileInput.current?.click(); }} className="rounded-lg border px-3 py-2 text-xs font-semibold text-[#171717] disabled:opacity-50 dark:text-white">Unggah PDF/JPG/PNG</button>
+                            <button type="button" disabled={documentBusy} onClick={() => documentTarget && void runDocumentAction(() => participantService.chooseParticipantDocumentPhysical(documentTarget.id, type), 'Pemeriksaan fisik telah dijadwalkan.')} className="rounded-lg border px-3 py-2 text-xs font-semibold text-[#171717] disabled:opacity-50 dark:text-white">Bawa berkas fisik</button>
+                          </div>
+                        )}
+                        {status !== 'NOT_SUBMITTED' && !verified && (
+                          <div className="mt-3 space-y-2">
+                            <p className="text-xs text-[#6B7280]">Pemeriksaan {method === 'DIGITAL' ? 'digital' : 'fisik di lokasi'} — hanya nyatakan valid setelah pemeriksaan.</p>
+                            <textarea rows={2} value={documentNotes[type] || ''} onChange={e => setDocumentNotes(prev => ({...prev, [type]: e.target.value}))} placeholder="Alasan revisi / penolakan (wajib jika tidak valid)" className="w-full rounded-lg border bg-transparent p-2 text-xs dark:text-white" />
+                            <div className="flex flex-wrap gap-2">
+                              <button type="button" disabled={documentBusy || method === 'NOT_SELECTED'} onClick={() => void handleDocumentDecision(type, 'VERIFIED', method as 'DIGITAL' | 'PHYSICAL')} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Verifikasi Valid</button>
+                              <button type="button" disabled={documentBusy || method === 'NOT_SELECTED'} onClick={() => void handleDocumentDecision(type, 'REVISION', method as 'DIGITAL' | 'PHYSICAL')} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Perlu Revisi</button>
+                              <button type="button" disabled={documentBusy || method === 'NOT_SELECTED'} onClick={() => void handleDocumentDecision(type, 'REJECTED', method as 'DIGITAL' | 'PHYSICAL')} className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Tolak</button>
+                            </div>
+                          </div>
+                        )}
+                        {verified && <p className="mt-2 text-xs font-semibold text-emerald-700">✓ Berkas valid. Tidak memerlukan pemeriksaan fisik ulang.</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+                <button type="button" disabled={documentBusy} onClick={() => void openDocumentVerification(documentTarget)} className="mt-4 rounded-lg border px-4 py-2 text-xs font-semibold dark:text-white">Muat Ulang Status dari GAS</button>
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -1366,7 +1431,7 @@ export const ParticipantList: React.FC = () => {
                 />
 
                 <div className="space-y-2 pt-2 border-t border-[#ECECEF] dark:border-white/5">
-                  <div className="text-[11px] font-semibold text-[#171717] dark:text-slate-300">Konfirmasi Berkas Pendukung Wajib (3/3 harus dicentang):</div>
+                  <div className="text-[11px] font-semibold text-[#171717] dark:text-slate-300">Konfirmasi kesediaan menyiapkan berkas (unggah digital atau bawa fisik):</div>
                   <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/5 cursor-pointer">
                     <input
                       type="checkbox"
@@ -1375,7 +1440,7 @@ export const ParticipantList: React.FC = () => {
                       onChange={e => setStepData({ ...stepData, docKta: e.target.checked })}
                       className="accent-[#F47743] rounded"
                     />
-                    <span className="text-[#171717] dark:text-slate-200">KTA / NTA Pramuka (Digital / Fisik Terlampir)</span>
+                    <span className="text-[#171717] dark:text-slate-200">KTA / NTA Pramuka tersedia untuk diunggah atau dibawa fisik</span>
                   </label>
                   <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/5 cursor-pointer">
                     <input
@@ -1385,7 +1450,7 @@ export const ParticipantList: React.FC = () => {
                       onChange={e => setStepData({ ...stepData, docIzin: e.target.checked })}
                       className="accent-[#F47743] rounded"
                     />
-                    <span className="text-[#171717] dark:text-slate-200">Surat Izin Mengikuti Perkemahan dari Orang Tua / Gugus Depan</span>
+                    <span className="text-[#171717] dark:text-slate-200">Surat izin orang tua akan disiapkan secara digital atau fisik</span>
                   </label>
                   <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/5 cursor-pointer">
                     <input
@@ -1395,7 +1460,7 @@ export const ParticipantList: React.FC = () => {
                       onChange={e => setStepData({ ...stepData, docSehat: e.target.checked })}
                       className="accent-[#F47743] rounded"
                     />
-                    <span className="text-[#171717] dark:text-slate-200">Surat Keterangan Sehat dari Fasilitas Kesehatan / Dokter</span>
+                    <span className="text-[#171717] dark:text-slate-200">Surat keterangan sehat akan disiapkan secara digital atau fisik</span>
                   </label>
                 </div>
               </div>
