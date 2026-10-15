@@ -137,6 +137,38 @@ class EventStudioService {
       return '';
     };
 
+    // GAS may serialize Sheets date cells as "Thu Oct 29 2026 00:00:00 GMT+0700 (...)".
+    // Normalize at the API boundary; HTML date inputs and schedule day selectors
+    // require YYYY-MM-DD. Never invent a replacement date when parsing fails.
+    const pickCalendarDate = (...values: any[]): string => {
+      const monthIndex: Record<string, string> = {
+        Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
+        Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12',
+      };
+      const validDate = (year: string, month: string, day: string): string => {
+        const y = Number(year), m = Number(month), d = Number(day);
+        if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return '';
+        const date = new Date(Date.UTC(y, m - 1, d));
+        if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return '';
+        return `${year.padStart(4, '0')}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      };
+      for (const value of values) {
+        if (value === null || value === undefined || value === '') continue;
+        const text = String(value).trim();
+        const iso = /^(\d{4})-(\d{2})-(\d{2})(?:$|T|\s)/.exec(text);
+        if (iso) {
+          const date = validDate(iso[1], iso[2], iso[3]);
+          if (date) return date;
+        }
+        const gas = /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s+(\d{4})\b/.exec(text);
+        if (gas) {
+          const date = validDate(gas[3], monthIndex[gas[1]], gas[2]);
+          if (date) return date;
+        }
+      }
+      return '';
+    };
+
     const pickNumber = (...values: any[]): number => {
       for (const value of values) {
         const n = Number(value);
@@ -165,14 +197,14 @@ class EventStudioService {
       organizer: pickString(source.organizer, fallback.organizer),
       description: pickString(source.description, fallback.description),
       theme: pickString(source.theme, fallback.theme),
-      startDate: pickString(source.startDate, source.start_date, fallback.startDate),
-      endDate: pickString(source.endDate, source.end_date, fallback.endDate),
-      registrationStart: pickString(
+      startDate: pickCalendarDate(source.startDate, source.start_date, fallback.startDate),
+      endDate: pickCalendarDate(source.endDate, source.end_date, fallback.endDate),
+      registrationStart: pickCalendarDate(
         source.registrationStart,
         source.registration_start,
         fallback.registrationStart
       ),
-      registrationEnd: pickString(
+      registrationEnd: pickCalendarDate(
         source.registrationEnd,
         source.registration_end,
         fallback.registrationEnd
@@ -451,9 +483,10 @@ class EventStudioService {
         () => this.request<Organization[]>('/api/organizations/list'),
       ]);
 
-      if (evRes.ok && evRes.data) {
+      if (evRes.ok && evRes.data && String(evRes.data.id || evRes.data.event_id || '').trim()) {
         this.event = this.normalizeEvent(evRes.data);
         this.eventLoadReady = true;
+        this.eventConfirmedMissing = false;
         this.eventLoadError = null;
       } else {
         // Preserve the last confirmed event; an API failure is not an empty event.
