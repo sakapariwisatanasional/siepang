@@ -34,6 +34,34 @@ import { eventService } from '../../services/eventService';
 import { PhotoAlbum, MediaItem } from '../../types';
 import { GlobalFooter } from '../../components/layout/GlobalFooter';
 
+/** Only allow supported HTTPS providers in an embedded player. */
+function resolveVideo(item: MediaItem): { kind: 'iframe' | 'file' | 'link'; url: string; thumbnail: string } {
+  const source = item.source_url || '';
+  let url: URL;
+  try { url = new URL(source); } catch { return { kind: 'link', url: source, thumbnail: item.thumbnail_url }; }
+  if (url.protocol !== 'https:') return { kind: 'link', url: '', thumbnail: item.thumbnail_url };
+  const host = url.hostname.toLowerCase();
+  let ytId = '';
+  if (host === 'youtu.be' || host === 'www.youtu.be') ytId = url.pathname.split('/')[1] || '';
+  else if (['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtube-nocookie.com', 'www.youtube-nocookie.com'].includes(host)) {
+    ytId = url.pathname.startsWith('/shorts/') || url.pathname.startsWith('/embed/')
+      ? url.pathname.split('/')[2] || '' : url.searchParams.get('v') || '';
+  }
+  if (/^[A-Za-z0-9_-]{11}$/.test(ytId)) return {
+    kind: 'iframe', url: `https://www.youtube-nocookie.com/embed/${ytId}`,
+    thumbnail: item.thumbnail_url || `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`,
+  };
+  if (host === 'drive.google.com') {
+    const id = url.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1] || url.searchParams.get('id') || '';
+    if (/^[a-zA-Z0-9_-]{10,}$/.test(id)) return {
+      kind: 'iframe', url: `https://drive.google.com/file/d/${id}/preview`,
+      thumbnail: item.thumbnail_url,
+    };
+  }
+  if (/\.(mp4|webm|ogg)$/i.test(url.pathname)) return { kind: 'file', url: source, thumbnail: item.thumbnail_url };
+  return { kind: 'link', url: source, thumbnail: item.thumbnail_url };
+}
+
 interface PublicDocumentationGalleryProps {
   onBackToHome?: () => void;
   initialTab?: 'photos' | 'videos';
@@ -50,15 +78,31 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [activeVideoItem, setActiveVideoItem] = useState<MediaItem | null>(null);
   const [copyFeedback, setCopyFeedback] = useState(false);
+  const [publishedMedia, setPublishedMedia] = useState<MediaItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setLoadError('');
+    documentationService.loadPublicGallery().then(items => {
+      if (alive) setPublishedMedia(items);
+    }).catch(err => {
+      if (alive) setLoadError(err instanceof Error ? err.message : 'Gagal memuat galeri dari server.');
+    }).finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [reloadKey]);
 
   // Touch swipe state for Lightbox (Section 10)
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchEndX, setTouchEndX] = useState<number | null>(null);
 
   const event = eventService.getCurrentEvent();
-  const albums = documentationService.getAlbums('PUBLISHED');
-  const photos = documentationService.getMediaItems({ type: 'PHOTO', publicationStatus: 'PUBLISHED' });
-  const videos = documentationService.getMediaItems({ type: 'VIDEO', publicationStatus: 'PUBLISHED' });
+  const albums: PhotoAlbum[] = []; // Album management is not yet supplied by gallery.public.list.
+  const photos = publishedMedia.filter(item => item.media_type === 'PHOTO');
+  const videos = publishedMedia.filter(item => item.media_type === 'VIDEO');
 
   // Reset pagination when album or search query changes
   useEffect(() => {
@@ -96,7 +140,7 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
     setLightboxIndex(index);
     const item = filteredPhotos[index];
     if (item) {
-      documentationService.recordMediaInteraction(item.media_id, 'VIEW');
+      // Public view statistics are not yet exposed by the GAS Gallery API.
     }
   };
 
@@ -138,7 +182,7 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
 
   const handlePlayVideo = (video: MediaItem) => {
     setActiveVideoItem(video);
-    documentationService.recordMediaInteraction(video.media_id, 'PLAY');
+    // Public play statistics are not yet exposed by the GAS Gallery API.
   };
 
   const handleShare = () => {
@@ -233,6 +277,14 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
           </div>
         </div>
 
+        {loading && <div role="status" className="text-center rounded-2xl bg-white dark:bg-[#121215] p-8 text-sm text-slate-600 dark:text-slate-300">Memuat foto dan video dari SiEpang...</div>}
+        {!loading && loadError && (
+          <div role="alert" className="rounded-2xl border border-red-300 bg-red-50 dark:bg-red-950/20 p-5 text-sm">
+            <p className="font-bold text-red-700 dark:text-red-300">Galeri belum dapat dimuat</p>
+            <p className="text-slate-600 dark:text-slate-300 mt-1">{loadError}</p>
+            <button type="button" onClick={() => setReloadKey(v => v + 1)} className="mt-3 rounded-xl bg-[#208C60] text-white px-4 py-2 font-semibold">Coba Lagi</button>
+          </div>
+        )}
         {/* Tab Switcher & Search Bar */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           {/* Photos vs Videos Tabs */}
@@ -316,7 +368,7 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
         )}
 
         {/* TAB 1: PHOTOS GRID */}
-        {activeTab === 'photos' && (
+        {!loading && !loadError && activeTab === 'photos' && (
           <div>
             {filteredPhotos.length === 0 ? (
               <div className="text-center py-16 px-4 rounded-3xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/5 space-y-3">
@@ -340,7 +392,7 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
                       {/* Image Thumbnail with lazy loading */}
                       <div className="aspect-[4/3] w-full overflow-hidden bg-slate-100 dark:bg-black/40 relative">
                         <img
-                          src={photo.thumbnail_url}
+                          src={photo.thumbnail_url || photo.source_url}
                           alt={photo.title}
                           loading="lazy"
                           referrerPolicy="no-referrer"
@@ -396,7 +448,7 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
         )}
 
         {/* TAB 2: VIDEOS GRID */}
-        {activeTab === 'videos' && (
+        {!loading && !loadError && activeTab === 'videos' && (
           <div>
             {filteredVideos.length === 0 ? (
               <div className="text-center py-16 px-4 rounded-3xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/5 space-y-3">
@@ -419,7 +471,7 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
                     {/* Video Thumbnail with centered play icon */}
                     <div className="aspect-video w-full overflow-hidden bg-black/60 relative">
                       <img
-                        src={video.thumbnail_url}
+                        src={resolveVideo(video).thumbnail || undefined}
                         alt={video.title}
                         loading="lazy"
                         referrerPolicy="no-referrer"
@@ -580,14 +632,16 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
 
             {/* Embedded Player or Fallback View */}
             <div className="aspect-video w-full bg-black relative">
-              {activeVideoItem.can_embed && activeVideoItem.embed_url ? (
+              {resolveVideo(activeVideoItem).kind === 'iframe' ? (
                 <iframe
-                  src={activeVideoItem.embed_url}
+                  src={resolveVideo(activeVideoItem).url}
                   title={activeVideoItem.title}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
                   className="w-full h-full border-0"
                 />
+              ) : resolveVideo(activeVideoItem).kind === 'file' ? (
+                <video src={resolveVideo(activeVideoItem).url} controls autoPlay playsInline className="w-full h-full" />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center space-y-4">
                   <div className="w-16 h-16 rounded-full bg-[#208C60]/20 text-[#208C60] dark:text-[#F47743] flex items-center justify-center text-3xl">
