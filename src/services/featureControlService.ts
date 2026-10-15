@@ -7,6 +7,9 @@
  */
 
 import { SystemFeatureKey, FeatureScope, FeatureDefinition } from '../types';
+import { apiTransport } from './apiTransport';
+import { eventService } from './eventService';
+import { workspaceService } from './workspaceService';
 import {
   spreadsheetRepository,
   FeatureConfigRecord,
@@ -442,63 +445,66 @@ class FeatureControlService {
 
   constructor() {
     this.seedDefaultFeatureStates();
-    this.loadFromStorage();
+    // Browser data must never override the authoritative Spreadsheet.
   }
 
-  private loadFromStorage(): void {
-    try {
-      const storedSys = localStorage.getItem('siepang_features_system');
-      if (storedSys) {
-        const obj = JSON.parse(storedSys);
-        Object.entries(obj).forEach(([k, v]) => this.systemStates.set(k as SystemFeatureKey, v as FeatureStateRecord));
-      }
-      const storedWs = localStorage.getItem('siepang_features_workspace');
-      if (storedWs) {
-        const obj = JSON.parse(storedWs);
-        Object.entries(obj).forEach(([wsId, mapObj]: [string, any]) => {
-          const m = new Map<SystemFeatureKey, FeatureStateRecord>();
-          Object.entries(mapObj).forEach(([k, v]) => m.set(k as SystemFeatureKey, v as FeatureStateRecord));
-          this.workspaceStates.set(wsId, m);
-        });
-      }
-      const storedEv = localStorage.getItem('siepang_features_event');
-      if (storedEv) {
-        const obj = JSON.parse(storedEv);
-        Object.entries(obj).forEach(([evId, mapObj]: [string, any]) => {
-          const m = new Map<SystemFeatureKey, FeatureStateRecord>();
-          Object.entries(mapObj).forEach(([k, v]) => m.set(k as SystemFeatureKey, v as FeatureStateRecord));
-          this.eventStates.set(evId, m);
-        });
-      }
-    } catch {
-      // Memory defaults
+  /** Reload one scope from GAS. Called after login and before editing settings. */
+  public async refreshFromSpreadsheet(scopeType: 'SYSTEM' | 'WORKSPACE' | 'EVENT' = 'EVENT'): Promise<void> {
+    const response = await apiTransport.send<{ items: FeatureConfigRecord[]; scope_id: string }>(
+      'feature.control.list', { scope_type: scopeType }
+    );
+    if (!response.ok || !response.data || !Array.isArray(response.data.items)) {
+      throw new Error(response.error?.message || 'Tidak dapat membaca FeatureConfigs dari Spreadsheet.');
+    }
+    const scopeId = String(response.data.scope_id || '');
+    if (!scopeId) throw new Error('GAS tidak mengembalikan scope_id yang valid.');
+    const next = new Map<SystemFeatureKey, FeatureStateRecord>();
+    for (const rec of response.data.items) {
+      if (rec.scope_type !== scopeType || rec.scope_id !== scopeId) continue;
+      if (rec.configured_state !== 'ENABLED' && rec.configured_state !== 'DISABLED') continue;
+      next.set(rec.feature_key as SystemFeatureKey, {
+        enabled: rec.configured_state === 'ENABLED', updatedAt: rec.updated_at,
+      });
+    }
+    if (scopeType === 'SYSTEM') {
+      this.seedDefaultFeatureStates();
+      next.forEach((v, k) => this.systemStates.set(k, v));
+    } else if (scopeType === 'WORKSPACE') this.workspaceStates.set(scopeId, next);
+    else this.eventStates.set(scopeId, next);
+    this.notify();
+  }
+
+  /** Read all three layers. Failed reads must be surfaced, not silently cached. */
+  public async refreshAllFromSpreadsheet(): Promise<void> {
+    for (const scope of ['SYSTEM', 'WORKSPACE', 'EVENT'] as const) {
+      await this.refreshFromSpreadsheet(scope);
     }
   }
 
-  private saveToStorage(): void {
-    try {
-      const sysObj: Record<string, any> = {};
-      this.systemStates.forEach((v, k) => (sysObj[k] = v));
-      localStorage.setItem('siepang_features_system', JSON.stringify(sysObj));
-
-      const wsObj: Record<string, any> = {};
-      this.workspaceStates.forEach((map, wsId) => {
-        const inner: Record<string, any> = {};
-        map.forEach((v, k) => (inner[k] = v));
-        wsObj[wsId] = inner;
-      });
-      localStorage.setItem('siepang_features_workspace', JSON.stringify(wsObj));
-
-      const evObj: Record<string, any> = {};
-      this.eventStates.forEach((map, evId) => {
-        const inner: Record<string, any> = {};
-        map.forEach((v, k) => (inner[k] = v));
-        evObj[evId] = inner;
-      });
-      localStorage.setItem('siepang_features_event', JSON.stringify(evObj));
-    } catch {
-      // Storage unavailable
+  private async saveFeatureToSpreadsheet(
+    scope_type: 'SYSTEM' | 'WORKSPACE' | 'EVENT',
+    key: SystemFeatureKey,
+    enabled: boolean,
+    scopeId?: string,
+  ): Promise<boolean> {
+    const payload: Record<string, string> = {
+      scope_type, feature_key: key, configured_state: enabled ? 'ENABLED' : 'DISABLED',
+    };
+    if (scopeId) payload.scope_id = scopeId;
+    const response = await apiTransport.send<{ saved: boolean; record: FeatureConfigRecord }>(
+      'feature.control.set', payload
+    );
+    if (!response.ok || !response.data?.saved || !response.data.record) {
+      throw new Error(response.error?.message || 'GAS belum mengonfirmasi penyimpanan Feature Control.');
     }
+    const row = response.data.record;
+    if (row.feature_key !== key || row.scope_type !== scope_type ||
+        row.configured_state !== payload.configured_state ||
+        (scopeId && row.scope_id !== scopeId)) {
+      throw new Error('Data verifikasi GAS tidak sesuai permintaan penyimpanan.');
+    }
+    await this.refreshFromSpreadsheet(scope_type);
+    return row.configured_state === 'ENABLED';
   }
 
   private seedDefaultFeatureStates(): void {
@@ -626,94 +632,30 @@ class FeatureControlService {
   /**
    * Toggles feature at event scope without deleting existing records
    */
-  public toggleEventFeature(
+  public async toggleEventFeature(
     key: SystemFeatureKey,
-    eventId = 'ev_jamcab_bwi_2026',
-    workspaceId = 'ws_kwarcab_bwi'
-  ): boolean {
-    const detail = this.resolveFeatureDetail(key, eventId, workspaceId);
-    if (detail.isLocked) {
-      throw new Error(`Fitur '${detail.definition.name}' ${detail.lockReason}.`);
-    }
-
-    if (!this.eventStates.has(eventId)) {
-      this.eventStates.set(eventId, new Map());
-    }
-    const map = this.eventStates.get(eventId)!;
-    const current = map.get(key)?.enabled ?? detail.definition.defaultEnabled;
-    const nextState = !current;
-    const nowIso = new Date().toISOString();
-
-    map.set(key, {
-      enabled: nextState,
-      updatedAt: nowIso.slice(0, 16),
-    });
-
-    // Authoritative persistence in canonical FeatureConfigs table (Req 4)
-    spreadsheetRepository.setFeatureConfig({
-      id: `ft_ev_${eventId}_${key}`,
-      feature_key: key,
-      scope_type: 'EVENT',
-      scope_id: eventId,
-      configured_state: nextState ? 'ENABLED' : 'DISABLED',
-      updated_at: nowIso,
-      updated_by: 'event_admin',
-    });
-
-    this.saveToStorage();
-    this.notify();
-    return nextState;
+    eventId?: string,
+    workspaceId?: string,
+  ): Promise<boolean> {
+    const actualEvent = eventService.getCurrentEvent()?.id;
+    const actualWorkspace = workspaceService.getCurrentWorkspace()?.id;
+    if (!actualEvent || !actualWorkspace) throw new Error('Event/workspace aktif belum dipilih.');
+    if (eventId && eventId !== actualEvent) throw new Error('Event tidak sesuai sesi aktif.');
+    if (workspaceId && workspaceId !== actualWorkspace) throw new Error('Workspace tidak sesuai sesi aktif.');
+    await this.refreshAllFromSpreadsheet();
+    const detail = this.resolveFeatureDetail(key, actualEvent, actualWorkspace);
+    if (detail.isLocked) throw new Error(`Fitur '${detail.definition.name}' ${detail.lockReason}.`);
+    const current = this.eventStates.get(actualEvent)?.get(key)?.enabled ?? detail.definition.defaultEnabled;
+    return this.saveFeatureToSpreadsheet('EVENT', key, !current, actualEvent);
   }
 
-  public setWorkspaceFeature(
-    workspaceId: string,
-    key: SystemFeatureKey,
-    enabled: boolean
-  ): void {
-    if (!this.workspaceStates.has(workspaceId)) {
-      this.workspaceStates.set(workspaceId, new Map());
-    }
-    const nowIso = new Date().toISOString();
-    this.workspaceStates.get(workspaceId)!.set(key, {
-      enabled,
-      updatedAt: nowIso.slice(0, 16),
-    });
-
-    // Authoritative persistence in canonical FeatureConfigs table (Req 4)
-    spreadsheetRepository.setFeatureConfig({
-      id: `ft_ws_${workspaceId}_${key}`,
-      feature_key: key,
-      scope_type: 'WORKSPACE',
-      scope_id: workspaceId,
-      configured_state: enabled ? 'ENABLED' : 'DISABLED',
-      updated_at: nowIso,
-      updated_by: 'workspace_admin',
-    });
-
-    this.saveToStorage();
-    this.notify();
+  public async setWorkspaceFeature(workspaceId: string, key: SystemFeatureKey, enabled: boolean): Promise<void> {
+    if (workspaceId !== workspaceService.getCurrentWorkspace()?.id) throw new Error('Workspace tidak sesuai sesi aktif.');
+    await this.saveFeatureToSpreadsheet('WORKSPACE', key, enabled, workspaceId);
   }
 
-  public setSystemFeature(key: SystemFeatureKey, enabled: boolean): void {
-    const nowIso = new Date().toISOString();
-    this.systemStates.set(key, {
-      enabled,
-      updatedAt: nowIso.slice(0, 16),
-    });
-
-    // Authoritative persistence in canonical FeatureConfigs table (Req 4)
-    spreadsheetRepository.setFeatureConfig({
-      id: `ft_sys_${key}`,
-      feature_key: key,
-      scope_type: 'SYSTEM',
-      scope_id: 'SYSTEM',
-      configured_state: enabled ? 'ENABLED' : 'DISABLED',
-      updated_at: nowIso,
-      updated_by: 'superadmin',
-    });
-
-    this.saveToStorage();
-    this.notify();
+  public async setSystemFeature(key: SystemFeatureKey, enabled: boolean): Promise<void> {
+    await this.saveFeatureToSpreadsheet('SYSTEM', key, enabled, 'SYSTEM');
   }
 
   /**
@@ -794,9 +736,8 @@ class FeatureControlService {
           updatedAt: rec.updated_at,
         });
       }
-      spreadsheetRepository.setFeatureConfig(rec);
+      // Imported snapshots are only for in-memory compatibility; never write to browser.
     });
-    this.saveToStorage();
     this.notify();
   }
 
