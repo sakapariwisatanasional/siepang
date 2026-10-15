@@ -292,11 +292,8 @@ export class UserManagementService {
   private isLoading = false;
 
   constructor() {
-    // Daftar pengguna hanya dibaca dari GAS. Jangan gunakan cache atau seed lokal.
-    // Fetch fresh authoritative user list from backend asynchronously after module imports resolve
-    setTimeout(() => {
-      this.refreshUsers().catch(() => {});
-    }, 0);
+    // Tidak request users.list pada saat import modul.
+    // Muat hanya saat layar pengguna atau aksi admin benar-benar memerlukannya.
   }
 
   private loadFromCache(): void {
