@@ -74,6 +74,37 @@ export const ScheduleActivityEditor: React.FC = () => {
   useEffect(() => eventStudioService.subscribe(() => setEventVersion(version => version + 1)), []);
   const activeEvent = eventStudioService.getEvent();
   const eventDays = eventDayOptions(activeEvent.startDate, activeEvent.endDate);
+  const eventLoadStatus = eventStudioService.getEventLoadStatus();
+  const [reloadingEvent, setReloadingEvent] = useState(false);
+  const [dateLoadError, setDateLoadError] = useState<string | null>(null);
+  // If the global initial sync did not return an event, retry ONLY events.get.
+  // This never writes to GAS, and never supplies sample dates.
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (eventStudioService.getEventLoadStatus().ready) return;
+      setReloadingEvent(true);
+      eventStudioService.refreshGeneralEvent()
+        .then(() => { if (!cancelled) setDateLoadError(null); })
+        .catch((error: unknown) => {
+          if (!cancelled) setDateLoadError(error instanceof Error ? error.message : 'Tidak dapat membaca tanggal event dari GAS.');
+        })
+        .finally(() => { if (!cancelled) setReloadingEvent(false); });
+    }, 2500);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, []);
+  const retryEventLoad = async () => {
+    if (reloadingEvent) return;
+    setReloadingEvent(true);
+    setDateLoadError(null);
+    try {
+      await eventStudioService.refreshGeneralEvent();
+    } catch (error: unknown) {
+      setDateLoadError(error instanceof Error ? error.message : 'Tidak dapat membaca tanggal event dari GAS.');
+    } finally {
+      setReloadingEvent(false);
+    }
+  };
   void eventVersion;
   const [subTab, setSubTab] = useState<'schedule' | 'activities'>('schedule');
   const [viewMode, setViewMode] = useState<'cards' | 'timeline'>('cards');
@@ -348,7 +379,7 @@ export const ScheduleActivityEditor: React.FC = () => {
       )}
 
       {/* Top Header & Sub-Tab Switcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 shadow-xs">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 p-5 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 shadow-xs">
         <div>
           <h2 className="text-base font-bold text-[#171717] dark:text-white tracking-tight">Manajemen Jadwal & Aktivitas Kemah</h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -356,7 +387,7 @@ export const ScheduleActivityEditor: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
           <div className="p-1 rounded-2xl bg-[#FAFAFA] dark:bg-black/40 border border-[#ECECEF] dark:border-white/5 flex">
             <button
               onClick={() => setSubTab('schedule')}
@@ -377,7 +408,7 @@ export const ScheduleActivityEditor: React.FC = () => {
           </div>
 
           {subTab === 'schedule' ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -395,7 +426,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                 className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-amber-500 hover:from-emerald-500 hover:to-amber-400 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
               >
                 <Plus className="w-4 h-4 stroke-[3]" />
-                <span>+ Add Schedule</span>
+                <span>Tambah Jadwal</span>
               </button>
             </div>
           ) : (
@@ -411,8 +442,18 @@ export const ScheduleActivityEditor: React.FC = () => {
       </div>
 
       {!eventDays.length && (
-        <div role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-200">
-          Tanggal kegiatan belum tersedia atau tidak valid. Atur tanggal mulai dan selesai di Pengaturan Umum Event untuk membuat agenda. Agenda lama tetap ditampilkan melalui Semua Hari dan dapat dilihat tanpa perubahan data.
+        <div role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-200 space-y-3">
+          <p>
+            {reloadingEvent
+              ? 'Sedang membaca tanggal event resmi dari GAS…'
+              : !eventLoadStatus.ready
+                ? `Data tanggal event belum berhasil dimuat dari GAS.${dateLoadError || eventLoadStatus.error ? ` ${dateLoadError || eventLoadStatus.error}` : ''}`
+                : 'Tanggal mulai atau selesai event tidak valid. Periksa Pengaturan Umum Event.'}
+            {' '}Agenda yang sudah tersimpan tetap bisa dilihat melalui Semua Hari.
+          </p>
+          <button type="button" onClick={retryEventLoad} disabled={reloadingEvent} className="inline-flex items-center rounded-xl bg-amber-700 px-4 py-2 font-semibold text-white disabled:opacity-50 hover:bg-amber-800">
+            {reloadingEvent ? 'Memuat…' : 'Muat Ulang Tanggal dari GAS'}
+          </button>
         </div>
       )}
 
