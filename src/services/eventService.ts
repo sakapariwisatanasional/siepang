@@ -232,7 +232,7 @@ class EventService {
     if (this.publicScheduleRequest && this.publicScheduleEventId === eventId) return this.publicScheduleRequest;
     this.publicScheduleEventId = eventId;
     const pending = (async () => {
-      const res = await apiTransport.send<ScheduleItem[]>('schedules.list', { event_id: eventId }, { skipAuth: true });
+      const res = await apiTransport.send<ScheduleItem[]>('schedules.public.list', { event_id: eventId }, { skipAuth: true });
       if (!res.ok || !Array.isArray(res.data)) {
         throw new Error(res.error?.message || 'Gagal mengambil jadwal publik dari GAS.');
       }
