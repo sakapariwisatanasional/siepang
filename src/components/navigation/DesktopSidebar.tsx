@@ -190,6 +190,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           roles: ['all'],
           featureKey: 'PUBLIC_DOCUMENTATION',
         },
+        {
+          id: 'gallery_admin' as NavTab,
+          label: 'Manajemen Galeri',
+          icon: ImageIcon,
+          roles: ['superadmin', 'workspace_admin', 'event_admin', 'publication_officer', 'documentation_officer'],
+          featureKey: 'PUBLIC_DOCUMENTATION',
+        },
       ],
     },
     {
