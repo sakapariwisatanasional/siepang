@@ -63,6 +63,8 @@ interface StoredAuthContext {
 
 class ApiTransport {
   private defaultTimeoutMs = 20000;
+  // Same-origin Vercel serverless proxy; GAS remains the authoritative backend.
+  private readonly proxyUrl = '/api/gas-proxy';
   private clientVersion = '1.9.1';
   // Hanya berbagi permintaan baca peserta yang masih berlangsung. Tidak menyimpan cache permanen.
   private participantListInFlight = new Map<string, Promise<ApiResponseEnvelope<any>>>();
@@ -144,11 +146,11 @@ class ApiTransport {
     const pending = this.sendOnce<T>(action, payload, options);
     this.participantListInFlight.set(key, pending);
     // Bersihkan hasil sukses maupun gagal; refresh berikutnya harus mengambil data terbaru.
-    void pending.finally(() => {
-      if (this.participantListInFlight.get(key) === pending) {
-        this.participantListInFlight.delete(key);
-      }
-    });
+    // Use then(success, failure) instead of a discarded finally() promise.
+    void pending.then(
+      () => { if (this.participantListInFlight.get(key) === pending) this.participantListInFlight.delete(key); },
+      () => { if (this.participantListInFlight.get(key) === pending) this.participantListInFlight.delete(key); },
+    );
     return pending;
   }
 
@@ -223,14 +225,18 @@ class ApiTransport {
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     try {
-      const response = await fetch(targetUrl, {
+      // POST must go to our own Vercel origin to avoid browser-to-GAS CORS errors.
+      // The server-side proxy owns the upstream GAS URL.
+      const response = await fetch(this.proxyUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
+          'Content-Type': 'application/json;charset=utf-8',
         },
         body: JSON.stringify(envelope),
         signal: controller.signal,
         redirect: 'follow',
+        credentials: 'same-origin',
+        cache: 'no-store',
       });
 
       // Keep AbortController active until the redirected GAS response body is read.
@@ -330,7 +336,7 @@ class ApiTransport {
           data: null,
           error: {
             code: 'TIMEOUT',
-            message: `Permintaan ke Google Apps Script melampaui batas waktu (${timeout / 1000} detik).`,
+            message: `Permintaan melalui proxy GAS melampaui batas waktu (${timeout / 1000} detik). Periksa status di GAS sebelum mencoba kembali.`,
             details: { action, stage: requestStage, elapsed_ms: Date.now() - requestStartedAt },
           },
         };
@@ -345,7 +351,7 @@ class ApiTransport {
         data: null,
         error: {
           code: 'NETWORK_ERROR',
-          message: err?.message || 'Gagal terhubung ke Google Apps Script.',
+          message: err?.message || 'Gagal menghubungi proxy GAS SiEpang.',
           details: String(err),
         },
       };
@@ -374,31 +380,9 @@ class ApiTransport {
         return { ok: true, data: postRes.data };
       }
 
-      const separator = url.includes('?') ? '&' : '?';
-      const getUrl = `${url}${separator}action=system.health&nonce=${encodeURIComponent(checkNonce)}`;
-
-      const res = await fetch(getUrl, {
-        method: 'GET',
-        redirect: 'follow',
-      });
-
-      if (!res.ok) {
-        return { ok: false, error: `HTTP ${res.status}: ${res.statusText}` };
-      }
-
-      const json = await res.json();
-
-      if (json.success || json.ok) {
-        return { ok: true, data: json.data };
-      }
-
-      return {
-        ok: false,
-        error:
-          json.error?.message ||
-          json.error ||
-          'Health check mengembalikan status gagal',
-      };
+      // Do not silently fall back to cross-origin GET: a passing GET health
+      // does not prove that our POST proxy is working.
+      return { ok: false, error: postRes.error?.message || 'Pemeriksaan kesehatan melalui proxy gagal.' };
     } catch (e: any) {
       return {
         ok: false,
