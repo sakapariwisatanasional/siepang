@@ -1764,46 +1764,42 @@ export const ParticipantList: React.FC = () => {
         </div>
       )}
 
-      {/* DETAIL PARTICIPANT MODAL */}
+      {/* DETAIL PESERTA — tampilan detail dari data yang sudah dimuat; aksi tetap memakai handler lama. */}
       {selectedDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-md bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-[#ECECEF] dark:border-white/10">
-              <div className="text-sm font-bold text-[#171717] dark:text-white">Profil Berkas Peserta</div>
-              <button onClick={() => setSelectedDetail(null)} className="p-1 text-[#6B7280] hover:text-[#171717] dark:text-slate-400 dark:hover:text-white cursor-pointer">✕</button>
+        <div className="fixed inset-0 z-[80] bg-black/70 backdrop-blur-sm flex items-center justify-center p-0 sm:p-5" role="dialog" aria-modal="true" aria-label={`Detail peserta ${selectedDetail.name}`}>
+          <div className="w-full sm:max-w-4xl h-full sm:h-auto sm:max-h-[92vh] overflow-y-auto bg-white dark:bg-[#141418] sm:rounded-[24px] border border-[#ECECEF] dark:border-white/10 shadow-2xl">
+            <div className="sticky top-0 z-10 bg-white/95 dark:bg-[#141418]/95 backdrop-blur border-b border-[#ECECEF] dark:border-white/10 px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
+              <div className="min-w-0"><p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Manajemen Peserta / Direktori</p><h2 className="text-lg sm:text-xl font-bold text-[#171717] dark:text-white">Detail Peserta</h2></div>
+              <button type="button" onClick={() => setSelectedDetail(null)} aria-label="Tutup detail peserta" className="shrink-0 p-2 rounded-xl border border-[#ECECEF] dark:border-white/10 text-[#171717] dark:text-white hover:bg-gray-100 dark:hover:bg-white/10"><X className="w-5 h-5"/></button>
             </div>
-
-            <div className="flex items-center gap-4">
-              <img src={selectedDetail.photoUrl || profilePhotoService.getPlaceholderUrl(selectedDetail.name)} onError={e => { const fallback = profilePhotoService.getPlaceholderUrl(selectedDetail.name); if (e.currentTarget.src !== fallback) e.currentTarget.src = fallback; }} alt={selectedDetail.name} className="w-16 h-16 rounded-2xl object-cover border-2 border-pink-200 dark:border-[#F47743]/30" />
-              <div>
-                <h3 className="text-base font-bold text-[#171717] dark:text-white">{selectedDetail.name}</h3>
-                <p className="text-xs text-[#6B7280] dark:text-slate-400">{selectedDetail.role} · {selectedDetail.contingentName}</p>
-                <p className="text-xs font-mono text-[#F47743] mt-0.5">{selectedDetail.code}</p>
+            <div className="p-4 sm:p-6 space-y-5">
+              <section className="flex items-start gap-4 rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 p-4">
+                <img src={selectedDetail.photoUrl || profilePhotoService.getPlaceholderUrl(selectedDetail.name)} onError={e => { const fallback = profilePhotoService.getPlaceholderUrl(selectedDetail.name); if (e.currentTarget.src !== fallback) e.currentTarget.src = fallback; }} alt={selectedDetail.name} className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border border-[#ECECEF] dark:border-white/10"/>
+                <div className="min-w-0 flex-1"><h3 className="font-bold text-lg text-[#171717] dark:text-white break-words">{selectedDetail.name}</h3><p className="text-sm text-[#6B7280] dark:text-slate-300">{selectedDetail.role} · {selectedDetail.contingentName || 'Kontingen belum ditentukan'}</p><p className="mt-1 text-xs font-mono break-all text-[#6B7280] dark:text-slate-400">Kode: {selectedDetail.code || 'Belum tersedia'}</p><div className="mt-2">{getStatusBadge(selectedDetail.status)}</div></div>
+              </section>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="rounded-xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 p-3"><p className="text-xs text-[#6B7280] dark:text-slate-400">Verifikasi</p><p className="mt-1 font-bold text-[#171717] dark:text-white capitalize">{selectedDetail.status || '—'}</p></div>
+                <div className="rounded-xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 p-3"><p className="text-xs text-[#6B7280] dark:text-slate-400">Check-in Buper</p><p className="mt-1 font-bold text-[#171717] dark:text-white">{selectedDetail.checkedIn ? 'Sudah hadir' : 'Belum check-in'}</p></div>
+                <div className="rounded-xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 p-3"><p className="text-xs text-[#6B7280] dark:text-slate-400">Presensi kegiatan</p><p className="mt-1 font-bold text-[#171717] dark:text-white">{selectedDetail.attendanceCount ?? 0} kegiatan</p></div>
+                <div className="rounded-xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 p-3"><p className="text-xs text-[#6B7280] dark:text-slate-400">Poin XP</p><p className="mt-1 font-bold text-emerald-700 dark:text-emerald-400">{selectedDetail.xp ?? 0} XP</p></div>
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <section className="rounded-2xl border border-[#ECECEF] dark:border-white/10 p-4 space-y-3"><h4 className="font-bold text-[#171717] dark:text-white flex items-center gap-2"><Users className="w-4 h-4"/> Identitas & Keanggotaan</h4>
+                  {([['Nomor NTA',selectedDetail.membershipNumber],['Jenis kelamin',selectedDetail.gender === 'M' || selectedDetail.gender === 'L' ? 'Putra' : 'Putri'],['Gugus depan / Pangkalan',selectedDetail.schoolPangkalan],['Kontingen',selectedDetail.contingentName],['Email',selectedDetail.email],['Telepon',selectedDetail.phone]] as Array<[string, string | undefined]>).map(([label,value]) => <div key={label} className="flex flex-col sm:flex-row sm:justify-between gap-1 border-b border-[#ECECEF] dark:border-white/5 pb-2 text-sm"><span className="text-[#6B7280] dark:text-slate-400">{label}</span><span className="font-medium text-[#171717] dark:text-white break-all sm:text-right">{value || 'Belum diisi'}</span></div>)}
+                </section>
+                <section className="rounded-2xl border border-[#ECECEF] dark:border-white/10 p-4 space-y-3"><h4 className="font-bold text-[#171717] dark:text-white flex items-center gap-2"><School className="w-4 h-4"/> Perkemahan & Kontak</h4>
+                  {([['Subcamp',selectedDetail.subCamp],['Nomor tenda',selectedDetail.tentNumber],['Kontak darurat',selectedDetail.emergencyContact],['Golongan darah',selectedDetail.bloodType]] as Array<[string,string | undefined]>).map(([label,value]) => <div key={label} className="flex flex-col sm:flex-row sm:justify-between gap-1 border-b border-[#ECECEF] dark:border-white/5 pb-2 text-sm"><span className="text-[#6B7280] dark:text-slate-400">{label}</span><span className="font-medium text-[#171717] dark:text-white break-all sm:text-right">{value || 'Belum diisi'}</span></div>)}
+                  <div className="rounded-xl bg-amber-50 dark:bg-amber-950/20 p-3"><p className="text-xs font-semibold text-amber-800 dark:text-amber-300">Catatan medis — akses petugas berwenang saja</p><p className="text-sm mt-1 text-amber-900 dark:text-amber-200">{selectedDetail.medicalNotes || 'Tidak ada catatan yang tercatat'}</p></div>
+                </section>
+              </div>
+              {selectedDetail.status === 'revision' && selectedDetail.revisionReason && <div className="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">Alasan revisi: {selectedDetail.revisionReason}</div>}
+              <section className="border-t border-[#ECECEF] dark:border-white/10 pt-4"><h4 className="font-bold text-[#171717] dark:text-white mb-3">Tindakan Peserta</h4><div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button type="button" onClick={() => { setSelectedQrParticipant(selectedDetail); setSelectedDetail(null); }} className="min-h-[44px] rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-2"><QrCode className="w-4 h-4"/> Lihat QR Pass</button>
+                <button type="button" onClick={() => { setStatusHistoryTarget(selectedDetail); setSelectedDetail(null); }} className="min-h-[44px] rounded-xl border border-[#ECECEF] dark:border-white/10 text-[#171717] dark:text-white font-semibold text-sm flex items-center justify-center gap-2 hover:bg-gray-50 dark:hover:bg-white/5"><History className="w-4 h-4"/> Riwayat Status</button>
+                <button type="button" onClick={() => { const participant = selectedDetail; setSelectedDetail(null); void openDocumentVerification(participant); }} className="min-h-[44px] rounded-xl border border-[#ECECEF] dark:border-white/10 text-[#171717] dark:text-white font-semibold text-sm flex items-center justify-center gap-2 hover:bg-gray-50 dark:hover:bg-white/5"><FileText className="w-4 h-4"/> Verifikasi Berkas</button>
+              </div></section>
+              <p className="text-xs text-[#6B7280] dark:text-slate-400">Informasi ini berasal dari daftar peserta yang dimuat aplikasi. Untuk memastikan perubahan terbaru, muat ulang direktori peserta dari GAS.</p>
             </div>
-
-            <div className="space-y-2 text-xs bg-[#FAFAFA] dark:bg-white/5 p-3.5 rounded-2xl border border-[#ECECEF] dark:border-white/5">
-              <div className="flex justify-between py-1 border-b border-[#ECECEF] dark:border-white/5"><span className="text-[#6B7280] dark:text-slate-400">Nomor NTA:</span><span className="font-mono text-[#171717] dark:text-white font-medium">{selectedDetail.membershipNumber || '-'}</span></div>
-              <div className="flex justify-between py-1 border-b border-[#ECECEF] dark:border-white/5"><span className="text-[#6B7280] dark:text-slate-400">Pangkalan:</span><span className="font-medium text-[#171717] dark:text-white">{selectedDetail.schoolPangkalan || '-'}</span></div>
-              <div className="flex justify-between py-1 border-b border-[#ECECEF] dark:border-white/5"><span className="text-[#6B7280] dark:text-slate-400">Gol. Darah:</span><span className="font-semibold text-[#171717] dark:text-white">{selectedDetail.bloodType || '-'}</span></div>
-              <div className="flex justify-between py-1 border-b border-[#ECECEF] dark:border-white/5"><span className="text-[#6B7280] dark:text-slate-400">Kontak Darurat:</span><span className="font-medium text-[#171717] dark:text-white">{selectedDetail.emergencyContact || '-'}</span></div>
-              <div className="flex justify-between py-1 border-b border-[#ECECEF] dark:border-white/5"><span className="text-[#6B7280] dark:text-slate-400">Tenda & Sub-camp:</span><span className="font-medium text-[#171717] dark:text-white">{selectedDetail.tentNumber} ({selectedDetail.subCamp})</span></div>
-              <div className="flex justify-between py-1"><span className="text-[#6B7280] dark:text-slate-400">Catatan Medis:</span><span className="font-medium text-amber-700 dark:text-amber-300">{selectedDetail.medicalNotes || 'Sehat'}</span></div>
-            </div>
-
-            <button
-              onClick={() => {
-                setSelectedQrParticipant(selectedDetail);
-                setSelectedDetail(null);
-              }}
-              className="w-full py-2.5 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
-              style={{
-                background: 'linear-gradient(135deg, #833AB4 0%, #C13584 30%, #E1306C 52%, #F77737 78%, #FCAF45 100%)',
-              }}
-            >
-              <QrCode className="w-4 h-4" />
-              <span>Tampilkan QR Tiket Peserta</span>
-            </button>
           </div>
         </div>
       )}
