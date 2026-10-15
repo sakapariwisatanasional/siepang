@@ -1,8 +1,7 @@
 /**
- * @license
- * SiEpang - Desktop Compact Sidebar
- * Categorized Navigation (UTAMA, KEGIATAN, LOMBA, OPERASIONAL, PUBLIKASI, DOKUMEN, SISTEM)
- * Collapsible to icon-only with tooltips + strict Feature Control filtering.
+ * SiEpang — Desktop Sidebar with Demo Center
+ * Route demo_center is enabled only for superadmin/workspace_admin/event_admin.
+ * Builds upon the latest Galeri Admin sidebar; no changes to data services or GAS.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -28,6 +27,7 @@ import {
   Image as ImageIcon,
   Database,
   Sparkles,
+  MonitorPlay,
   ArrowUpCircle,
   Tent,
   FileText,
@@ -221,6 +221,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           label: 'Profil Saya / Edit Biodata',
           icon: UserRound,
           roles: ['all'],
+        },
+        {
+          id: 'demo_center' as NavTab,
+          label: 'Pusat Demonstrasi',
+          icon: MonitorPlay,
+          roles: ['superadmin', 'workspace_admin', 'event_admin'],
         },
         {
           id: 'database_storage',
