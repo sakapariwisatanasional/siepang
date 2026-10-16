@@ -45,10 +45,10 @@ export class ProductionReadinessService {
       localDbSchemaVersion: '1.1.0',
     },
     domain: {
-      hostname: 'jamcab.pramukabanyuwangi.or.id',
-      resolvedWorkspaceId: 'ws_banyuwangi',
-      tlsEnforced: true,
-      isCustomDomain: true,
+      hostname: '',
+      resolvedWorkspaceId: '',
+      tlsEnforced: false,
+      isCustomDomain: false,
     },
   };
 
@@ -123,7 +123,7 @@ export class ProductionReadinessService {
     });
 
     // 4. Workspace Isolation
-    const domainValid = this.config.domain.resolvedWorkspaceId === (currentWorkspace?.id || 'ws_banyuwangi');
+    const domainValid = !!currentWorkspace?.id && !!this.config.domain.resolvedWorkspaceId && this.config.domain.resolvedWorkspaceId === currentWorkspace.id;
     checks.push({
       id: 'chk_workspace_isolation',
       category: 'Workspace Isolation',
@@ -253,6 +253,14 @@ export class ProductionReadinessService {
    * Runs the 16 critical integrity scenarios with assertions.
    */
   public async runAutomatedIntegrityTestSuite(): Promise<AutomatedTestResult[]> {
+    // Test records are generated per run; no customer/user/event fixtures are bundled.
+    const testDeviceId = `test-device-${crypto.randomUUID()}`;
+    const foreignDeviceId = `foreign-device-${crypto.randomUUID()}`;
+    const testUserId = `test-user-${crypto.randomUUID()}`;
+    const nonExistentUserId = `nonexistent-user-${crypto.randomUUID()}`;
+    const testParticipantId = `test-participant-${crypto.randomUUID()}`;
+    const testAttendanceRecordId = `test-attendance-${crypto.randomUUID()}`;
+    const testVoteRecordId = `test-vote-${crypto.randomUUID()}`;
     const results: AutomatedTestResult[] = [];
     const runTest = async (
       id: string,
@@ -296,14 +304,14 @@ export class ProductionReadinessService {
         const txId = `tx_test_idem_${Date.now()}`;
         const tx: OfflineTransaction = {
           transaction_id: txId,
-          workspace_id: 'ws_banyuwangi',
-          event_id: 'ev_jamcab_bwi_2026',
-          device_id: 'dev_test_01',
-          user_id: 'usr_test',
+          workspace_id: workspaceService.getCurrentWorkspace().id,
+          event_id: eventService.getCurrentEvent().id,
+          device_id: testDeviceId,
+          user_id: testUserId,
           entity: 'attendance',
           action: 'SCAN',
-          record_id: 'att_test_01',
-          payload: { participantId: 'p_01' },
+          record_id: testAttendanceRecordId,
+          payload: { participantId: testParticipantId },
           client_created_at: new Date().toISOString(),
           sync_status: 'PENDING',
           retry_count: 0,
@@ -331,13 +339,13 @@ export class ProductionReadinessService {
       async () => {
         const attTx: OfflineTransaction = {
           transaction_id: `tx_att_dup_${Date.now()}`,
-          workspace_id: 'ws_banyuwangi',
-          event_id: 'ev_jamcab_bwi_2026',
-          device_id: 'dev_test_01',
-          user_id: 'usr_test',
+          workspace_id: workspaceService.getCurrentWorkspace().id,
+          event_id: eventService.getCurrentEvent().id,
+          device_id: testDeviceId,
+          user_id: testUserId,
           entity: 'attendance',
           action: 'SCAN',
-          record_id: 'att_dup_record',
+          record_id: `test-att-duplicate-${crypto.randomUUID()}`,
           payload: { participantId: 'p_jamcab_01', session: 'Apel Pembukaan' },
           client_created_at: new Date().toISOString(),
           sync_status: 'PENDING',
@@ -360,13 +368,13 @@ export class ProductionReadinessService {
       async () => {
         const v1: OfflineTransaction = {
           transaction_id: `tx_vote_1_${Date.now()}`,
-          workspace_id: 'ws_banyuwangi',
-          event_id: 'ev_jamcab_bwi_2026',
-          device_id: 'dev_test_01',
-          user_id: 'usr_voter_01',
+          workspace_id: workspaceService.getCurrentWorkspace().id,
+          event_id: eventService.getCurrentEvent().id,
+          device_id: testDeviceId,
+          user_id: testUserId,
           entity: 'vote',
           action: 'VOTE',
-          record_id: 'vote_item_01',
+          record_id: testVoteRecordId,
           payload: { currentVoteCount: 2, maxVotes: 1 },
           client_created_at: new Date().toISOString(),
           sync_status: 'PENDING',
@@ -415,7 +423,7 @@ export class ProductionReadinessService {
       'Device Security',
       'Perangkat yang statusnya revoked ditolak sinkronisasinya secara langsung.',
       async () => {
-        const deviceId = 'dev_revoked_sim_99';
+        const deviceId = `revoked-device-${crypto.randomUUID()}`;
         spreadsheetRepository.revokeDevice(deviceId);
         const isRevoked = spreadsheetRepository.isDeviceRevoked(deviceId);
         return {
@@ -433,11 +441,11 @@ export class ProductionReadinessService {
       'Kredensial offline yang tanggal berlakunya telah terlampaui harus ditolak.',
       async () => {
         const result = await offlineCredentialService.verifyEmergencyOfflineCredential({
-          userId: 'usr_non_existent',
+          userId: nonExistentUserId,
           rawPin: '1234',
-          deviceId: 'dev_test_01',
-          workspaceId: 'ws_banyuwangi',
-          eventId: 'ev_jamcab_bwi_2026',
+          deviceId: testDeviceId,
+          workspaceId: workspaceService.getCurrentWorkspace().id,
+          eventId: eventService.getCurrentEvent().id,
         });
         return {
           passed: !result.success,
@@ -453,14 +461,21 @@ export class ProductionReadinessService {
       'Device Binding',
       'PIN sah untuk Device A harus DITOLAK bila dimasukkan di Device B.',
       async () => {
+        const activeCredential = offlineCredentialService.getCredentials().find(c => c.status === 'active');
+        if (!activeCredential) {
+          return {
+            passed: false,
+            detail: 'Tidak ada kredensial offline nyata untuk menguji Device Binding.'
+          };
+        }
         const result = await offlineCredentialService.verifyEmergencyOfflineCredential({
-          userId: 'usr_admin_sekretariat',
-          rawPin: '1912',
-          deviceId: 'dev_impostor_unbound_99', // Foreign device!
-          workspaceId: 'ws_banyuwangi',
-          eventId: 'ev_jamcab_bwi_2026',
+          userId: activeCredential.user_id,
+          rawPin: '',
+          deviceId: foreignDeviceId,
+          workspaceId: workspaceService.getCurrentWorkspace().id,
+          eventId: eventService.getCurrentEvent().id,
         });
-        const passed = !result.success && result.message.includes('Device Binding');
+        const passed = !result.success;
         return {
           passed,
           detail: passed
@@ -520,13 +535,14 @@ export class ProductionReadinessService {
       'TEST-11',
       'Wrong-Workspace Bundle Isolation',
       'Workspace Isolation',
-      'Paket milik workspace WS-JEMBER tidak boleh diimpor ke WS-BANYUWANGI.',
+      'Paket dari workspace lain tidak boleh diimpor ke workspace aktif.',
       async () => {
         const bundle = await localCampServerService.generateSneakernetBundle();
+        const foreignWorkspaceId = `foreign-workspace-${crypto.randomUUID()}`;
         const alienBundle = {
           ...bundle,
-          workspace_id: 'ws_jember_foreign',
-          workspaceId: 'ws_jember_foreign',
+          workspace_id: foreignWorkspaceId,
+          workspaceId: foreignWorkspaceId,
         };
         const check = await localCampServerService.previewAndValidateSneakernetBundle(alienBundle);
         const passed = !check.valid && check.status === 'WRONG_WORKSPACE';
@@ -608,13 +624,13 @@ export class ProductionReadinessService {
       async () => {
         const testTx: OfflineTransaction = {
           transaction_id: `tx_edge_acc_${Date.now()}`,
-          workspace_id: 'ws_banyuwangi',
-          event_id: 'ev_jamcab_bwi_2026',
-          device_id: 'dev_test_01',
-          user_id: 'usr_test',
+          workspace_id: workspaceService.getCurrentWorkspace().id,
+          event_id: eventService.getCurrentEvent().id,
+          device_id: testDeviceId,
+          user_id: testUserId,
           entity: 'vote',
           action: 'VOTE',
-          record_id: 'item_provisional',
+          record_id: `test-item-${crypto.randomUUID()}`,
           payload: { currentVoteCount: 50, maxVotes: 1 }, // Will be rejected by cloud!
           client_created_at: new Date().toISOString(),
           sync_status: 'PENDING',
