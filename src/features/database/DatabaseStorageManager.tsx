@@ -525,7 +525,7 @@ export const DatabaseStorageManager: React.FC = () => {
                       setExistingUrlOrId(e.target.value);
                       setClassification(null);
                     }}
-                    placeholder="https://docs.google.com/spreadsheets/d/... atau 1Spr_..."
+                    placeholder="https://docs.google.com/spreadsheets/d/... atau ID Spreadsheet"
                     className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                   <button
@@ -669,7 +669,7 @@ export const DatabaseStorageManager: React.FC = () => {
                 type="text"
                 value={replaceUrlOrId}
                 onChange={e => setReplaceUrlOrId(e.target.value)}
-                placeholder="https://docs.google.com/spreadsheets/d/... atau 1Spr_..."
+                placeholder="https://docs.google.com/spreadsheets/d/... atau ID Spreadsheet"
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
             </div>
