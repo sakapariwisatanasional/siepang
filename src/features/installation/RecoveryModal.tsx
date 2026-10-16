@@ -2,7 +2,7 @@
  * @license
  * SiEpang - Installation Disaster Recovery Center Modal (Milestone v1.7 Part B)
  * Four recovery methods for instant customer restoration on any browser/device:
- * 1. Installation Code (e.g. SIEPANG-KWCB-BWI-7F92K)
+ * 1. Installation Code (e.g. kode instalasi dari GAS)
  * 2. QR Recovery Code (Scanner / Image upload / Raw payload)
  * 3. Official Recovery File (.siepang-install / .siepang-backup JSON)
  * 4. Web App URL (Manual Advanced Fallback)
@@ -27,11 +27,7 @@ import {
   Copy,
   Sparkles,
 } from 'lucide-react';
-import {
-  customerInstallationService,
-  CUSTOMER_A_RECORD,
-  CUSTOMER_B_RECORD,
-} from '../../services/customerInstallationService';
+import { customerInstallationService } from '../../services/customerInstallationService';
 import { SiepangRecoveryPayload } from '../../types';
 
 interface RecoveryModalProps {
@@ -302,37 +298,10 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({
                 type="text"
                 value={installCode}
                 onChange={(e) => setInstallCode(e.target.value.toUpperCase())}
-                placeholder="Contoh: SIEPANG-KWCB-BWI-7F92K"
+                placeholder="Masukkan kode instalasi dari GAS"
                 className="w-full px-4 py-3 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm font-mono font-bold tracking-wider text-slate-900 dark:text-white uppercase focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
-
-            {/* Quick Test Presets (DEV/TEST ONLY) */}
-            {!import.meta.env.PROD && (
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200/60 dark:border-white/5 space-y-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Uji Cepat Akun Terverifikasi (Mode Pengembang):
-                </span>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setInstallCode(CUSTOMER_A_RECORD.installation_code)}
-                    className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-[#202025] border border-slate-200 dark:border-white/10 text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:border-sky-500 transition-colors flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Building2 className="w-3 h-3 text-sky-500" />
-                    <span>Customer A: <strong>{CUSTOMER_A_RECORD.installation_code}</strong></span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setInstallCode(CUSTOMER_B_RECORD.installation_code)}
-                    className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-[#202025] border border-slate-200 dark:border-white/10 text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:border-sky-500 transition-colors flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Building2 className="w-3 h-3 text-emerald-500" />
-                    <span>Customer B: <strong>{CUSTOMER_B_RECORD.installation_code}</strong></span>
-                  </button>
-                </div>
-              </div>
-            )}
 
             <button
               type="button"
@@ -390,25 +359,6 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({
             </div>
 
             {/* QR Quick Demo Buttons (DEV/TEST ONLY) */}
-            {!import.meta.env.PROD && (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setQrRawInput(CUSTOMER_A_RECORD.installation_code)}
-                  className="text-[11px] font-semibold text-sky-600 hover:underline cursor-pointer"
-                >
-                  Isi QR Simulasi A
-                </button>
-                <span className="text-slate-300">·</span>
-                <button
-                  type="button"
-                  onClick={() => setQrRawInput(CUSTOMER_B_RECORD.installation_code)}
-                  className="text-[11px] font-semibold text-emerald-600 hover:underline cursor-pointer"
-                >
-                  Isi QR Simulasi B
-                </button>
-              </div>
-            )}
 
             <button
               type="button"
@@ -496,31 +446,12 @@ export const RecoveryModal: React.FC<RecoveryModalProps> = ({
                 type="url"
                 value={webAppUrl}
                 onChange={(e) => setWebAppUrl(e.target.value)}
-                placeholder="https://script.google.com/macros/s/AKfycb.../exec"
+                placeholder="Masukkan URL Web App GAS customer"
                 className="w-full px-4 py-3 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
 
             {/* URL Quick Demo Buttons (DEV/TEST ONLY) */}
-            {!import.meta.env.PROD && (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setWebAppUrl(CUSTOMER_A_RECORD.web_app_url)}
-                  className="text-[11px] font-semibold text-sky-600 hover:underline cursor-pointer"
-                >
-                  Gunakan URL Simulasi A
-                </button>
-                <span className="text-slate-300">·</span>
-                <button
-                  type="button"
-                  onClick={() => setWebAppUrl(CUSTOMER_B_RECORD.web_app_url)}
-                  className="text-[11px] font-semibold text-emerald-600 hover:underline cursor-pointer"
-                >
-                  Gunakan URL Simulasi B
-                </button>
-              </div>
-            )}
 
             <button
               type="button"
