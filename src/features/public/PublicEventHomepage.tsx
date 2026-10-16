@@ -200,6 +200,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
 
   // Data fetching from existing services
   const event = eventService.getCurrentEvent();
+  const publicEventLogoUrl = String(event.logoUrl || '').trim();
   const announcements: Announcement[] = useMemo(() => {
     return isConfigured ? eventService.getAnnouncements().slice(0, 4) : [];
   }, [isConfigured]);
@@ -1485,25 +1486,34 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
           )}
           {/* Modern grid launchpad shown only on the public home page. */}
           {activePublicPage === 'home' && (
-          <section aria-label="Akses cepat SiEpang" className="mb-7 space-y-5">
-            <div className="relative overflow-hidden rounded-[28px] bg-[#D71920] px-5 py-6 sm:px-7 sm:py-8 text-white shadow-lg">
-              <div aria-hidden="true" className="absolute -top-12 -right-12 h-44 w-44 rounded-full bg-[#F4D53F]/20 blur-2xl" />
-              <div aria-hidden="true" className="absolute -bottom-20 right-20 h-44 w-44 rounded-full bg-[#FFFFFF]/10 blur-2xl" />
-              <div className="relative max-w-xl space-y-3">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-bold text-[#FFF1A8]"><Sparkles className="h-3.5 w-3.5"/> PORTAL PERKEMAHAN</span>
-                <h1 className="text-2xl sm:text-3xl font-black leading-tight tracking-tight">{isConfigured ? event.name : 'Selamat Datang di SiEpang'}</h1>
-                <p className="text-sm text-slate-200 leading-relaxed">Jelajahi kegiatan, informasi resmi, dan layanan perkemahan dengan mudah.</p>
-                <div className="flex flex-wrap gap-2 pt-1">
-                  <button type="button" onClick={() => openPublicPage('section-schedule')} className="min-h-11 inline-flex items-center gap-2 rounded-full bg-[#F4D53F] px-5 py-2.5 font-bold text-sm text-[#272019] hover:bg-[#FFE66B] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"><Calendar className="h-4 w-4"/> Lihat Jadwal <ArrowRight className="h-4 w-4"/></button>
-                  {onNavigateToLogin && <button type="button" onClick={() => onNavigateToLogin()} className="min-h-11 inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-4 py-2.5 font-semibold text-sm text-white hover:bg-white/20"><LogIn className="h-4 w-4"/> Masuk</button>}
+          <section aria-label="Akses cepat SiEpang" className="mb-7 space-y-6">
+            <div className="relative overflow-hidden rounded-[30px] border border-red-100 bg-[linear-gradient(135deg,#D71920_0%,#C91D22_58%,#A91319_100%)] px-5 py-6 text-white shadow-[0_16px_40px_rgba(176,20,25,0.16)] sm:px-8 sm:py-8">
+              <div aria-hidden="true" className="absolute -right-16 -top-20 h-56 w-56 rounded-full bg-[#F4D53F]/18 blur-3xl" />
+              <div aria-hidden="true" className="absolute -bottom-24 left-1/3 h-48 w-48 rounded-full bg-white/8 blur-3xl" />
+              <img src={campSceneIllustration} alt="" aria-hidden="true" className="pointer-events-none absolute bottom-0 right-0 w-[58%] max-w-[560px] object-contain opacity-[0.24] sm:w-[48%]" />
+              <div className="relative z-10 max-w-3xl space-y-4">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/12 px-3 py-1.5 text-[11px] font-extrabold tracking-wide text-[#FFF3B0] backdrop-blur-sm"><Sparkles className="h-3.5 w-3.5"/> PORTAL PERKEMAHAN</span>
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[18px] border border-white/25 bg-white shadow-sm sm:h-16 sm:w-16">
+                    {publicEventLogoUrl ? <img src={publicEventLogoUrl} alt={`Logo ${event.name}`} className="h-full w-full object-contain p-1.5" referrerPolicy="no-referrer" /> : <Shield className="h-7 w-7 text-[#D71920]" />}
+                  </div>
+                  <div className="min-w-0">
+                    <h1 className="text-2xl font-black leading-tight tracking-tight sm:text-4xl">{isConfigured ? event.name : 'Selamat Datang di SiEpang'}</h1>
+                    <p className="mt-1 text-sm font-medium text-white/80">{isConfigured ? `${event.organizationalLevel || 'Kwartir'} · ${event.campGround || 'Bumi Perkemahan'}` : 'Sistem Informasi Perkemahan Pramuka'}</p>
+                  </div>
+                </div>
+                <p className="max-w-xl text-sm leading-relaxed text-white/85 sm:text-base">Jelajahi kegiatan, informasi resmi, dan layanan perkemahan dengan mudah.</p>
+                <div className="flex flex-wrap gap-2.5 pt-1">
+                  <button type="button" onClick={() => openPublicPage('section-schedule')} className="min-h-11 inline-flex items-center gap-2 rounded-full bg-[#F4D53F] px-5 py-2.5 text-sm font-extrabold text-[#272019] shadow-sm hover:bg-[#FFE66B]"><Calendar className="h-4 w-4"/> Lihat Jadwal <ArrowRight className="h-4 w-4"/></button>
+                  {onNavigateToLogin && <button type="button" onClick={() => onNavigateToLogin()} className="min-h-11 inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-bold text-white hover:bg-white/20"><LogIn className="h-4 w-4"/> Masuk</button>}
                 </div>
               </div>
             </div>
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">Jelajahi SiEpang</h2>
-              <span className="text-xs text-slate-500 dark:text-slate-400">Akses cepat</span>
+            <div className="flex items-center justify-between gap-3 px-1">
+              <div><h2 className="text-lg font-extrabold text-slate-900 dark:text-white">Jelajahi SiEpang</h2><p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Pilih menu untuk membuka halaman fitur.</p></div>
+              <span className="hidden text-xs font-semibold text-[#C51F1F] sm:block">Akses cepat</span>
             </div>
-            <div className="grid grid-cols-4 gap-x-2 gap-y-4 sm:grid-cols-4 lg:grid-cols-8">
+            <div className="grid grid-cols-4 gap-x-1 gap-y-4 sm:grid-cols-4 lg:grid-cols-8">
               {([
                 {label:'Jadwal',icon:Calendar,section:'section-schedule',color:'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200'},
                 {label:'Lomba',icon:Trophy,section:'section-official-competitions',color:'bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-200'},
@@ -1519,14 +1529,13 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                 return !section || portalConfig.section_visibility[section];
               }).map(item => {
                 const Icon = item.icon;
-                return <button key={item.label} type="button" onClick={() => item.label === 'Scan QR' && onOpenScanner ? onOpenScanner() : openPublicPage(item.section)} className="group flex min-h-[88px] flex-col items-center gap-2 rounded-2xl p-1.5 text-center hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#E9A929]" aria-label={`Buka ${item.label}`}>
+                return <button key={item.label} type="button" onClick={() => item.label === 'Scan QR' && onOpenScanner ? onOpenScanner() : openPublicPage(item.section)} className="group flex min-h-[86px] flex-col items-center gap-2 rounded-2xl p-1 text-center hover:bg-red-50/60 dark:hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D71920]" aria-label={`Buka ${item.label}`}>
                   <span className={`flex h-14 w-14 items-center justify-center rounded-[19px] shadow-sm transition-transform group-active:scale-95 ${item.color}`}><Icon className="h-6 w-6"/></span>
-                  <span className="text-[11px] sm:text-xs font-semibold leading-tight text-slate-800 dark:text-slate-100">{item.label}</span>
+                  <span className="text-[11px] font-semibold leading-tight text-slate-800 dark:text-slate-100 sm:text-xs">{item.label}</span>
                 </button>;
               })}
             </div>
           </section>
-
           )}
           {/* Mata lomba resmi ditampilkan sebagai halaman tersendiri. */}
           {activePublicPage === 'competitions' && (
@@ -1550,11 +1559,9 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
           )}
           {/* Only render the selected public page. Do not stack all sections below the homepage. */}
           <div className="space-y-10">
-            {activePublicPage === 'home'
-              ? renderSectionByKey('hero')
-              : activePublicPage !== 'competitions'
-                ? renderSectionByKey(activePublicPage as PortalSectionKey)
-                : null}
+            {activePublicPage !== 'home' && activePublicPage !== 'competitions'
+              ? renderSectionByKey(activePublicPage as PortalSectionKey)
+              : null}
           </div>
         </div>
 
