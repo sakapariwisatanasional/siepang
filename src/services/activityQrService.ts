@@ -55,138 +55,10 @@ class ActivityQrService {
   private listeners: Set<() => void> = new Set();
 
   constructor() {
-    this.seedDefaultConfigs();
+    // No bundled activity/QR records. Data is loaded from GAS or created explicitly by an operator.
   }
 
-  private seedDefaultConfigs(): void {
-    // 1. Pioneering Activity QR
-    const pionToken = 'SIEPANG:QR:v1:ACT_pioneering_8941f2';
-    const pionConfig: ActivityQrConfig = {
-      id: 'qr_act_pioneering',
-      activityId: 'act_01',
-      scheduleId: 'sch_pioneering',
-      title: 'Pioneering Menara Kaki Tiga',
-      category: 'Pioneering & Tali Temali',
-      location: 'Lapangan Utama Selogiri',
-      mode: 'PARTICIPATION',
-      enabled: true,
-      qrToken: pionToken,
-      pointRuleId: 'prule_pioneering',
-      rewardXp: 25,
-      scanOpens: '07:30',
-      scanCloses: '11:00',
-      isMultiCheckpoint: false,
-      checkpointOrder: 'unordered',
-      maxScansPerParticipant: 1,
-      totalScanCount: 48,
-      uniqueParticipantCount: 48,
-      createdAt: '2026-10-04 08:00',
-    };
-    this.configs.set('act_01', pionConfig);
 
-    // 2. Wide Game & Penjelajahan (Multi-checkpoint activity - Req 14, 15)
-    const wideToken = 'SIEPANG:QR:v1:ACT_widegame_5521ab';
-    const wideConfig: ActivityQrConfig = {
-      id: 'qr_act_widegame',
-      activityId: 'act_wide_game',
-      scheduleId: 'sch_widegame',
-      title: 'Wide Game & Penjelajahan Rimba',
-      category: 'Penjelajahan & Survival',
-      location: 'Rute Bukit Selogiri',
-      mode: 'CHECKPOINT',
-      enabled: true,
-      qrToken: wideToken,
-      pointRuleId: 'prule_widegame',
-      rewardXp: 40,
-      scanOpens: '08:00',
-      scanCloses: '14:00',
-      isMultiCheckpoint: true,
-      checkpointOrder: 'ordered',
-      checkpoints: [
-        {
-          checkpointId: 'cp_01',
-          name: 'Pos 1: Sandi & Morse',
-          orderIndex: 1,
-          location: 'Gerbang Hutan Pinus',
-          rewardXp: 10,
-          qrToken: 'SIEPANG:QR:v1:CP_wide_pos1_a831',
-          hint: 'Pecahkan sandi rumput di bawah pohon cemara',
-        },
-        {
-          checkpointId: 'cp_02',
-          name: 'Pos 2: Menaksir Tinggi & Lebar',
-          orderIndex: 2,
-          location: 'Tepi Sungai Kali Klatak',
-          rewardXp: 10,
-          qrToken: 'SIEPANG:QR:v1:CP_wide_pos2_b942',
-          hint: 'Gunakan tongkat pramuka dan metode segitiga sebangun',
-        },
-        {
-          checkpointId: 'cp_03',
-          name: 'Pos 3: P3K & Tandu Darurat',
-          orderIndex: 3,
-          location: 'Lembah Sumber Waras',
-          rewardXp: 10,
-          qrToken: 'SIEPANG:QR:v1:CP_wide_pos3_c153',
-          hint: 'Balut bidai korban patah tulang dan evakuasi',
-        },
-        {
-          checkpointId: 'cp_04',
-          name: 'Pos 4 (Finish): Peta Pita & Simpul Rimba',
-          orderIndex: 4,
-          location: 'Posko Induk Buper',
-          rewardXp: 10,
-          qrToken: 'SIEPANG:QR:v1:CP_wide_pos4_d264',
-          hint: 'Kumpulkan laporan peta kompas dan registrasi kepulangan regu',
-        },
-      ],
-      maxScansPerParticipant: 1,
-      totalScanCount: 32,
-      uniqueParticipantCount: 32,
-      createdAt: '2026-10-04 08:30',
-    };
-    this.configs.set('act_wide_game', wideConfig);
-
-    // Register checkpoints in QR resolver
-    wideConfig.checkpoints?.forEach(cp => {
-      qrResolverService.generateSecureToken(
-        'CHECKPOINT',
-        'ws_kwarcab_bwi',
-        'ev_jamcab_bwi_2026',
-        cp.checkpointId,
-        {
-          activityId: wideConfig.activityId,
-          checkpointName: cp.name,
-          orderIndex: cp.orderIndex,
-          rewardXp: cp.rewardXp,
-        }
-      );
-    });
-
-    // 3. Upacara Pembukaan (Attendance & Check-in mode - Req 2, 19)
-    const upacaraConfig: ActivityQrConfig = {
-      id: 'qr_act_upacara',
-      activityId: 'sch_apel_pagi',
-      scheduleId: 'sch_apel_pagi',
-      title: 'Upacara Pembukaan & Apel Pagi',
-      category: 'Upacara & Protokoler',
-      location: 'Lapangan Utama Selogiri',
-      mode: 'ATTENDANCE',
-      enabled: true,
-      qrToken: 'SIEPANG:QR:v1:ACT_upacara_7719cc',
-      pointRuleId: 'prule_ceremony',
-      rewardXp: 15,
-      scanOpens: '06:45',
-      scanCloses: '08:15',
-      isMultiCheckpoint: false,
-      checkpointOrder: 'unordered',
-      maxScansPerParticipant: 1,
-      totalScanCount: 112,
-      uniqueParticipantCount: 112,
-      createdAt: '2026-10-04 07:00',
-    };
-    this.configs.set('sch_apel_pagi', upacaraConfig);
-  }
 
   // ==================== CONFIGURATION MANAGEMENT ====================
 
@@ -224,8 +96,8 @@ class ActivityQrService {
       checkpointOrder?: 'ordered' | 'unordered';
       checkpoints?: ActivityCheckpointItem[];
     },
-    workspaceId: string = 'ws_kwarcab_bwi',
-    eventId: string = 'ev_jamcab_bwi_2026'
+    workspaceId: string,
+    eventId: string
   ): ActivityQrConfig {
     const existing = this.configs.get(activityId);
 
@@ -255,7 +127,7 @@ class ActivityQrService {
       mode: params.mode || existing?.mode || 'PARTICIPATION',
       enabled: params.enabled !== undefined ? params.enabled : true,
       qrToken: tokenString,
-      pointRuleId: params.pointRuleId || existing?.pointRuleId || 'prule_activity_generic',
+      pointRuleId: params.pointRuleId || existing?.pointRuleId || '',
       rewardXp: params.rewardXp !== undefined ? params.rewardXp : (existing?.rewardXp || 20),
       scanOpens: params.scanOpens || existing?.scanOpens || '07:00',
       scanCloses: params.scanCloses || existing?.scanCloses || '18:00',
