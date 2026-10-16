@@ -81,6 +81,83 @@ interface PublicEventHomepageProps {
   installationError?: string | null;
 }
 
+
+/**
+ * Mengubah URL logo Google Drive dari sheet `event` menjadi URL thumbnail
+ * yang dapat dirender langsung oleh browser. URL non-Drive tetap digunakan
+ * apa adanya agar konfigurasi GAS tetap fleksibel.
+ */
+const resolveEventLogoUrl = (value: unknown): string => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+
+  const driveMatch = raw.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?.*?id=)([a-zA-Z0-9_-]+)/i);
+  if (driveMatch?.[1]) {
+    return `https://drive.google.com/thumbnail?id=${driveMatch[1]}&sz=w1200`;
+  }
+
+  // Dukungan untuk URL Google Drive berbentuk `.../d/FILE_ID/view?...`
+  const pathMatch = raw.match(/drive\.google\.com\/(?:file\/d\/|d\/)([a-zA-Z0-9_-]+)/i);
+  if (pathMatch?.[1]) {
+    return `https://drive.google.com/thumbnail?id=${pathMatch[1]}&sz=w1200`;
+  }
+
+  return raw;
+};
+
+/**
+ * Memformat tanggal YYYY-MM-DD tanpa `new Date('YYYY-MM-DD')` agar tidak
+ * terkena pergeseran zona waktu browser. Format publik yang diinginkan:
+ * "29 Oktober - 31 Oktober 2026".
+ */
+const formatEventDate = (startValue: unknown, endValue?: unknown): string => {
+  const months = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  ];
+
+  const parseDateParts = (value: unknown): { day: number; month: number; year: number } | null => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return null;
+
+    const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]);
+      const day = Number(isoMatch[3]);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return { day, month, year };
+      }
+    }
+
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return {
+      day: parsed.getDate(),
+      month: parsed.getMonth() + 1,
+      year: parsed.getFullYear(),
+    };
+  };
+
+  const start = parseDateParts(startValue);
+  const end = parseDateParts(endValue);
+
+  if (!start) return 'Tanggal kegiatan diumumkan';
+
+  const startText = `${start.day} ${months[start.month - 1]} ${start.year}`;
+  if (!end) return startText;
+
+  if (start.year === end.year && start.month === end.month) {
+    return `${start.day} - ${end.day} ${months[start.month - 1]} ${start.year}`;
+  }
+
+  if (start.year === end.year) {
+    return `${start.day} ${months[start.month - 1]} - ${end.day} ${months[end.month - 1]} ${start.year}`;
+  }
+
+  return `${start.day} ${months[start.month - 1]} ${start.year} - ${end.day} ${months[end.month - 1]} ${end.year}`;
+};
+
 export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
   onNavigateToGallery,
   onNavigateToVisitorRegister,
@@ -392,18 +469,19 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
     ];
 
     const firstAgenda = scheduleList[0];
-    const eventLogo = event.logoUrl || event.logo_url || '';
+    // Identitas event berasal dari sheet `event` melalui eventService/GAS.
+    // Logo Drive dikonversi ke thumbnail agar logo asli dapat tampil langsung.
+    const eventLogo = resolveEventLogoUrl(event.logoUrl || event.logo_url || '');
     const eventLocation =
       event.location ||
       event.venue ||
       event.campGround ||
       event.camp_ground ||
       'Bumi Perkemahan';
-    const eventDate =
-      event.startDate ||
-      event.start_date ||
-      'Tanggal kegiatan diumumkan';
-    const eventDateEnd = event.endDate || event.end_date || '';
+    const eventDate = formatEventDate(
+      event.startDate || event.start_date,
+      event.endDate || event.end_date,
+    );
 
     return (
       <section id="section-hero" aria-label="Beranda publik SiEpang" className="space-y-5">
@@ -480,7 +558,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                   </span>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-black/15 px-3 py-1.5 backdrop-blur-sm">
                     <Calendar className="h-3.5 w-3.5 text-[#FFD86B]" />
-                    <span>{eventDate}{eventDateEnd ? ` – ${eventDateEnd}` : ''}</span>
+                    <span>{eventDate}</span>
                   </span>
                 </div>
 
@@ -563,7 +641,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
             { label: 'Lokasi', value: eventLocation, icon: MapPin, tone: 'text-red-600 bg-red-50' },
-            { label: 'Tanggal', value: `${eventDate}${eventDateEnd ? ` – ${eventDateEnd}` : ''}`, icon: Calendar, tone: 'text-amber-600 bg-amber-50' },
+            { label: 'Tanggal', value: eventDate, icon: Calendar, tone: 'text-amber-600 bg-amber-50' },
             { label: 'Peserta', value: `${event.registeredCount || 0} terdaftar`, icon: Users, tone: 'text-purple-600 bg-purple-50' },
             { label: 'Penyelenggara', value: event.organizer || event.organizationalLevel || 'Kwartir', icon: ShieldCheck, tone: 'text-emerald-600 bg-emerald-50' },
           ].map(item => {
