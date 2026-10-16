@@ -84,6 +84,7 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
 
   useEffect(() => {
     const unsub = bannerSponsorService.subscribe(reloadData);
+    bannerSponsorService.refreshSettingsFromGas().catch(err => showToast(`Gagal memuat pengaturan GAS: ${err.message}`));
     return () => unsub();
   }, []);
 
@@ -265,17 +266,19 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
   };
 
   // Carousel config handlers
-  const handleUpdateCarouselSpeed = (seconds: number) => {
-    const updated = bannerSponsorService.updateCarouselConfig({
-      carousel_duration_seconds: seconds,
-    });
-    setCarouselConfig(updated);
+  const handleUpdateCarouselSpeed = async (seconds: number) => {
+    try {
+      const updated = await bannerSponsorService.updateCarouselConfig({ carousel_duration_seconds: seconds });
+      setCarouselConfig(updated);
+    } catch (err: any) { showToast(`Gagal menyimpan ke GAS: ${err.message}`); }
   };
 
-  const handleToggleCarousel = (enabled: boolean) => {
-    const updated = bannerSponsorService.updateCarouselConfig({ enabled });
-    setCarouselConfig(updated);
-    showToast(`Carousel sponsor ${enabled ? 'diaktifkan' : 'dinonaktifkan'}.`);
+  const handleToggleCarousel = async (enabled: boolean) => {
+    try {
+      const updated = await bannerSponsorService.updateCarouselConfig({ enabled });
+      setCarouselConfig(updated);
+      showToast(`Carousel sponsor ${enabled ? 'diaktifkan' : 'dinonaktifkan'}.`);
+    } catch (err: any) { showToast(`Gagal menyimpan ke GAS: ${err.message}`); }
   };
 
   const handleCreateBanner = (e: React.FormEvent) => {
@@ -543,11 +546,11 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
                   <input
                     type="checkbox"
                     checked={carouselConfig.pauseOnHover}
-                    onChange={e => {
-                      const updated = bannerSponsorService.updateCarouselConfig({
+                    onChange={async e => {
+                      try { const updated = await bannerSponsorService.updateCarouselConfig({
                         pauseOnHover: e.target.checked,
                       });
-                      setCarouselConfig(updated);
+                      setCarouselConfig(updated); } catch (err: any) { showToast(`Gagal menyimpan ke GAS: ${err.message}`); }
                     }}
                     className="w-4 h-4 accent-purple-600 rounded"
                   />
@@ -558,11 +561,11 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
                   <input
                     type="checkbox"
                     checked={carouselConfig.pauseOnTouch}
-                    onChange={e => {
-                      const updated = bannerSponsorService.updateCarouselConfig({
+                    onChange={async e => {
+                      try { const updated = await bannerSponsorService.updateCarouselConfig({
                         pauseOnTouch: e.target.checked,
                       });
-                      setCarouselConfig(updated);
+                      setCarouselConfig(updated); } catch (err: any) { showToast(`Gagal menyimpan ke GAS: ${err.message}`); }
                     }}
                     className="w-4 h-4 accent-purple-600 rounded"
                   />
@@ -956,10 +959,11 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
               <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">Mode Rotator</label>
               <select
                 value={rotatorConfig.mode}
-                onChange={e => {
-                  bannerSponsorService.updateRotatorConfig({ mode: e.target.value as any });
-                  setRotatorConfig(bannerSponsorService.getRotatorConfig());
-                  showToast('Mode rotator diperbarui.');
+                onChange={async e => {
+                  try {
+                    setRotatorConfig(await bannerSponsorService.updateRotatorConfig({ mode: e.target.value as any }));
+                    showToast('Mode rotator tersimpan di GAS.');
+                  } catch (err: any) { showToast(`Gagal menyimpan ke GAS: ${err.message}`); }
                 }}
                 className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/15 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:border-purple-500"
               >
@@ -979,9 +983,9 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
                 max="15"
                 step="1"
                 value={rotatorConfig.rotationIntervalSeconds}
-                onChange={e => {
-                  bannerSponsorService.updateRotatorConfig({ rotationIntervalSeconds: Number(e.target.value) });
-                  setRotatorConfig(bannerSponsorService.getRotatorConfig());
+                onChange={async e => {
+                  try { setRotatorConfig(await bannerSponsorService.updateRotatorConfig({ rotationIntervalSeconds: Number(e.target.value) })); }
+                  catch (err: any) { showToast(`Gagal menyimpan ke GAS: ${err.message}`); }
                 }}
                 className="w-full accent-purple-600"
               />
@@ -992,9 +996,9 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
               <input
                 type="checkbox"
                 checked={rotatorConfig.showNavigationDots}
-                onChange={e => {
-                  bannerSponsorService.updateRotatorConfig({ showNavigationDots: e.target.checked });
-                  setRotatorConfig(bannerSponsorService.getRotatorConfig());
+                onChange={async e => {
+                  try { setRotatorConfig(await bannerSponsorService.updateRotatorConfig({ showNavigationDots: e.target.checked })); }
+                  catch (err: any) { showToast(`Gagal menyimpan ke GAS: ${err.message}`); }
                 }}
                 className="w-4 h-4 accent-purple-600 rounded"
               />
@@ -1005,9 +1009,9 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
               <input
                 type="checkbox"
                 checked={rotatorConfig.enableMobileSwipe}
-                onChange={e => {
-                  bannerSponsorService.updateRotatorConfig({ enableMobileSwipe: e.target.checked });
-                  setRotatorConfig(bannerSponsorService.getRotatorConfig());
+                onChange={async e => {
+                  try { setRotatorConfig(await bannerSponsorService.updateRotatorConfig({ enableMobileSwipe: e.target.checked })); }
+                  catch (err: any) { showToast(`Gagal menyimpan ke GAS: ${err.message}`); }
                 }}
                 className="w-4 h-4 accent-purple-600 rounded"
               />
