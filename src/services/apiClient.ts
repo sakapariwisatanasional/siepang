@@ -77,11 +77,11 @@ class ApiClient {
     const currentEvent = eventService.getCurrentEvent();
 
     const securityContext = {
-      userId: currentUser?.id || localSession?.userId || 'usr_anonymous',
+      userId: currentUser?.id || localSession?.userId || '',
       userRole: currentUser?.role || localSession?.role || 'viewer',
       workspaceId: currentWorkspace?.id || null,
       eventId: currentEvent?.id || null,
-      authToken: localSession ? `LocalEdge_${localSession.token}` : (authService.getAuthState().sessionToken || 'token'),
+      authToken: localSession ? `LocalEdge_${localSession.token}` : (authService.getAuthState().sessionToken || ''),
     };
 
     // 1. Fully Offline: Enqueue to device offline queue
@@ -181,27 +181,6 @@ class ApiClient {
     if (!transportRes.ok) {
       const errCode = transportRes.error?.code || 'REQUEST_FAILED';
       const errMsg = transportRes.error?.message || 'Operasi cloud gagal.';
-
-      // Fallback to local business handler ONLY if in non-production development mode and installation not configured
-      if (!import.meta.env.PROD && errCode === 'INSTALLATION_REQUIRED') {
-        const localDevRes = await siepangBackendApi.handleRequest<T>({
-          endpoint,
-          payload: options?.data,
-          context: securityContext,
-        });
-        return {
-          data: localDevRes.data as T,
-          success: localDevRes.success,
-          error: localDevRes.error,
-          message: localDevRes.message,
-          statusCode: localDevRes.statusCode,
-          source: 'cloud',
-          meta: {
-            ...localDevRes.meta,
-            operationalMode: 'cloud',
-          },
-        };
-      }
 
       return {
         data: undefined,
