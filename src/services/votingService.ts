@@ -8,7 +8,7 @@ import { syncQueueService } from '../offline/syncQueueService';
 import { localCampServerService } from './localCampServerService';
 
 class VotingService {
-  private votedIds: Set<string> = new Set(['work_02']); // Pre-seeded
+  private votedIds: Set<string> = new Set(); // No fabricated prior votes; session-only UI state until server voting is integrated.
   private listeners: Set<() => void> = new Set();
 
   public hasVoted(workId: string): boolean {
