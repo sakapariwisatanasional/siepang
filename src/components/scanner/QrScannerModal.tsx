@@ -31,6 +31,7 @@ import { authService } from '../../services/authService';
 import { activityQrService, ScanResult } from '../../services/activityQrService';
 import { visitorManagementService } from '../../services/visitorManagementService';
 import { qrResolverService } from '../../services/qrResolverService';
+import { apiTransport } from '../../services/apiTransport';
 import { Participant, PeerAppreciationType, VisitorRegistration } from '../../types';
 
 interface QrScannerModalProps {
@@ -56,6 +57,15 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   const processingScanRef = useRef(false);
 
   const [scannedParticipant, setScannedParticipant] = useState<Participant | null>(null);
+  const [scannedUserQr, setScannedUserQr] = useState<{
+    userId: string;
+    name: string;
+    email?: string;
+    role?: string;
+    status?: string;
+    organizationId?: string;
+    avatarUrl?: string;
+  } | null>(null);
   const [scannedActivityResult, setScannedActivityResult] = useState<ScanResult | null>(null);
   const [scannedVisitor, setScannedVisitor] = useState<{ visitor: VisitorRegistration; action: 'ENTRY' | 'EXIT' } | null>(null);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
@@ -88,6 +98,52 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
         code = url.searchParams.get('p') || url.searchParams.get('participant_id') || code;
       }
     } catch { /* Gunakan token QR asli bila bukan URL valid. */ }
+
+    // 0. QR IDENTITAS PENGGUNA/PANITIA.
+    // Token SIEPANG-USER-* harus langsung ke GAS user.qr.scan,
+    // bukan ke participants.list. Ini menjaga QR peserta lama tetap berjalan.
+    const normalizedCode = code.toUpperCase();
+    const isUserQr =
+      normalizedCode.startsWith('SIEPANG-USER-') ||
+      normalizedCode.startsWith('SIEPANG:QR:V1:USR_') ||
+      normalizedCode.startsWith('SIEPANG:QR:V1:USER_');
+
+    if (isUserQr) {
+      try {
+        const userQrRes = await apiTransport.send<any>('user.qr.scan', { token: code });
+        if (!userQrRes.ok) {
+          throw new Error(userQrRes.error?.message || 'QR akun/panitia tidak dikenali oleh GAS.');
+        }
+
+        const payload = userQrRes.data || {};
+        const user = payload.user || payload.profile || payload;
+        const userId = String(
+          user.user_id || user.userId || payload.user_id || payload.userId || ''
+        ).trim();
+
+        if (!userId) {
+          throw new Error('GAS menerima QR, tetapi identitas pengguna tidak ada pada respons.');
+        }
+
+        setScannedUserQr({
+          userId,
+          name: String(user.name || user.full_name || user.fullName || 'Pengguna SiEpang'),
+          email: user.email ? String(user.email) : undefined,
+          role: user.role ? String(user.role) : undefined,
+          status: user.status ? String(user.status) : undefined,
+          organizationId: user.organization_id || user.organizationId
+            ? String(user.organization_id || user.organizationId)
+            : undefined,
+          avatarUrl: user.avatar_url || user.avatarUrl
+            ? String(user.avatar_url || user.avatarUrl)
+            : undefined,
+        });
+        return;
+      } catch (err: any) {
+        setActionErrorMessage(`QR akun/panitia gagal diverifikasi: ${err?.message || 'GAS tidak mengenali token.'}`);
+        return;
+      }
+    }
 
     // 1. Check if Activity QR or Checkpoint QR token (Requirements 8-10)
     const actConfig = activityQrService.getConfigByToken(code);
@@ -153,6 +209,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     if (!isOpen) {
       setScanPaused(false);
       setScannedParticipant(null);
+      setScannedUserQr(null);
       setScannedActivityResult(null);
       setScannedVisitor(null);
       setActionErrorMessage(null);
@@ -367,9 +424,9 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
               {cameraError ? 'Kamera belum aktif' : 'Mengaktifkan kamera…'}
             </div>
           )}
-          {scanPaused && !isResolving && !scannedParticipant && !scannedActivityResult && !scannedVisitor && (
+          {scanPaused && !isResolving && !scannedParticipant && !scannedUserQr && !scannedActivityResult && !scannedVisitor && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 text-center px-6 gap-3 z-10">
-              <div className="text-sm">{actionErrorMessage ? 'Peserta belum dikenali' : 'Pemindaian selesai'}</div>
+              <div className="text-sm">{actionErrorMessage ? 'QR belum dikenali' : 'Pemindaian selesai'}</div>
               <button type="button" onClick={() => { setActionErrorMessage(null); setScanPaused(false); setCameraRetry(v => v + 1); }} className="rounded-lg bg-emerald-600 px-5 py-3 font-bold text-white">Scan Ulang</button>
             </div>
           )}
@@ -394,7 +451,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
           <div className="flex gap-2 pt-1">
             <input
               type="text"
-              placeholder="Ketik/Paste token QR (Peserta, Kegiatan, atau Tamu)..."
+              placeholder="Ketik/Paste token QR (Panitia, Peserta, Kegiatan, Visitor)"
               value={manualCode}
               onChange={e => setManualCode(e.target.value)}
               className="flex-1 bg-black/50 border border-white/20 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
@@ -635,6 +692,90 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
               className="w-full py-2.5 bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/15 text-slate-800 dark:text-white rounded-xl text-xs font-semibold"
             >
               Tutup Rekam Medis
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* User / Committee QR Result */}
+      {scannedUserQr && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
+          <div className="w-full max-w-sm bg-white dark:bg-[#141418] border border-emerald-500/40 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="text-center space-y-2">
+              <div className="mx-auto w-16 h-16 rounded-full overflow-hidden bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center">
+                {scannedUserQr.avatarUrl ? (
+                  <img
+                    src={scannedUserQr.avatarUrl}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
+                ) : (
+                  <UserCheck className="w-7 h-7 text-emerald-600" />
+                )}
+              </div>
+              <div className="text-[11px] uppercase tracking-wider font-bold text-emerald-600 dark:text-emerald-400">
+                Identitas Akun Terverifikasi
+              </div>
+              <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                {scannedUserQr.name}
+              </h3>
+              {scannedUserQr.role && (
+                <div className="inline-flex px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold">
+                  {scannedUserQr.role}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/10 p-4 space-y-2 text-xs">
+              <div className="flex justify-between gap-4">
+                <span className="text-slate-500">Nama</span>
+                <strong className="text-slate-900 dark:text-white text-right">{scannedUserQr.name}</strong>
+              </div>
+              {scannedUserQr.email && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Email</span>
+                  <span className="text-slate-700 dark:text-slate-200 text-right break-all">{scannedUserQr.email}</span>
+                </div>
+              )}
+              <div className="flex justify-between gap-4">
+                <span className="text-slate-500">User ID</span>
+                <span className="font-mono text-[10px] text-slate-700 dark:text-slate-300 text-right break-all">{scannedUserQr.userId}</span>
+              </div>
+              {scannedUserQr.organizationId && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Organisasi</span>
+                  <span className="text-slate-700 dark:text-slate-200 text-right">{scannedUserQr.organizationId}</span>
+                </div>
+              )}
+              {scannedUserQr.status && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-500">Status</span>
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">{scannedUserQr.status}</span>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => {
+                setScannedUserQr(null);
+                setActionErrorMessage(null);
+                setScanPaused(false);
+                setCameraRetry(v => v + 1);
+              }}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-bold text-xs"
+            >
+              Scan QR Berikutnya
+            </button>
+            <button
+              onClick={() => {
+                setScannedUserQr(null);
+                setActionErrorMessage(null);
+                onClose();
+              }}
+              className="w-full py-2 text-xs text-slate-500 dark:text-slate-400"
+            >
+              Tutup
             </button>
           </div>
         </div>
