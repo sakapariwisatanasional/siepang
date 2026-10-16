@@ -172,264 +172,186 @@ export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
   };
 
   /*
-   * Dashboard dan halaman fitur sengaja dipisahkan secara visual.
-   * Tidak ada perubahan terhadap service/API/GAS; hanya layout/navigation presentation.
+   * Presentation layer only.
+   * Data, services, API contracts, Spreadsheet and GAS are intentionally untouched.
    */
   return (
-    <div className="w-full max-w-6xl mx-auto px-1 sm:px-0 pb-8 sm:pb-12">
+    <div className="w-full max-w-6xl mx-auto pb-8 sm:pb-12">
       {activeSection === 'overview' ? (
-        <>
-          {/* EVENT HEADER */}
-          <section className="rounded-2xl sm:rounded-[24px] bg-white dark:bg-[#141418] border border-slate-200 dark:border-white/10 shadow-sm overflow-hidden">
-            <div className="p-4 sm:p-6">
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                        Kelola Kegiatan
-                      </span>
-                      <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        {event.status}
-                      </span>
-                    </div>
-
-                    <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white break-words">
-                      {event.name}
-                    </h1>
-                    <p className="mt-1.5 text-xs sm:text-sm leading-relaxed text-slate-500 dark:text-slate-400 max-w-3xl">
-                      Kelola kegiatan, peserta, lomba, publikasi, dan kebutuhan operasional event.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <div className={`min-h-9 px-2.5 sm:px-3 rounded-xl border text-[11px] font-semibold flex items-center gap-1.5 ${
-                      saveState.status === 'Saving…'
-                        ? 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border-sky-200'
-                        : saveState.status === 'Save Failed'
-                        ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200'
-                        : saveState.status === 'Unsaved Changes'
-                        ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200'
-                        : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200'
-                    }`}>
-                      {saveState.status === 'Saving…' ? (
-                        <div className="w-3.5 h-3.5 border-2 border-sky-600 border-t-transparent rounded-full animate-spin" />
-                      ) : saveState.status === 'Save Failed' || saveState.status === 'Unsaved Changes' ? (
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                      ) : (
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                      )}
-                      <span className="whitespace-nowrap">
-                        {saveState.status === 'Saved ✓' ? `Tersimpan ✓ ${saveState.lastSaved}` : saveState.status}
-                      </span>
-                    </div>
-
-                    {saveState.status === 'Save Failed' ? (
-                      <button
-                        type="button"
-                        onClick={handleManualSave}
-                        className="min-h-9 px-3 rounded-xl bg-rose-600 text-white text-xs font-bold inline-flex items-center gap-1.5"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        Coba lagi
-                      </button>
-                    ) : saveState.hasUnsaved ? (
-                      <button
-                        type="button"
-                        onClick={handleManualSave}
-                        disabled={saveState.status === 'Saving…'}
-                        className="min-h-9 px-3 rounded-xl bg-emerald-600 text-white text-xs font-bold inline-flex items-center gap-1.5 disabled:opacity-60"
-                      >
-                        <Save className="w-3.5 h-3.5" />
-                        Simpan
-                      </button>
-                    ) : null}
-
-                    <button
-                      type="button"
-                      onClick={() => setShowQrPrintCenter(true)}
-                      className="min-h-9 px-3 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-800 dark:text-white text-xs font-bold inline-flex items-center gap-1.5"
-                    >
-                      <QrCode className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Cetak QR</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsPreviewOpen(true)}
-                      className="min-h-9 px-3 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-800 dark:text-white text-xs font-bold inline-flex items-center gap-1.5"
-                    >
-                      <Smartphone className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Pratinjau</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setShowAuditDrawer(v => !v)}
-                      aria-label="Riwayat audit"
-                      className="min-h-9 min-w-9 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 inline-flex items-center justify-center"
-                    >
-                      <History className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* NAVIGATOR — dashboard only */}
-                <div className="border-t border-slate-100 dark:border-white/10 pt-4">
-                  <div className="flex items-end justify-between gap-3 mb-3">
-                    <div>
-                      <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white">
-                        Menu Pengelolaan Event
-                      </h2>
-                      <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        Pilih menu untuk membuka halaman fitur.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-2.5 sm:gap-3">
-                    {MENU_ITEMS.map(item => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => openSection(item.id)}
-                        className="group min-h-[94px] sm:min-h-[108px] rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.04] hover:bg-emerald-50 dark:hover:bg-emerald-950/20 hover:border-emerald-300 dark:hover:border-emerald-700 px-3 py-3 flex flex-col items-start justify-between text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 active:scale-[0.99]"
-                      >
-                        <span className="text-2xl sm:text-[27px] leading-none" aria-hidden="true">
-                          {item.icon}
-                        </span>
-                        <span className="w-full">
-                          <span className="flex items-center justify-between gap-1">
-                            <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-white leading-tight">
-                              {item.label}
-                            </span>
-                            <ChevronRight className="w-3.5 h-3.5 shrink-0 text-slate-400 group-hover:text-emerald-600 transition-transform group-hover:translate-x-0.5" />
-                          </span>
-                          <span className="hidden sm:block mt-1 text-[10px] leading-tight text-slate-500 dark:text-slate-400">
-                            {item.description}
-                          </span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Audit is still a small overlay-like panel on dashboard only */}
-            {showAuditDrawer && (
-              <div className="border-t border-slate-100 dark:border-white/10 p-4 sm:p-5 bg-slate-50/70 dark:bg-white/[0.02]">
-                <div className="flex items-center justify-between gap-3 mb-3">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white inline-flex items-center gap-2">
-                    <History className="w-4 h-4" />
-                    Riwayat Perubahan
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => setShowAuditDrawer(false)}
-                    className="text-xs font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-white"
-                  >
-                    Tutup
-                  </button>
-                </div>
-
-                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                  {eventStudioService.getAuditLogs().length === 0 ? (
-                    <p className="text-xs text-slate-500 dark:text-slate-400 py-2">
-                      Belum ada riwayat perubahan.
-                    </p>
-                  ) : (
-                    eventStudioService.getAuditLogs().map(log => (
-                      <div key={log.id} className="p-3 rounded-xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-300">
-                                {log.module || 'Audit'}
-                              </span>
-                              <span className="text-xs font-semibold text-slate-800 dark:text-white">
-                                {log.action}
-                              </span>
-                            </div>
-                            <div className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
-                              User: {log.user_id || log.actorName || '—'} · Workspace: {log.workspace_id || '—'}
-                            </div>
-                          </div>
-                          <span className="text-[10px] text-slate-400 shrink-0">{log.timestamp}</span>
-                        </div>
-                      </div>
-                    ))
+        <section className="overflow-hidden rounded-[28px] sm:rounded-[32px] border border-red-100 bg-white shadow-[0_10px_35px_rgba(160,20,20,0.08)]">
+          {/* Red event hero */}
+          <div className="relative overflow-hidden bg-[#D71920] px-4 py-5 sm:px-7 sm:py-7 text-white">
+            <div aria-hidden="true" className="absolute -right-16 -top-20 h-52 w-52 rounded-full bg-white/10" />
+            <div aria-hidden="true" className="absolute -bottom-24 right-24 h-48 w-48 rounded-full bg-[#F4D53F]/20" />
+            <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11px] font-bold backdrop-blur-sm">
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    Kelola Kegiatan
+                  </span>
+                  {event.status && (
+                    <span className="rounded-full bg-[#F4D53F] px-2.5 py-1 text-[10px] font-extrabold text-[#241B00]">
+                      {event.status}
+                    </span>
                   )}
                 </div>
-              </div>
-            )}
-          </section>
-
-          {/* Existing overview content is intentionally retained here.
-              It remains the event dashboard's overview, while other feature
-              pages are no longer rendered underneath the navigator. */}
-          <div className="mt-4 sm:mt-6">
-            {renderSectionContent()}
-          </div>
-        </>
-      ) : (
-        <>
-          {/* FEATURE PAGE — navigator is intentionally absent */}
-          <section className="mb-4 sm:mb-5">
-            <button
-              type="button"
-              onClick={goBackToDashboard}
-              className="min-h-10 px-3.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141418] text-slate-700 dark:text-slate-200 text-sm font-bold inline-flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Menu Event
-            </button>
-          </section>
-
-          <section className="rounded-2xl sm:rounded-[24px] bg-white dark:bg-[#141418] border border-slate-200 dark:border-white/10 shadow-sm p-4 sm:p-5">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-400 mb-1">
-                  <span>Kelola Kegiatan</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                  <span className="text-emerald-600 dark:text-emerald-400">{activeMenu.label}</span>
-                </div>
-                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
-                  {activeMenu.label}
-                </h1>
-                <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-                  {activeMenu.description} · {event.name}
+                <h1 className="break-words text-2xl font-black tracking-tight sm:text-3xl">{event.name}</h1>
+                <p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-white/80 sm:text-sm">
+                  Kelola kegiatan, peserta, lomba, jadwal, publikasi, dan kebutuhan operasional dari satu tempat.
                 </p>
               </div>
 
-              <div className={`self-start sm:self-auto min-h-9 px-3 rounded-xl border text-[11px] font-semibold flex items-center gap-1.5 ${
-                saveState.status === 'Saving…'
-                  ? 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border-sky-200'
-                  : saveState.status === 'Save Failed'
-                  ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200'
-                  : saveState.status === 'Unsaved Changes'
-                  ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200'
-                  : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200'
-              }`}>
-                {saveState.status === 'Saving…' ? (
-                  <div className="w-3.5 h-3.5 border-2 border-sky-600 border-t-transparent rounded-full animate-spin" />
-                ) : saveState.status === 'Save Failed' || saveState.status === 'Unsaved Changes' ? (
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                ) : (
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                )}
-                <span className="whitespace-nowrap">
-                  {saveState.status === 'Saved ✓' ? `Tersimpan ✓ ${saveState.lastSaved}` : saveState.status}
-                </span>
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <div className={`min-h-10 rounded-xl border px-3 text-[11px] font-bold flex items-center gap-1.5 ${
+                  saveState.status === 'Saving…'
+                    ? 'border-white/20 bg-white/10 text-white'
+                    : saveState.status === 'Save Failed'
+                    ? 'border-white/30 bg-black/15 text-white'
+                    : saveState.status === 'Unsaved Changes'
+                    ? 'border-[#F4D53F]/50 bg-[#F4D53F]/15 text-[#FFF3A8]'
+                    : 'border-white/20 bg-white/10 text-white'
+                }`}>
+                  {saveState.status === 'Saving…' ? (
+                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  ) : saveState.status === 'Save Failed' || saveState.status === 'Unsaved Changes' ? (
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                  ) : (
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                  )}
+                  <span className="whitespace-nowrap">
+                    {saveState.status === 'Saved ✓' ? `Tersimpan · ${saveState.lastSaved}` : saveState.status}
+                  </span>
+                </div>
+
+                {saveState.status === 'Save Failed' ? (
+                  <button type="button" onClick={handleManualSave}
+                    className="min-h-10 rounded-xl bg-white px-3.5 text-xs font-extrabold text-[#C51F1F] inline-flex items-center gap-1.5">
+                    <RefreshCw className="h-3.5 w-3.5" /> Coba lagi
+                  </button>
+                ) : saveState.hasUnsaved ? (
+                  <button type="button" onClick={handleManualSave} disabled={saveState.status === 'Saving…'}
+                    className="min-h-10 rounded-xl bg-white px-3.5 text-xs font-extrabold text-[#C51F1F] inline-flex items-center gap-1.5 disabled:opacity-60">
+                    <Save className="h-3.5 w-3.5" /> Simpan
+                  </button>
+                ) : null}
+
+                <button type="button" onClick={() => setShowQrPrintCenter(true)}
+                  className="min-h-10 rounded-xl bg-black/15 px-3.5 text-xs font-bold text-white hover:bg-black/20 inline-flex items-center gap-1.5">
+                  <QrCode className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Cetak QR</span>
+                </button>
+                <button type="button" onClick={() => setIsPreviewOpen(true)}
+                  className="min-h-10 rounded-xl bg-black/15 px-3.5 text-xs font-bold text-white hover:bg-black/20 inline-flex items-center gap-1.5">
+                  <Smartphone className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Pratinjau</span>
+                </button>
+                <button type="button" onClick={() => setShowAuditDrawer(v => !v)} aria-label="Riwayat audit"
+                  className="min-h-10 min-w-10 rounded-xl bg-black/15 text-white inline-flex items-center justify-center">
+                  <History className="h-4 w-4" />
+                </button>
               </div>
             </div>
-          </section>
+          </div>
 
-          <main className="mt-4 sm:mt-5">
-            {renderSectionContent()}
-          </main>
-        </>
+          {/* Feature launchpad: no stacked feature pages */}
+          <div className="p-4 sm:p-7">
+            <div className="mb-4 flex items-end justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#D71920]">Menu Utama</p>
+                <h2 className="mt-1 text-lg font-black text-slate-900 sm:text-xl">Kelola Event</h2>
+                <p className="mt-0.5 text-xs text-slate-500">Pilih kartu untuk membuka satu fitur secara penuh.</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+              {MENU_ITEMS.map((item, index) => {
+                const accentClasses = [
+                  'bg-red-50 text-[#C51F1F] border-red-100',
+                  'bg-amber-50 text-amber-700 border-amber-100',
+                  'bg-red-50 text-[#D71920] border-red-100',
+                  'bg-emerald-50 text-emerald-700 border-emerald-100',
+                  'bg-yellow-50 text-yellow-700 border-yellow-100',
+                  'bg-purple-50 text-purple-700 border-purple-100',
+                ][index % 6];
+                return (
+                  <button key={item.id} type="button" onClick={() => openSection(item.id)}
+                    className="group min-h-[126px] rounded-[22px] border border-slate-200 bg-white p-3.5 text-left shadow-[0_3px_12px_rgba(0,0,0,0.035)] transition-all hover:-translate-y-0.5 hover:border-red-200 hover:shadow-[0_8px_22px_rgba(180,20,20,0.10)] active:scale-[0.985] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#D71920] sm:min-h-[138px] sm:p-4">
+                    <div className="mb-4 flex items-start justify-between gap-2">
+                      <span className={`flex h-11 w-11 items-center justify-center rounded-[16px] border text-2xl ${accentClasses}`} aria-hidden="true">
+                        {item.icon}
+                      </span>
+                      <ChevronRight className="mt-1 h-4 w-4 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-[#D71920]" />
+                    </div>
+                    <span className="block text-sm font-extrabold leading-tight text-slate-900">{item.label}</span>
+                    <span className="mt-1 block text-[10px] leading-snug text-slate-500 sm:text-[11px]">{item.description}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {showAuditDrawer && (
+            <div className="border-t border-red-50 bg-red-50/40 p-4 sm:p-6">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="inline-flex items-center gap-2 text-sm font-extrabold text-slate-900">
+                  <History className="h-4 w-4 text-[#D71920]" /> Riwayat Perubahan
+                </h3>
+                <button type="button" onClick={() => setShowAuditDrawer(false)}
+                  className="min-h-9 rounded-lg px-3 text-xs font-bold text-slate-500 hover:bg-white hover:text-slate-900">
+                  Tutup
+                </button>
+              </div>
+              <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                {eventStudioService.getAuditLogs().length === 0 ? (
+                  <p className="py-2 text-xs text-slate-500">Belum ada riwayat perubahan.</p>
+                ) : eventStudioService.getAuditLogs().map(log => (
+                  <div key={log.id} className="rounded-xl border border-red-100 bg-white p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] font-bold uppercase text-[#C51F1F]">{log.module || 'Audit'}</span>
+                          <span className="text-xs font-semibold text-slate-800">{log.action}</span>
+                        </div>
+                        <div className="mt-1 text-[10px] text-slate-500">User: {log.user_id || log.actorName || '—'} · Workspace: {log.workspace_id || '—'}</div>
+                      </div>
+                      <span className="shrink-0 text-[10px] text-slate-400">{log.timestamp}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      ) : (
+        <section>
+          {/* Feature page: menu is intentionally not repeated above the content. */}
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <button type="button" onClick={goBackToDashboard}
+              className="min-h-11 rounded-xl border border-red-100 bg-white px-4 text-sm font-extrabold text-[#C51F1F] shadow-sm hover:bg-red-50 inline-flex items-center gap-2">
+              <ArrowLeft className="h-4 w-4" /> Menu Event
+            </button>
+            <div className="hidden sm:flex min-h-10 items-center gap-1.5 rounded-xl bg-red-50 px-3 text-[11px] font-bold text-[#C51F1F]">
+              <CheckCircle2 className="h-3.5 w-3.5" /> {saveState.status === 'Saved ✓' ? `Tersimpan · ${saveState.lastSaved}` : saveState.status}
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-[28px] border border-red-100 bg-white shadow-[0_8px_28px_rgba(160,20,20,0.06)]">
+            <div className="bg-[#D71920] px-4 py-5 text-white sm:px-7 sm:py-6">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-2xl">
+                  {activeMenu.icon}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/70">Kelola Kegiatan</p>
+                  <h1 className="mt-1 text-2xl font-black tracking-tight">{activeMenu.label}</h1>
+                  <p className="mt-1 text-xs leading-relaxed text-white/80 sm:text-sm">{activeMenu.description} · {event.name}</p>
+                </div>
+              </div>
+            </div>
+            <main className="p-3 sm:p-5 lg:p-6">
+              {renderSectionContent()}
+            </main>
+          </div>
+        </section>
       )}
 
       {showQrPrintCenter && (
