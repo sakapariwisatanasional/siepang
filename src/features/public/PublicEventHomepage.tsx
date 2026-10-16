@@ -374,7 +374,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
     home: 'Beranda', announcements: 'Informasi & Pengumuman', schedule: 'Jadwal Kegiatan',
     leaderboard: 'Peringkat', photo_gallery: 'Galeri Foto', video_gallery: 'Galeri Video',
     qr_scanner: 'Scan QR', visitor: 'Registrasi Tamu', verification: 'Verifikasi Sertifikat',
-    competitions: 'Mata Lomba Resmi', sponsors: 'Sponsor',
+    competitions: 'Unjuk Karya', sponsors: 'Sponsor',
   };
 
   const viewportWidthClass = {
@@ -435,8 +435,8 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
         tone: 'bg-purple-50 text-purple-600',
       },
       {
-        label: 'Lomba',
-        caption: 'Mata lomba resmi',
+        label: 'Unjuk Karya',
+        caption: 'Photo dan Video',
         icon: Trophy,
         section: 'section-official-competitions',
         visible: true,
@@ -1646,12 +1646,12 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
           {activePublicPage === 'competitions' && (
           <section id="section-official-competitions" className="mb-8 scroll-mt-24 rounded-3xl bg-white dark:bg-[#141418] border border-slate-200 dark:border-white/10 p-5 sm:p-6 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="font-bold text-lg flex items-center gap-2"><Trophy className="w-5 h-5 text-amber-500"/> Mata Lomba Resmi</h2>
+              <h2 className="font-bold text-lg flex items-center gap-2"><Trophy className="w-5 h-5 text-amber-500"/> Unjuk Karya</h2>
               <button type="button" onClick={() => void refreshOfficialCompetitions()} className="rounded-lg px-3 py-2 text-sm bg-slate-100 dark:bg-white/10">Muat Ulang</button>
             </div>
-            {competitionLoading ? <p className="text-sm text-slate-500">Memuat mata lomba resmi…</p>
+            {competitionLoading ? <p className="text-sm text-slate-500">Memuat unjuk karya…</p>
               : competitionError ? <p role="alert" className="text-sm text-rose-600">{competitionError}</p>
-              : officialCompetitions.length === 0 ? <p className="text-sm text-slate-500">Belum ada mata lomba yang diresmikan panitia.</p>
+              : officialCompetitions.length === 0 ? <p className="text-sm text-slate-500">Belum ada unjuk karya yang dipublikasikan panitia.</p>
               : <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{officialCompetitions.map(comp => (
                 <div key={comp.id} className="rounded-2xl bg-slate-50 dark:bg-white/5 p-4 border border-slate-200 dark:border-white/10">
                   <div className="font-bold">{comp.title}</div>
