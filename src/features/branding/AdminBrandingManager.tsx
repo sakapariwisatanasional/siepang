@@ -28,6 +28,7 @@ import {
 import {
   customerBrandingDriveService,
 } from '../../services/customerBrandingDriveService';
+import { workspaceService } from '../../services/workspaceService';
 import {
   CustomerBrandingAsset,
   BrandingAssetType,
@@ -103,7 +104,7 @@ export const AdminBrandingManager: React.FC = () => {
     if (!modalType || !inputUrl.trim() || !validationResult?.valid) return;
 
     await customerBrandingDriveService.uploadBrandingAsset({
-      workspace_id: 'ws_banyuwangi',
+      workspace_id: workspaceService.getCurrentWorkspace().id || '',
       asset_type: modalType,
       file_name: inputFileName.trim() || `${modalType.toLowerCase()}_asset.png`,
       mime_type: 'image/png',
