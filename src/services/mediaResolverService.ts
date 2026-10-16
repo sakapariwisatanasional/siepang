@@ -309,7 +309,7 @@ class MediaResolverService {
    * Automatically resolves photos from a Google Drive folder (Section 5)
    * Eliminates the need for admins to upload every event photograph manually.
    */
-  public resolveDriveFolderPhotos(folderId: string, folderUrl: string): Array<{
+  public resolveDriveFolderPhotos(_folderId: string, _folderUrl: string): Array<{
     source_url: string;
     thumbnail_url: string;
     title: string;
@@ -317,78 +317,8 @@ class MediaResolverService {
     provider_resource_id: string;
     event_date: string;
   }> {
-    // Generate realistic, curated event photographs derived from the folder
-    const createPlaceholderSvg = (title: string, color: string) =>
-      `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600"><rect width="800" height="600" fill="${color}"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23ffffff" font-family="sans-serif" font-size="28" font-weight="bold">${encodeURIComponent(title)}</text></svg>`;
-
-    const photoTemplates = [
-      {
-        subId: 'img_p01',
-        title: 'Formasi Barisan Apel Pembukaan',
-        caption: 'Kesiapan kontingen ranting se-kabupaten dalam apel pembukaan di lapangan utama.',
-        url: createPlaceholderSvg('Formasi Barisan Apel Pembukaan', '%23065f46'),
-        thumb: createPlaceholderSvg('Apel Pembukaan', '%23065f46'),
-      },
-      {
-        subId: 'img_p02',
-        title: 'Mendirikan Tenda & Gapura Regu',
-        caption: 'Kekompakan regu penggalang merakit pasak tenda dome dan ornamen gapura bambu.',
-        url: createPlaceholderSvg('Mendirikan Tenda & Gapura Regu', '%231e3a8a'),
-        thumb: createPlaceholderSvg('Tenda & Gapura', '%231e3a8a'),
-      },
-      {
-        subId: 'img_p03',
-        title: 'Pioneering Menara Pandang Kaki Tiga',
-        caption: 'Karya tali-temali simpul pangkal dan palang untuk menara observasi perkemahan.',
-        url: createPlaceholderSvg('Pioneering Menara Pandang Kaki Tiga', '%23854d0e'),
-        thumb: createPlaceholderSvg('Pioneering Menara', '%23854d0e'),
-      },
-      {
-        subId: 'img_p04',
-        title: 'Navigasi Kompas & Peta Pita di Rimba',
-        caption: 'Regu putri menuntaskan etape penjelajahan dengan bidikan kompas prisma.',
-        url: createPlaceholderSvg('Navigasi Kompas & Peta Pita di Rimba', '%2315803d'),
-        thumb: createPlaceholderSvg('Navigasi Rimba', '%2315803d'),
-      },
-      {
-        subId: 'img_p05',
-        title: 'Praktek Pertolongan Pertama Gawat Darurat (PPGD)',
-        caption: 'Simulasi evakuasi korban tandu darurat dan pembalutan mitela.',
-        url: createPlaceholderSvg('Praktek Pertolongan Pertama Gawat Darurat', '%23991b1b'),
-        thumb: createPlaceholderSvg('Posko PPGD', '%23991b1b'),
-      },
-      {
-        subId: 'img_p06',
-        title: 'Pentas Seni Budaya & Tari Daerah',
-        caption: 'Penampilan teatrikal cerita rakyat Nusantara di panggung kehormatan.',
-        url: createPlaceholderSvg('Pentas Seni Budaya & Tari Daerah', '%237c3aed'),
-        thumb: createPlaceholderSvg('Pentas Seni', '%237c3aed'),
-      },
-      {
-        subId: 'img_p07',
-        title: 'Refleksi Diri di Lingkaran Api Unggun',
-        caption: 'Momen khidmat pengucapan Dasadarma dan penyalaan obor dasa utama.',
-        url: createPlaceholderSvg('Refleksi Diri di Lingkaran Api Unggun', '%23c2410c'),
-        thumb: createPlaceholderSvg('Api Unggun', '%23c2410c'),
-      },
-      {
-        subId: 'img_p08',
-        title: 'Senam Pagi Bersama & Olahraga Ceria',
-        caption: 'Kebugaran fisik seluruh peserta dan pembina mendampingi terbitnya fajar.',
-        url: createPlaceholderSvg('Senam Pagi Bersama & Olahraga Ceria', '%230369a1'),
-        thumb: createPlaceholderSvg('Senam Pagi', '%230369a1'),
-      },
-    ];
-
-    const cleanFolderId = folderId || 'fld_drive';
-    return photoTemplates.map((item, idx) => ({
-      source_url: item.url,
-      thumbnail_url: item.thumb,
-      title: item.title,
-      caption: item.caption,
-      provider_resource_id: `${cleanFolderId}_file_${idx + 1}_${item.subId}`,
-      event_date: new Date().toISOString().slice(0, 10),
-    }));
+    // No browser-generated photo records. Drive media must be returned by GAS.
+    return [];
   }
 }
 
