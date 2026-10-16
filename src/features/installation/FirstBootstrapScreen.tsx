@@ -3,7 +3,7 @@
  * SiEpang - First Bootstrap Screen
  * Dedicated one-time setup screen for initial deployment bootstrap.
  * Strictly separate from the Public Portal.
- * Verifies SIEPANG_BOOTSTRAP_TOKEN, initializes context, provisions superadmin scoutpreneur@gmail.com,
+ * Verifies SIEPANG_BOOTSTRAP_TOKEN, initializes context, provisions the configured bootstrap superadmin,
  * and activates OTP without needing a pre-existing login session.
  */
 
@@ -177,7 +177,7 @@ export const FirstBootstrapScreen: React.FC<FirstBootstrapScreenProps> = ({
                 <div className="flex justify-between">
                   <span className="text-slate-500 dark:text-slate-400">Superadmin:</span>
                   <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300">
-                    {successResult.superadmin?.email || 'scoutpreneur@gmail.com'}
+                    {successResult.superadmin?.email || 'Belum ditetapkan'}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -200,7 +200,7 @@ export const FirstBootstrapScreen: React.FC<FirstBootstrapScreenProps> = ({
 
             <button
               type="button"
-              onClick={() => onComplete(successResult.superadmin?.email || 'scoutpreneur@gmail.com')}
+              onClick={() => onComplete(successResult.superadmin?.email || 'Belum ditetapkan')}
               className="w-full py-3.5 px-4 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-98 cursor-pointer"
             >
               <span>Lanjut Masuk sebagai Superadmin</span>
