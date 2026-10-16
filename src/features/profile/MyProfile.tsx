@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Camera, Save, RefreshCw, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Camera, Save, RefreshCw, ShieldCheck, AlertCircle, QrCode, ExternalLink } from 'lucide-react';
 import { apiTransport } from '../../services/apiTransport';
 import { authService } from '../../services/authService';
 
@@ -94,7 +94,45 @@ export const MyProfile: React.FC = () => {
       {error && <div role="alert" className="rounded-xl bg-red-100 text-red-900 p-3 text-sm flex gap-2 items-start"><AlertCircle size={18} className="shrink-0"/>{error}</div>}
       {message && <div role="status" className="rounded-xl bg-emerald-100 text-emerald-900 p-3 text-sm">{message}</div>}
       {loading ? <p>Memuat biodata dari GAS…</p> : (
-        <form onSubmit={save} className="rounded-2xl border bg-white dark:bg-[#19191e] p-5 space-y-5 shadow-sm">
+        <>
+          {draft.user_id && (
+            <section className="rounded-2xl border bg-white dark:bg-[#19191e] p-5 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-5">
+                <div className="w-36 h-36 shrink-0 rounded-2xl border bg-white p-2 flex items-center justify-center">
+                  <img
+                    src={`https://quickchart.io/qr?text=${encodeURIComponent(draft.user_id)}&size=320&margin=2`}
+                    alt="QR Identitas Akun SiEpang"
+                    className="w-full h-full object-contain"
+                    loading="eager"
+                  />
+                </div>
+                <div className="space-y-2 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                      <QrCode size={19} />
+                    </div>
+                    <h2 className="text-lg font-bold">QR Identitas Saya</h2>
+                  </div>
+                  <p className="text-sm opacity-70">
+                    QR ini merupakan identitas unik akun SiEpang dan dapat digunakan saat proses pemindaian identitas.
+                  </p>
+                  <p className="text-xs opacity-60 break-all">
+                    ID: {draft.user_id}
+                  </p>
+                  <a
+                    href={`https://quickchart.io/qr?text=${encodeURIComponent(draft.user_id)}&size=800&margin=8`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-white/5"
+                  >
+                    <ExternalLink size={15} /> Buka QR
+                  </a>
+                </div>
+              </div>
+            </section>
+          )}
+
+          <form onSubmit={save} className="rounded-2xl border bg-white dark:bg-[#19191e] p-5 space-y-5 shadow-sm">
           <div className="flex gap-4 items-center flex-wrap">
             <div className="w-24 h-24 rounded-2xl bg-slate-200 dark:bg-slate-700 border overflow-hidden flex items-center justify-center text-slate-700 dark:text-white text-2xl font-bold" aria-label="Avatar profil">
               {imageUrl && !photoBroken
@@ -120,6 +158,7 @@ export const MyProfile: React.FC = () => {
           <p className="flex gap-2 text-xs opacity-70 items-center"><ShieldCheck size={15}/> Role, permission, email, dan status akun tidak dapat diubah dari halaman ini.</p>
           <button disabled={saving || !changed} type="submit" className="px-5 py-3 rounded-xl bg-emerald-700 disabled:opacity-50 text-white font-semibold flex items-center gap-2"><Save size={17}/>{saving ? 'Menyimpan ke GAS…' : 'Simpan Perubahan'}</button>
         </form>
+        </>
       )}
     </div>
   );
