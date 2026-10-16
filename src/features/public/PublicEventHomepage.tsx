@@ -138,6 +138,13 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
   const isUnreachable = installationState === 'BACKEND_UNREACHABLE';
   const isLoading = installationState === 'LOADING';
 
+  // Public configuration is fetched from GAS, not a browser-specific local copy.
+  useEffect(() => {
+    void portalConfigService.refreshFromGas().catch(error => {
+      console.error('Konfigurasi portal dari GAS tidak dapat dibaca:', error);
+    });
+  }, []);
+
   // Feature Control states
   const [features, setFeatures] = useState({
     heroBanner: featureControlService.isFeatureEnabled('HERO_BANNER'),
