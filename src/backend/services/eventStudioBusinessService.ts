@@ -62,7 +62,7 @@ export class EventStudioBusinessService {
       id: `aud_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
       user_id: context.userId,
       workspace_id: context.workspaceId || undefined,
-      event_id: context.eventId || 'ev_active',
+      event_id: context.eventId || '',
       module,
       action,
       entity_id,
