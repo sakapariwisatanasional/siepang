@@ -48,6 +48,8 @@ import {
   Medal,
   Zap,
   Menu,
+  Shield,
+  Tent,
 } from 'lucide-react';
 import { eventService } from '../../services/eventService';
 import { bootstrapService } from '../../services/bootstrapService';
@@ -460,13 +462,13 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
 
           <div className="flex flex-wrap gap-2 pt-2">
             <span className="px-3 py-1 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300 text-xs font-semibold">
-              ⚜️ Gerakan Pramuka
+              <Shield className="w-3.5 h-3.5 text-[#6F2DA8]" /> Gerakan Pramuka
             </span>
             <span className="px-3 py-1 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300 text-xs font-semibold">
-              🛡️ Terverifikasi Resmi
+              <ShieldCheck className="w-3.5 h-3.5 text-[#12B24B]" /> Terverifikasi Resmi
             </span>
             <span className="px-3 py-1 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300 text-xs font-semibold">
-              🏕️ Portal Kegiatan Mandiri
+              <Tent className="w-3.5 h-3.5 text-[#D71920]" /> Portal Kegiatan Mandiri
             </span>
           </div>
         </div>
@@ -1231,10 +1233,18 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
         <nav className="bg-white/90 dark:bg-[#121215]/90 backdrop-blur-md border-b border-red-100 dark:border-white/10 px-4 sm:px-8 py-3.5 sticky top-10 z-30 transition-colors">
           <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#208C60] via-[#F47743] to-[#FFD36A] p-[1.5px] shadow-sm flex items-center justify-center shrink-0">
-                <div className="w-full h-full rounded-[14px] bg-white dark:bg-[#121215] flex items-center justify-center font-black text-lg">
-                  ⚜️
-                </div>
+              <div className="w-11 h-11 rounded-2xl bg-white border-2 border-[#D71920]/20 shadow-sm flex items-center justify-center shrink-0 overflow-hidden">
+                {isConfigured && event.logoUrl ? (
+                  <img
+                    src={event.logoUrl}
+                    alt={`Logo ${event.name}`}
+                    className="w-full h-full object-contain p-1"
+                    loading="eager"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <Shield className="w-6 h-6 text-[#D71920]" strokeWidth={2.2} aria-hidden="true" />
+                )}
               </div>
               <div className="min-w-0">
                 <div className="text-base font-black text-slate-900 dark:text-white tracking-tight leading-tight truncate">
