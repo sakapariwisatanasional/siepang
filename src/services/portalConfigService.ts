@@ -5,6 +5,8 @@
  * Respects admin configuration, featureControlService, and persistence.
  */
 
+import { apiTransport } from './apiTransport';
+
 export type PortalSectionKey =
   | 'hero'
   | 'announcements'
@@ -60,44 +62,57 @@ class PortalConfigService {
 
   private listeners: Set<() => void> = new Set();
 
-  constructor() {
-    this.loadFromStorage();
+  private loaded = false;
+  private lastError: string | null = null;
+
+  /** Only GAS/FeatureConfigs is authoritative; never seed operational state from browser storage. */
+  public async refreshFromGas(): Promise<void> {
+    const result = await apiTransport.send<{ config: PublicPortalConfig | null }>(
+      'portal.config.get', {}, { skipAuth: true },
+    );
+    if (!result.ok) {
+      this.lastError = result.error?.message || 'Konfigurasi portal gagal dibaca dari GAS.';
+      throw new Error(this.lastError);
+    }
+    const next = result.data?.config;
+    this.config = next ? this.normalize(next) : this.defaults();
+    this.loaded = true;
+    this.lastError = null;
+    this.notify();
   }
 
-  private loadFromStorage(): void {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        const stored = window.localStorage.getItem('siepang_public_portal_config');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed.section_order)) {
-            // Filter to valid keys and append any missing ones
-            const validKeys = parsed.section_order.filter((k: any) =>
-              DEFAULT_PORTAL_SECTION_ORDER.includes(k)
-            );
-            const missing = DEFAULT_PORTAL_SECTION_ORDER.filter(k => !validKeys.includes(k));
-            this.config.section_order = [...validKeys, ...missing];
-          }
-          if (parsed.section_visibility && typeof parsed.section_visibility === 'object') {
-            this.config.section_visibility = {
-              ...DEFAULT_PORTAL_SECTION_VISIBILITY,
-              ...parsed.section_visibility,
-            };
-          }
-          if (typeof parsed.visitor_hours === 'string' && parsed.visitor_hours.trim()) {
-            this.config.visitor_hours = parsed.visitor_hours.trim();
-          }
-        }
-      }
-    } catch {}
+  public isLoaded(): boolean { return this.loaded; }
+  public getLastError(): string | null { return this.lastError; }
+
+  private defaults(): PublicPortalConfig {
+    return { section_order: [...DEFAULT_PORTAL_SECTION_ORDER],
+      section_visibility: { ...DEFAULT_PORTAL_SECTION_VISIBILITY },
+      visitor_hours: DEFAULT_VISITOR_HOURS };
   }
 
-  private saveToStorage(): void {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem('siepang_public_portal_config', JSON.stringify(this.config));
-      }
-    } catch {}
+  private normalize(config: Partial<PublicPortalConfig>): PublicPortalConfig {
+    const input = Array.isArray(config?.section_order) ? config.section_order : [];
+    const keys = [...new Set(input.filter((k): k is PortalSectionKey => DEFAULT_PORTAL_SECTION_ORDER.includes(k as PortalSectionKey)))];
+    return {
+      section_order: [...keys, ...DEFAULT_PORTAL_SECTION_ORDER.filter(k => !keys.includes(k))],
+      section_visibility: Object.fromEntries(DEFAULT_PORTAL_SECTION_ORDER.map(k =>
+        [k, typeof config?.section_visibility?.[k] === 'boolean' ? config.section_visibility[k] : DEFAULT_PORTAL_SECTION_VISIBILITY[k]]
+      )) as Record<PortalSectionKey, boolean>,
+      visitor_hours: typeof config?.visitor_hours === 'string' && config.visitor_hours.trim()
+        ? config.visitor_hours.trim() : DEFAULT_VISITOR_HOURS,
+    };
+  }
+
+  private async persist(next: PublicPortalConfig): Promise<void> {
+    const result = await apiTransport.send<{ config: PublicPortalConfig }>('portal.config.set', { config: next });
+    if (!result.ok || !result.data?.config) {
+      this.lastError = result.error?.message || 'Konfigurasi gagal disimpan ke GAS.';
+      throw new Error(this.lastError);
+    }
+    this.config = this.normalize(result.data.config);
+    this.loaded = true;
+    this.lastError = null;
+    this.notify();
   }
 
   public getConfig(): PublicPortalConfig {
@@ -112,37 +127,21 @@ class PortalConfigService {
     return this.config.visitor_hours || DEFAULT_VISITOR_HOURS;
   }
 
-  public setVisitorHours(hours: string): void {
-    this.config.visitor_hours = hours.trim() || DEFAULT_VISITOR_HOURS;
-    this.saveToStorage();
-    this.notify();
+  public async setVisitorHours(hours: string): Promise<void> {
+    await this.persist({ ...this.getConfig(), visitor_hours: hours.trim() || DEFAULT_VISITOR_HOURS });
   }
 
-  public updateSectionOrder(newOrder: PortalSectionKey[]): void {
-    const validKeys = newOrder.filter(k => DEFAULT_PORTAL_SECTION_ORDER.includes(k));
-    const missing = DEFAULT_PORTAL_SECTION_ORDER.filter(k => !validKeys.includes(k));
-    this.config.section_order = [...validKeys, ...missing];
-    this.saveToStorage();
-    this.notify();
+  public async updateSectionOrder(newOrder: PortalSectionKey[]): Promise<void> {
+    await this.persist(this.normalize({ ...this.getConfig(), section_order: newOrder }));
   }
 
-  public setSectionVisibility(key: PortalSectionKey, visible: boolean): void {
-    this.config.section_visibility = {
-      ...this.config.section_visibility,
-      [key]: visible,
-    };
-    this.saveToStorage();
-    this.notify();
+  public async setSectionVisibility(key: PortalSectionKey, visible: boolean): Promise<void> {
+    if (!DEFAULT_PORTAL_SECTION_ORDER.includes(key)) throw new Error('Bagian portal tidak dikenal.');
+    await this.persist({ ...this.getConfig(), section_visibility: { ...this.config.section_visibility, [key]: visible } });
   }
 
-  public resetToDefault(): void {
-    this.config = {
-      section_order: [...DEFAULT_PORTAL_SECTION_ORDER],
-      section_visibility: { ...DEFAULT_PORTAL_SECTION_VISIBILITY },
-      visitor_hours: DEFAULT_VISITOR_HOURS,
-    };
-    this.saveToStorage();
-    this.notify();
+  public async resetToDefault(): Promise<void> {
+    await this.persist(this.defaults());
   }
 
   public subscribe(cb: () => void): () => void {
