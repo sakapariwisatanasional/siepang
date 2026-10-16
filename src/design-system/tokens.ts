@@ -7,37 +7,57 @@
 export const TOKENS = {
   // Light-First Surfaces (Part 2 & Part 3)
   colors: {
-    pageBackground: '#F7F7F8',
+    // SiEpang red-dominant identity inspired by event branding.
+    pageBackground: '#FAF8F4',
     surfacePrimary: '#FFFFFF',
-    surfaceSecondary: '#FAFAFA',
-    surfaceSoftWarm: '#FFF9F7',
-    surfaceSoftPink: '#FFF4F7',
+    surfaceSecondary: '#FFF8F8',
+    surfaceSoftWarm: '#FFF3F1',
+    surfaceSoftPink: '#FFE8E8',
 
     // Text Colors
-    textPrimary: '#171717',
-    textSecondary: '#6B7280',
-    textMuted: '#9CA3AF',
+    textPrimary: '#1F1F1F',
+    textSecondary: '#667085',
+    textMuted: '#98A2B3',
     textWhite: '#FFFFFF',
 
     // Borders
-    borderSubtle: '#ECECEF',
-    borderLight: '#F3F4F6',
-    borderHighlight: 'rgba(193, 53, 132, 0.3)',
+    borderSubtle: '#F0DCDC',
+    borderLight: '#F5E7E7',
+    borderHighlight: 'rgba(215, 25, 32, 0.28)',
 
-    // Scout Event Instagram Accents (Part 3)
+    // Event-inspired accents
+    primary: '#D71920',
+    primaryDark: '#B51218',
+    primarySoft: '#FFE5E5',
+    green: '#12B24B',
+    greenDark: '#0B8E3A',
+    greenSoft: '#E8F8EE',
+    yellow: '#F4D53F',
+    yellowSoft: '#FFF8D9',
+    purple: '#6F2DA8',
+    purpleSoft: '#F3EAFE',
+    black: '#1F1F1F',
+    cream: '#FAF8F4',
+
     accents: {
-      purple: '#833AB4',
-      violet: '#6C4ACF',
-      magenta: '#C13584',
-      pink: '#E1306C',
-      orange: '#F77737',
-      yellow: '#FCAF45',
+      red: '#D71920',
+      redDark: '#B51218',
+      green: '#12B24B',
+      yellow: '#F4D53F',
+      purple: '#6F2DA8',
+      black: '#1F1F1F',
+      // Legacy aliases retained so existing UI consumers keep compiling.
+      violet: '#6F2DA8',
+      magenta: '#B51218',
+      pink: '#D71920',
+      orange: '#F4A53A',
     },
 
-    // Pastel Card Backgrounds
     pastels: {
-      purple: '#F5F3FF',
-      purpleBorder: '#DDD6FE',
+      red: '#FFF0F0',
+      redBorder: '#FFD0D0',
+      purple: '#F5F0FA',
+      purpleBorder: '#E2D4EF',
       blue: '#EFF6FF',
       blueBorder: '#BFDBFE',
       green: '#ECFDF5',
@@ -50,14 +70,13 @@ export const TOKENS = {
       amberBorder: '#FEF08A',
     },
 
-    // Semantic Status Colors (Part 3)
     semantic: {
-      success: '#10B981',
-      successLight: '#ECFDF5',
+      success: '#12B24B',
+      successLight: '#E8F8EE',
       warning: '#F59E0B',
       warningLight: '#FFFBEB',
-      danger: '#EF4444',
-      dangerLight: '#FEF2F2',
+      danger: '#D71920',
+      dangerLight: '#FFE5E5',
       info: '#0284C7',
       infoLight: '#F0F9FF',
     },
@@ -65,9 +84,9 @@ export const TOKENS = {
 
   // Gradients
   gradients: {
-    scoutPrimary: 'linear-gradient(135deg, #833AB4 0%, #C13584 30%, #E1306C 52%, #F77737 78%, #FCAF45 100%)',
-    scoutSoft: 'linear-gradient(135deg, rgba(131, 58, 180, 0.08) 0%, rgba(225, 48, 108, 0.08) 50%, rgba(247, 119, 55, 0.08) 100%)',
-    scoutCardBorder: 'linear-gradient(135deg, rgba(131, 58, 180, 0.3) 0%, rgba(225, 48, 108, 0.3) 50%, rgba(252, 175, 69, 0.3) 100%)',
+    scoutPrimary: 'linear-gradient(135deg, #B51218 0%, #D71920 55%, #EF4444 100%)',
+    scoutSoft: 'linear-gradient(135deg, rgba(215, 25, 32, 0.10) 0%, rgba(18, 178, 75, 0.06) 55%, rgba(244, 213, 63, 0.10) 100%)',
+    scoutCardBorder: 'linear-gradient(135deg, rgba(215, 25, 32, 0.30) 0%, rgba(18, 178, 75, 0.18) 55%, rgba(244, 213, 63, 0.25) 100%)',
   },
 
   // Breakpoints (Part 7)
