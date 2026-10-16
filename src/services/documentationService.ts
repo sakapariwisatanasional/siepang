@@ -22,6 +22,8 @@ import {
 import { mediaResolverService } from './mediaResolverService';
 import { apiTransport } from './apiTransport';
 import { eventStudioService } from './eventStudioService';
+import { eventService } from './eventService';
+import { workspaceService } from './workspaceService';
 
 export interface GalleryUrlRecord {
   id: string;
@@ -332,8 +334,8 @@ class DocumentationService {
 
     const item: MediaItem = {
       media_id: id,
-      workspace_id: 'ws_kwarcab_bwi',
-      event_id: 'ev_jamcab_bwi_2026',
+      workspace_id: workspaceService.getCurrentWorkspace().id || '',
+      event_id: eventService.getCurrentEvent().id || '',
       album_id: data.album_id,
       media_type: 'PHOTO',
       provider: resolution.provider,
@@ -344,14 +346,14 @@ class DocumentationService {
       original_url: data.source_url,
       title: data.title.trim(),
       caption: data.caption?.trim(),
-      event_date: data.event_date || '2026-10-05',
+      event_date: data.event_date || eventService.getCurrentEvent()?.startDate || '',
       display_order: this.mediaItems.size + 1,
       publication_status: data.publication_status || 'PUBLISHED',
       metadata_status: resolution.accessStatus,
       download_control: data.download_control || 'ALLOW_ORIGINAL_LINK',
       views_count: 0,
       created_at: new Date().toISOString().replace('T', ' ').slice(0, 16),
-      created_by: data.createdBy || 'Panitia Dokumentasi',
+      created_by: data.createdBy || '',
     };
 
     this.mediaItems.set(id, item);
@@ -392,8 +394,8 @@ class DocumentationService {
 
     const item: MediaItem = {
       media_id: id,
-      workspace_id: 'ws_kwarcab_bwi',
-      event_id: 'ev_jamcab_bwi_2026',
+      workspace_id: workspaceService.getCurrentWorkspace().id || '',
+      event_id: eventService.getCurrentEvent().id || '',
       media_type: 'VIDEO',
       provider: resolution.provider,
       source_type: resolution.sourceType,
@@ -403,7 +405,7 @@ class DocumentationService {
       original_url: data.source_url,
       title: data.title.trim(),
       caption: data.description?.trim(),
-      event_date: data.event_date || '2026-10-05',
+      event_date: data.event_date || eventService.getCurrentEvent()?.startDate || '',
       display_order: this.mediaItems.size + 1,
       publication_status: data.publication_status || 'PUBLISHED',
       metadata_status: resolution.accessStatus,
@@ -414,7 +416,7 @@ class DocumentationService {
       plays_count: 0,
       views_count: 0,
       created_at: new Date().toISOString().replace('T', ' ').slice(0, 16),
-      created_by: data.createdBy || 'Panitia Dokumentasi',
+      created_by: data.createdBy || '',
     };
 
     this.mediaItems.set(id, item);
