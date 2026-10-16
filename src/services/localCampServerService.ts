@@ -42,49 +42,41 @@ const STORAGE_KEYS = {
 };
 
 export class LocalCampServerService {
+  // Offline/localhost configuration is intentionally empty until the user
+  // configures a real edge server. No installation-specific values are shipped
+  // in the frontend bundle.
   private config: LocalServerConfig = {
-    mode: 'hybrid', // Default: Hybrid Mode (Local LAN for low-latency field ops + cloud sync)
-    serverUrl: 'http://192.168.10.1:8080',
-    lanSsid: 'SIEPANG_CAMP_OFFICER_WIFI',
-    edgeNodeId: 'EDGE-NODE-01',
-    secretKey: 'siepang_camp_edge_secret_token',
+    mode: 'offline',
+    serverUrl: '',
+    lanSsid: '',
+    edgeNodeId: '',
+    secretKey: '',
     autoSyncIntervalSeconds: 30,
   };
 
   private health: LocalServerHealth = {
-    connected: true,
-    latencyMs: 12,
-    status: 'online',
-    uptimeSeconds: 14250,
-    edgeNodeId: 'EDGE-NODE-01',
-    databaseType: 'SQLite (Camp Edge DB)',
-    databaseSizeBytes: 2457600, // ~2.4 MB
-    connectedDevicesCount: 28,
+    connected: false,
+    latencyMs: 0,
+    status: 'offline',
+    uptimeSeconds: 0,
+    edgeNodeId: '',
+    databaseType: 'Local Offline Datastore',
+    databaseSizeBytes: 0,
+    connectedDevicesCount: 0,
     localPendingUpstreamCount: 0,
-    localSyncedUpstreamCount: 142,
+    localSyncedUpstreamCount: 0,
     localConflictCount: 0,
-    lastUpstreamPush: '1 menit yang lalu',
-    lastDownstreamPull: '2 menit yang lalu',
-    lastHeartbeat: 'Baru saja',
+    lastUpstreamPush: '',
+    lastDownstreamPull: '',
+    lastHeartbeat: '',
     syncWorkerState: 'idle',
   };
 
   private edgeTransactions: OfflineTransaction[] = [];
   private bundleRegistry: BundleImportRecord[] = [];
   private backups: DatastoreBackupRecord[] = [];
-  private localSequence: number = 1000;
-  private edgeServerIdentity: AuthorizedEdgeServer = {
-    edge_server_id: 'EDGE-BWI-BUPER-01',
-    workspace_id: 'ws_banyuwangi',
-    event_id: 'ev_jamcab_bwi_2026',
-    server_name: 'Server Buper Lapangan Utama (Posko Komando)',
-    device_fingerprint: 'HW-BUPER-DELL-OPTIPLEX-7050',
-    created_at: '2026-10-01T08:00:00Z',
-    last_seen: new Date().toISOString(),
-    software_version: '1.1.0',
-    schema_version: '1.1.0',
-    status: 'ACTIVE',
-  };
+  private localSequence: number = 0;
+  private edgeServerIdentity: AuthorizedEdgeServer | null = null;
 
   private listeners: Set<() => void> = new Set();
 
@@ -110,25 +102,19 @@ export class LocalCampServerService {
       const bks = localStorage.getItem(STORAGE_KEYS.BACKUPS);
       if (bks) {
         this.backups = JSON.parse(bks);
-      } else {
-        // Initial checkpoint backup
-        this.backups = [
-          {
-            backup_id: 'bkp_initial_checkpoint_20261005',
-            created_at: new Date(Date.now() - 3600000).toISOString(),
-            size_bytes: 2457600,
-            type: 'full',
-            item_count: 142,
-            hash: 'sha256_checkpoint_init_ok',
-            filename: 'siepang_sqlite_backup_20261005_init.db',
-          },
-        ];
       }
       const seq = localStorage.getItem(STORAGE_KEYS.EDGE_SEQUENCE);
       if (seq) {
         this.localSequence = Number(seq);
       }
 
+      if (!this.config.edgeNodeId) {
+        this.config.edgeNodeId = `EDGE-${crypto.randomUUID()}`;
+      }
+      if (!this.config.secretKey) {
+        this.config.secretKey = crypto.randomUUID();
+      }
+      this.health.edgeNodeId = this.config.edgeNodeId;
       this.health.localPendingUpstreamCount = this.edgeTransactions.length;
     } catch (e) {
       console.warn('Failed to load local camp server state:', e);
@@ -345,10 +331,10 @@ export class LocalCampServerService {
           transactions: pending,
         },
         context: {
-          userId: currentUser?.id || 'usr_edge_worker',
+          userId: currentUser?.id || '',
           userRole: currentUser?.role || 'workspace_admin',
-          workspaceId: currentWorkspace?.id || 'ws_banyuwangi',
-          eventId: currentEvent?.id || 'ev_jamcab_bwi_2026',
+          workspaceId: currentWorkspace?.id || '',
+          eventId: currentEvent?.id || '',
         },
       });
 
@@ -423,10 +409,10 @@ export class LocalCampServerService {
           sinceVersion: 0,
         },
         context: {
-          userId: currentUser?.id || 'usr_edge_worker',
+          userId: currentUser?.id || '',
           userRole: currentUser?.role || 'workspace_admin',
-          workspaceId: currentWorkspace?.id || 'ws_banyuwangi',
-          eventId: currentEvent?.id || 'ev_jamcab_bwi_2026',
+          workspaceId: currentWorkspace?.id || '',
+          eventId: currentEvent?.id || '',
         },
       });
 
@@ -457,13 +443,13 @@ export class LocalCampServerService {
   public async generateSneakernetBundle(): Promise<SneakernetSyncBundle> {
     const currentWorkspace = workspaceService.getCurrentWorkspace();
     const currentEvent = eventService.getCurrentEvent();
-    const workspaceId = currentWorkspace?.id || 'ws_banyuwangi';
-    const eventId = currentEvent?.id || 'ev_jamcab_bwi_2026';
+    const workspaceId = currentWorkspace?.id || '';
+    const eventId = currentEvent?.id || '';
     const bundleId = `BND-${workspaceId.toUpperCase().replace('WS_', '')}-${Date.now().toString(36).toUpperCase()}`;
 
     const transactions = [...this.edgeTransactions];
     const payloadHash = await computeBundlePayloadHash(transactions);
-    const keyId = 'KEY-KWARCAB-BWI-2026';
+    const keyId = `KEY-${this.config.edgeNodeId}`;
 
     const signature = await signBundleHmac(payloadHash, keyId, this.config.secretKey, {
       bundleId,
@@ -484,8 +470,8 @@ export class LocalCampServerService {
       source_device_id: this.config.edgeNodeId,
       created_at: createdAt,
       expires_at: expiresAt,
-      from_sync_version: 100,
-      to_sync_version: 100 + transactions.length,
+      from_sync_version: this.localSequence,
+      to_sync_version: this.localSequence + transactions.length,
       transaction_count: transactions.length,
       payload_hash: payloadHash,
       signature_algorithm: 'HMAC-SHA256',
@@ -499,7 +485,7 @@ export class LocalCampServerService {
       workspaceId,
       eventId,
       exportedAt: createdAt,
-      exportSyncVersion: 100 + transactions.length,
+      exportSyncVersion: this.localSequence + transactions.length,
       checksum: payloadHash,
       totalRecords: transactions.length,
     };
@@ -557,8 +543,8 @@ export class LocalCampServerService {
   }> {
     const currentWorkspace = workspaceService.getCurrentWorkspace();
     const currentEvent = eventService.getCurrentEvent();
-    const expectedWorkspaceId = currentWorkspace?.id || 'ws_banyuwangi';
-    const expectedEventId = currentEvent?.id || 'ev_jamcab_bwi_2026';
+    const expectedWorkspaceId = currentWorkspace?.id || '';
+    const expectedEventId = currentEvent?.id || '';
 
     // Step 1: Format validation
     if (!bundle || typeof bundle !== 'object' || !Array.isArray(bundle.transactions)) {
@@ -576,7 +562,7 @@ export class LocalCampServerService {
     const workspaceId = bundle.workspace_id || bundle.workspaceId || '';
     const eventId = bundle.event_id || bundle.eventId || '';
     const sourceServerId = bundle.source_server_id || bundle.edgeNodeId || 'UNKNOWN_EDGE';
-    const keyId = bundle.key_id || 'KEY-KWARCAB-BWI-2026';
+    const keyId = bundle.key_id || `KEY-${this.config.edgeNodeId}`;
     const signature = bundle.signature || '';
     const expiresAt = bundle.expires_at || new Date(Date.now() + 86400000).toISOString();
     const createdAt = bundle.created_at || bundle.exportedAt || new Date().toISOString();
@@ -769,9 +755,9 @@ export class LocalCampServerService {
       event_type: 'credential_issued',
       severity: 'info',
       details: `Impor paket USB '${record.bundle_id}' sukses: ${accepted} transaksi baru, ${duplicates} duplikat diabaikan.`,
-      actor_id: authService.getCurrentUser()?.id || 'admin',
+      actor_id: authService.getCurrentUser()?.id || '',
       device_id: this.config.edgeNodeId,
-      workspace_id: bundle.workspace_id || 'ws_banyuwangi',
+      workspace_id: bundle.workspace_id || '',
     });
 
     return {
@@ -787,7 +773,7 @@ export class LocalCampServerService {
       bundle_id: bundleId,
       source: 'USB-SNEAKERNET',
       imported_at: new Date().toISOString(),
-      imported_by: authService.getCurrentUser()?.name || 'Unknown Officer',
+      imported_by: authService.getCurrentUser()?.name || '',
       result: reason,
       accepted_count: 0,
       duplicate_count: 0,
@@ -800,9 +786,9 @@ export class LocalCampServerService {
       event_type: 'invalid_usb_bundle',
       severity: 'critical',
       details: `Paket USB ditolak dan di-karantina [${reason}]: ${detail}`,
-      actor_id: 'security_monitor',
+      actor_id: authService.getCurrentUser()?.id || '',
       device_id: this.config.edgeNodeId,
-      workspace_id: 'ws_banyuwangi',
+      workspace_id: currentWorkspace?.id || '',
     });
     this.saveState();
   }
@@ -869,9 +855,9 @@ export class LocalCampServerService {
       event_type: 'credential_issued',
       severity: 'info',
       details: `Cadangan lokal aman '${filename}' (${backup.item_count} entitas) berhasil dibuat.`,
-      actor_id: authService.getCurrentUser()?.id || 'admin',
+      actor_id: authService.getCurrentUser()?.id || '',
       device_id: this.config.edgeNodeId,
-      workspace_id: 'ws_banyuwangi',
+      workspace_id: currentWorkspace?.id || '',
     });
 
     return backup;
@@ -914,37 +900,33 @@ export class LocalCampServerService {
     session?: any;
     message: string;
   }> {
-    const deviceId = localStorage.getItem('siepang_device_id') || 'dev_master_field_01';
+    const deviceId = localStorage.getItem('siepang_device_id') || '';
     const currentWorkspace = workspaceService.getCurrentWorkspace();
     const currentEvent = eventService.getCurrentEvent();
 
-    // Find candidate user by role
-    const candidates: Record<UserRole, string> = {
-      workspace_admin: 'usr_admin_sekretariat',
-      attendance_officer: 'usr_petugas_gerbang',
-      health_officer: 'usr_posko_medis',
-      judge: 'usr_dewan_juri',
-      superadmin: 'usr_admin_sekretariat',
-      event_admin: 'usr_admin_sekretariat',
-      kontingen_admin: 'usr_admin_sekretariat',
-      registration_officer: 'usr_petugas_gerbang',
-      logistic_officer: 'usr_admin_sekretariat',
-      committee: 'usr_petugas_gerbang',
-      ceremony_officer: 'usr_petugas_gerbang',
-      documentation_officer: 'usr_admin_sekretariat',
-      publication_officer: 'usr_admin_sekretariat',
-      participant: 'usr_petugas_gerbang',
-      viewer: 'usr_petugas_gerbang',
-    };
+    if (!deviceId || !currentWorkspace?.id || !currentEvent?.id) {
+      return {
+        success: false,
+        message: 'Mode darurat offline belum terikat ke device, workspace, dan event yang nyata.'
+      };
+    }
 
-    const targetUserId = candidates[requestedRole] || 'usr_petugas_gerbang';
+    const credential = offlineCredentialService.getCredentials().find(
+      item => item.role === requestedRole && item.status === 'active'
+    );
+    if (!credential) {
+      return {
+        success: false,
+        message: `Tidak ada kredensial offline aktif untuk role ${requestedRole}.`
+      };
+    }
 
     const result = await offlineCredentialService.verifyEmergencyOfflineCredential({
-      userId: targetUserId,
+      userId: credential.user_id,
       rawPin: pin,
       deviceId,
-      workspaceId: currentWorkspace?.id || 'ws_banyuwangi',
-      eventId: currentEvent?.id || 'ev_jamcab_bwi_2026',
+      workspaceId: currentWorkspace.id,
+      eventId: currentEvent.id,
     });
 
     if (result.success && result.session) {
