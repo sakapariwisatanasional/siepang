@@ -198,7 +198,7 @@ export const EventAdminHome: React.FC<EventAdminHomeProps> = ({
         </div>
       </section>
 
-      <section className="space-y-3" aria-label="Akses cepat">
+      <section className="relative space-y-3 overflow-visible pb-2" aria-label="Akses cepat">
         <div className="flex items-start gap-3">
           <span className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
             <LayoutGrid className="h-5 w-5" />
@@ -214,7 +214,7 @@ export const EventAdminHome: React.FC<EventAdminHomeProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 auto-rows-max overflow-visible">
           {tiles.map(({ label, description, tab, icon: Icon }) => (
             <button
               key={`${tab}-${label}`}
