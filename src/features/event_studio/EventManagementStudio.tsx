@@ -54,6 +54,7 @@ import { VisitorManagementStudio } from '../visitors/VisitorManagementStudio';
 import { PublicationMediaCenter } from './PublicationMediaCenter';
 import { QrPrintCenterModal } from '../documents/QrPrintCenterModal';
 import { NavTab } from '../../components/navigation/MobileNavigation';
+import campSceneIllustration from '../../assets/illustrations/camp-scene-arcane-2d.svg';
 
 export type StudioSection =
   | 'overview'
@@ -186,10 +187,10 @@ export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
       {activeSection === 'overview' ? (
         <section className="overflow-hidden rounded-[28px] sm:rounded-[32px] border border-red-100 bg-white shadow-[0_10px_35px_rgba(160,20,20,0.08)]">
           {/* Red event hero */}
-          <div className="relative overflow-hidden bg-[#D71920] px-4 py-5 sm:px-7 sm:py-7 text-white">
-            <div aria-hidden="true" className="absolute -right-16 -top-20 h-52 w-52 rounded-full bg-white/10" />
-            <div aria-hidden="true" className="absolute -bottom-24 right-24 h-48 w-48 rounded-full bg-[#F4D53F]/20" />
-            <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative overflow-hidden bg-[linear-gradient(135deg,#D71920_0%,#C51F1F_58%,#A71319_100%)] px-4 py-5 sm:px-7 sm:py-7 text-white">
+            <div aria-hidden="true" className="absolute -right-16 -top-20 h-52 w-52 rounded-full bg-white/10 blur-xl" />
+            <div aria-hidden="true" className="absolute -bottom-24 right-24 h-48 w-48 rounded-full bg-[#F4D53F]/20 blur-xl" />
+            <div className="relative grid gap-5 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
               <div className="min-w-0">
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11px] font-bold backdrop-blur-sm">
@@ -208,7 +209,7 @@ export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <div className="flex flex-wrap items-center gap-2 lg:justify-start">
                 <div className={`min-h-10 rounded-xl border px-3 text-[11px] font-bold flex items-center gap-1.5 ${
                   saveState.status === 'Saving…'
                     ? 'border-white/20 bg-white/10 text-white'
@@ -254,6 +255,30 @@ export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
                   className="min-h-10 min-w-10 rounded-xl bg-black/15 text-white inline-flex items-center justify-center">
                   <History className="h-4 w-4" />
                 </button>
+              </div>
+
+              <div className="relative min-h-[220px] overflow-hidden rounded-[26px] border border-white/15 bg-[linear-gradient(180deg,rgba(255,255,255,0.16)_0%,rgba(255,255,255,0.07)_100%)] p-3 shadow-[0_8px_28px_rgba(0,0,0,0.10)] backdrop-blur-sm sm:min-h-[250px] lg:min-h-[280px]">
+                <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/10 to-transparent" />
+                <img
+                  src={campSceneIllustration}
+                  alt="Ilustrasi perkemahan transparan"
+                  className="pointer-events-none absolute bottom-0 right-0 w-full max-w-[520px] select-none object-contain opacity-95"
+                />
+                <div className="relative z-10 flex h-full flex-col justify-between">
+                  <div className="flex justify-end">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[10px] font-bold text-white/90 backdrop-blur-sm">
+                      <Tent className="h-3.5 w-3.5" />
+                      2D transparan · non-3D
+                    </span>
+                  </div>
+                  <div className="max-w-[260px] rounded-[22px] border border-white/20 bg-white/14 p-4 shadow-sm backdrop-blur-sm">
+                    <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/70">Fokus Pengelolaan</p>
+                    <h3 className="mt-2 text-lg font-black text-white">Navigasi kartu, satu fitur satu halaman.</h3>
+                    <p className="mt-1.5 text-xs leading-relaxed text-white/80">
+                      Tampilan dibuat lebih ramah HP dengan nuansa kegiatan perkemahan, tanpa mengubah integrasi GAS yang sudah berjalan.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -341,8 +366,10 @@ export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
           </div>
 
           <div className="overflow-hidden rounded-[28px] border border-red-100 bg-white shadow-[0_8px_28px_rgba(160,20,20,0.06)]">
-            <div className="bg-[#D71920] px-4 py-5 text-white sm:px-7 sm:py-6">
-              <div className="flex items-start gap-3">
+            <div className="relative overflow-hidden bg-[linear-gradient(135deg,#D71920_0%,#C51F1F_58%,#A71319_100%)] px-4 py-5 text-white sm:px-7 sm:py-6">
+              <div aria-hidden="true" className="absolute right-0 top-0 h-full w-[40%] bg-gradient-to-l from-white/5 to-transparent" />
+              <img src={campSceneIllustration} alt="" className="pointer-events-none absolute bottom-0 right-0 h-[145px] max-w-[42%] object-contain opacity-20" />
+              <div className="relative flex items-start gap-3">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15">
                   <activeMenu.icon className="h-6 w-6 stroke-[2.2]" aria-hidden="true" />
                 </div>
