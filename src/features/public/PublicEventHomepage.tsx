@@ -45,7 +45,6 @@ import {
   XCircle,
   FileCheck,
   Trophy,
-  Heart,
   Medal,
   Zap,
   Menu,
@@ -56,15 +55,12 @@ import { documentationService } from '../../services/documentationService';
 import { bannerSponsorService } from '../../services/bannerSponsorService';
 import { featureControlService } from '../../services/featureControlService';
 import { pointService } from '../../services/pointService';
-import { competitionService } from '../../services/competitionService';
-import { votingService } from '../../services/votingService';
 import { documentStudioService } from '../../services/documentStudioService';
 import {
   portalConfigService,
   PortalSectionKey,
   PublicPortalConfig,
 } from '../../services/portalConfigService';
-import { PublicHeroBanner } from '../../components/banners/PublicHeroBanner';
 import { PublicInformationBanner } from '../../components/banners/PublicInformationBanner';
 import { PublicSponsorStrip } from '../../components/banners/PublicSponsorStrip';
 import { GlobalFooter } from '../../components/layout/GlobalFooter';
@@ -85,6 +81,83 @@ interface PublicEventHomepageProps {
   installationError?: string | null;
 }
 
+
+/**
+ * Mengubah URL logo Google Drive dari sheet `event` menjadi URL thumbnail
+ * yang dapat dirender langsung oleh browser. URL non-Drive tetap digunakan
+ * apa adanya agar konfigurasi GAS tetap fleksibel.
+ */
+const resolveEventLogoUrl = (value: unknown): string => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+
+  const driveMatch = raw.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?.*?id=)([a-zA-Z0-9_-]+)/i);
+  if (driveMatch?.[1]) {
+    return `https://drive.google.com/thumbnail?id=${driveMatch[1]}&sz=w1200`;
+  }
+
+  // Dukungan untuk URL Google Drive berbentuk `.../d/FILE_ID/view?...`
+  const pathMatch = raw.match(/drive\.google\.com\/(?:file\/d\/|d\/)([a-zA-Z0-9_-]+)/i);
+  if (pathMatch?.[1]) {
+    return `https://drive.google.com/thumbnail?id=${pathMatch[1]}&sz=w1200`;
+  }
+
+  return raw;
+};
+
+/**
+ * Memformat tanggal YYYY-MM-DD tanpa `new Date('YYYY-MM-DD')` agar tidak
+ * terkena pergeseran zona waktu browser. Format publik yang diinginkan:
+ * "29 Oktober - 31 Oktober 2026".
+ */
+const formatEventDate = (startValue: unknown, endValue?: unknown): string => {
+  const months = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  ];
+
+  const parseDateParts = (value: unknown): { day: number; month: number; year: number } | null => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return null;
+
+    const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]);
+      const day = Number(isoMatch[3]);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return { day, month, year };
+      }
+    }
+
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return {
+      day: parsed.getDate(),
+      month: parsed.getMonth() + 1,
+      year: parsed.getFullYear(),
+    };
+  };
+
+  const start = parseDateParts(startValue);
+  const end = parseDateParts(endValue);
+
+  if (!start) return 'Tanggal kegiatan diumumkan';
+
+  const startText = `${start.day} ${months[start.month - 1]} ${start.year}`;
+  if (!end) return startText;
+
+  if (start.year === end.year && start.month === end.month) {
+    return `${start.day} - ${end.day} ${months[start.month - 1]} ${start.year}`;
+  }
+
+  if (start.year === end.year) {
+    return `${start.day} ${months[start.month - 1]} - ${end.day} ${months[end.month - 1]} ${start.year}`;
+  }
+
+  return `${start.day} ${months[start.month - 1]} ${start.year} - ${end.day} ${months[end.month - 1]} ${end.year}`;
+};
+
 export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
   onNavigateToGallery,
   onNavigateToVisitorRegister,
@@ -103,60 +176,28 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activePublicPage, setActivePublicPage] = useState<string>('home');
   const [scheduleRevision, setScheduleRevision] = useState(0);
-  const [digitalWorks, setDigitalWorks] = useState(competitionService.getDigitalWorks());
+  const [officialCompetitions, setOfficialCompetitions] = useState<Array<{id:string;title:string;category:string;scheduleTime:string;location:string}>>([]);
   const [competitionLoading, setCompetitionLoading] = useState(true);
   const [competitionError, setCompetitionError] = useState('');
-  const [votingWorkId, setVotingWorkId] = useState<string | null>(null);
-  const [voteMessage, setVoteMessage] = useState('');
-  const [workFilter, setWorkFilter] = useState<'all' | 'photo' | 'video'>('all');
-
-  const refreshPublicWorks = async () => {
+  const refreshOfficialCompetitions = async () => {
     setCompetitionLoading(true);
     setCompetitionError('');
     try {
-      await competitionService.refreshPublicDigitalWorks();
-      setDigitalWorks([...competitionService.getDigitalWorks()]);
+      const backend = bootstrapService.getBackendUrl();
+      if (!backend) throw new Error('URL GAS belum tersedia.');
+      const endpoint = new URL(backend);
+      endpoint.searchParams.set('action','competitions.public.list');
+      const response = await fetch(endpoint.toString(), {method:'GET',redirect:'follow'});
+      if (!response.ok) throw new Error(`Server merespons ${response.status}`);
+      const result = await response.json();
+      if (!result.ok || !Array.isArray(result.data?.competitions)) throw new Error(result.error?.message || 'Format daftar lomba tidak valid.');
+      setOfficialCompetitions(result.data.competitions);
     } catch (e: any) {
-      setCompetitionError(e?.message || 'Karya peserta belum dapat dimuat.');
-    } finally {
-      setCompetitionLoading(false);
-    }
+      setCompetitionError(e?.message || 'Informasi lomba belum dapat dimuat.');
+    } finally {setCompetitionLoading(false);}
   };
+  useEffect(() => {void refreshOfficialCompetitions();}, []);
 
-  useEffect(() => {
-    void refreshPublicWorks();
-    return competitionService.subscribe(() => {
-      setDigitalWorks([...competitionService.getDigitalWorks()]);
-    });
-  }, []);
-  useEffect(() => {
-    return votingService.subscribe(() => {
-      setDigitalWorks([...competitionService.getDigitalWorks()]);
-    });
-  }, []);
-
-  const handlePublicVote = async (workId: string) => {
-    if (votingWorkId) return;
-    setVotingWorkId(workId);
-    setVoteMessage('');
-    try {
-      const result = await votingService.vote(workId);
-      if (result.isAlreadyVoted) {
-        setVoteMessage('Anda sudah memberikan dukungan untuk karya ini dari perangkat ini.');
-      } else {
-        setVoteMessage(
-          result.xpAwarded > 0
-            ? `Dukungan tercatat. +${result.xpAwarded} XP untuk peserta.`
-            : 'Dukungan tercatat.'
-        );
-      }
-      setDigitalWorks([...competitionService.getDigitalWorks()]);
-    } catch (e: any) {
-      setVoteMessage(e?.message || 'Voting gagal disimpan.');
-    } finally {
-      setVotingWorkId(null);
-    }
-  };
 
   // Certificate Verification Form State
   const [certQuery, setCertQuery] = useState('');
@@ -333,7 +374,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
     home: 'Beranda', announcements: 'Informasi & Pengumuman', schedule: 'Jadwal Kegiatan',
     leaderboard: 'Peringkat', photo_gallery: 'Galeri Foto', video_gallery: 'Galeri Video',
     qr_scanner: 'Scan QR', visitor: 'Registrasi Tamu', verification: 'Verifikasi Sertifikat',
-    competitions: 'Unjuk Karya', sponsors: 'Sponsor',
+    competitions: 'Mata Lomba Resmi', sponsors: 'Sponsor',
   };
 
   const viewportWidthClass = {
@@ -374,169 +415,288 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
 
   // Section renderers
   const renderHeroSection = () => {
-    if (isConfigured && features.heroBanner) {
-      return (
-        <section id="section-hero" className="space-y-4">
-          <PublicHeroBanner
-            onNavigateRoute={route => {
-              if (route === 'gallery') onNavigateToGallery?.();
-              else if (route === 'schedule') onNavigateToSchedule?.();
-              else if (route === 'visitors') setShowVisitorModal(true);
-              else if (route === 'scanner') onOpenScanner?.();
-            }}
-            location="PUBLIC_HOME_TOP"
+    const primaryRed = '#E31B23';
+    const deepRed = '#B80F1A';
+    const quickItems = [
+      {
+        label: 'Jadwal',
+        caption: 'Agenda kegiatan',
+        icon: Calendar,
+        section: 'section-schedule',
+        visible: features.schedule,
+        tone: 'bg-red-50 text-red-600',
+      },
+      {
+        label: 'Peserta',
+        caption: 'Peringkat & XP',
+        icon: Users,
+        section: 'section-leaderboard',
+        visible: features.leaderboard,
+        tone: 'bg-purple-50 text-purple-600',
+      },
+      {
+        label: 'Lomba',
+        caption: 'Mata lomba resmi',
+        icon: Trophy,
+        section: 'section-official-competitions',
+        visible: true,
+        tone: 'bg-amber-50 text-amber-600',
+      },
+      {
+        label: 'Galeri',
+        caption: 'Foto & video',
+        icon: ImageIcon,
+        section: 'section-photo-gallery',
+        visible: features.photoDocumentation || features.videoDocumentation,
+        tone: 'bg-emerald-50 text-emerald-600',
+      },
+      {
+        label: 'Informasi',
+        caption: 'Warta kegiatan',
+        icon: Bell,
+        section: 'section-announcements',
+        visible: features.announcements || features.infoBanner,
+        tone: 'bg-rose-50 text-rose-600',
+      },
+      {
+        label: 'Buku Tamu',
+        caption: 'Registrasi tamu',
+        icon: Users,
+        section: 'section-visitor',
+        visible: features.visitorRegistration,
+        tone: 'bg-violet-50 text-violet-600',
+      },
+    ];
+
+    const firstAgenda = scheduleList[0];
+    // Identitas event berasal dari sheet `event` melalui eventService/GAS.
+    // Logo Drive dikonversi ke thumbnail agar logo asli dapat tampil langsung.
+    const eventLogo = resolveEventLogoUrl(event.logoUrl || event.logo_url || '');
+    const eventLocation =
+      event.location ||
+      event.venue ||
+      event.campGround ||
+      event.camp_ground ||
+      'Bumi Perkemahan';
+    const eventDate = formatEventDate(
+      event.startDate || event.start_date,
+      event.endDate || event.end_date,
+    );
+
+    return (
+      <section id="section-hero" aria-label="Beranda publik SiEpang" className="space-y-5">
+        {/* Public landing hero */}
+        <div
+          className="relative overflow-hidden rounded-[30px] sm:rounded-[36px] min-h-[430px] sm:min-h-[500px] shadow-xl"
+          style={{ background: `linear-gradient(135deg, ${primaryRed} 0%, ${deepRed} 58%, #8F0C15 100%)` }}
+        >
+          {/* Decorative vector camping illustration: 80% transparent = 20% opacity */}
+          <img
+            src="/assets/siepang-scout-campsite.png"
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute bottom-[-8px] right-[-90px] w-[92%] max-w-[720px] opacity-20 select-none sm:right-[-55px] sm:w-[68%] lg:right-[-20px] lg:w-[58%]"
           />
 
-          {/* Event Metadata Hero Summary */}
-          <div className="rounded-[28px] bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 p-5 sm:p-7 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="space-y-1">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#208C60]/10 text-[#208C60] dark:text-[#F47743] text-xs font-bold">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>{event.organizationalLevel || 'Kwartir'} · Resmi</span>
-                </div>
-                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">
-                  {event.name}
-                </h1>
-                {event.theme && (
-                  <p className="text-sm font-semibold text-[#F47743] italic">
-                    "{event.theme}"
-                  </p>
-                )}
+          <div aria-hidden="true" className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
+          <div aria-hidden="true" className="absolute -bottom-28 -left-24 h-72 w-72 rounded-full bg-[#F8C13A]/20 blur-3xl" />
+          <div aria-hidden="true" className="absolute left-[48%] top-8 h-2 w-2 rounded-full bg-white/50 shadow-[40px_55px_0_rgba(255,255,255,.25),90px_20px_0_rgba(255,255,255,.18),150px_80px_0_rgba(255,255,255,.2)]" />
+
+          <div className="relative z-10 flex min-h-[430px] flex-col justify-between p-5 sm:min-h-[500px] sm:p-8 lg:p-10">
+            <div className="flex items-start justify-between gap-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.12em] text-white backdrop-blur-sm sm:text-[11px]">
+                <Sparkles className="h-3.5 w-3.5 text-[#FFD86B]" />
+                Portal Publik Resmi
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              {onNavigateToLogin && (
                 <button
                   type="button"
-                  onClick={() => onOpenScanner?.()}
-                  className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer active:scale-95"
+                  onClick={() => onNavigateToLogin()}
+                  className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-3.5 py-2 text-xs font-bold text-white backdrop-blur-sm transition hover:bg-white/20 active:scale-95"
                 >
-                  <QrCode className="w-4 h-4" />
-                  <span>Scan QR</span>
+                  <LogIn className="h-4 w-4" />
+                  Masuk
                 </button>
-                {features.visitorRegistration && (
-                  <button
-                    type="button"
-                    onClick={() => setShowVisitorModal(true)}
-                    className="px-4 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Users className="w-4 h-4" />
-                    <span>Daftar Tamu</span>
-                  </button>
+              )}
+            </div>
+
+            <div className="grid items-end gap-6 lg:grid-cols-[minmax(0,1fr)_250px]">
+              <div className="max-w-[620px] space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-[22px] bg-white p-2.5 shadow-lg sm:h-[86px] sm:w-[86px] sm:rounded-[26px]">
+                    {eventLogo ? (
+                      <img
+                        src={eventLogo}
+                        alt={`Logo ${event.name || 'kegiatan'}`}
+                        className="h-full w-full object-contain"
+                      />
+                    ) : (
+                      <span className="text-3xl">⚜️</span>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-white/75">
+                      {event.organizationalLevel || 'Kwartir'} · Kegiatan Pramuka
+                    </p>
+                    <h1 className="mt-0.5 text-[28px] font-black leading-[1.05] tracking-tight text-white sm:text-4xl lg:text-5xl">
+                      {isConfigured ? event.name : 'Selamat Datang di SiEpang'}
+                    </h1>
+                  </div>
+                </div>
+
+                {event.theme && (
+                  <p className="max-w-xl text-sm font-semibold italic text-white/85 sm:text-base">
+                    “{event.theme}”
+                  </p>
                 )}
+
+                <div className="flex flex-wrap gap-2 text-xs font-semibold text-white/90">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-black/15 px-3 py-1.5 backdrop-blur-sm">
+                    <MapPin className="h-3.5 w-3.5 text-[#FFD86B]" />
+                    <span className="max-w-[250px] truncate">{eventLocation}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-black/15 px-3 py-1.5 backdrop-blur-sm">
+                    <Calendar className="h-3.5 w-3.5 text-[#FFD86B]" />
+                    <span>{eventDate}</span>
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {features.schedule && (
+                    <button
+                      type="button"
+                      onClick={() => openPublicPage('section-schedule')}
+                      className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-extrabold text-[#C5141E] shadow-lg transition hover:bg-white/90 active:scale-95"
+                    >
+                      <Calendar className="h-4 w-4" />
+                      Lihat Jadwal
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  )}
+                  {features.visitorRegistration && (
+                    <button
+                      type="button"
+                      onClick={() => setShowVisitorModal(true)}
+                      className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-bold text-white backdrop-blur-sm transition hover:bg-white/20 active:scale-95"
+                    >
+                      <Users className="h-4 w-4" />
+                      Buku Tamu
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Agenda preview */}
+              <div className="hidden rounded-[26px] border border-white/20 bg-white/95 p-4 shadow-2xl backdrop-blur-md lg:block">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Agenda Hari Ini</p>
+                    <p className="text-sm font-black text-slate-900">Kegiatan Terdekat</p>
+                  </div>
+                  <span className="rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-extrabold text-red-600">
+                    LIVE
+                  </span>
+                </div>
+
+                {firstAgenda ? (
+                  <div className="mt-3 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-extrabold text-red-600">
+                        {firstAgenda.time || `${firstAgenda.startTime || ''} - ${firstAgenda.endTime || ''}`}
+                      </span>
+                      {firstAgenda.xpReward > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">
+                          <Zap className="h-3 w-3" />
+                          +{firstAgenda.xpReward} XP
+                        </span>
+                      )}
+                    </div>
+                    <h2 className="mt-2 text-sm font-black leading-tight text-slate-900">{firstAgenda.title}</h2>
+                    <p className="mt-1.5 flex items-center gap-1 text-[11px] text-slate-500">
+                      <MapPin className="h-3 w-3 shrink-0 text-red-500" />
+                      <span className="truncate">{firstAgenda.location || 'Lapangan Utama'}</span>
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-2xl border border-dashed border-slate-200 p-4 text-center">
+                    <Calendar className="mx-auto mb-1.5 h-5 w-5 text-slate-300" />
+                    <p className="text-[11px] font-semibold text-slate-500">Belum ada agenda yang dipublikasikan.</p>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => openPublicPage('section-schedule')}
+                  className="mt-3 flex w-full items-center justify-center gap-1 rounded-xl py-2 text-xs font-bold text-red-600 transition hover:bg-red-50"
+                >
+                  Lihat semua jadwal <ArrowRight className="h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-black/40 border border-black/5 dark:border-white/5 space-y-0.5">
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
-                  <MapPin className="w-3 h-3 text-[#F47743]" />
-                  <span>Lokasi:</span>
-                </div>
-                <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                  {event.campGround || 'Bumi Perkemahan'}
-                </div>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-black/40 border border-black/5 dark:border-white/5 space-y-0.5">
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
-                  <Calendar className="w-3 h-3 text-purple-600" />
-                  <span>Tanggal:</span>
-                </div>
-                <div className="text-xs font-bold text-amber-600 dark:text-amber-400 truncate">
-                  {event.startDate || 'Diumumkan'} {event.endDate ? `- ${event.endDate}` : ''}
-                </div>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-black/40 border border-black/5 dark:border-white/5 space-y-0.5">
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
-                  <Users className="w-3 h-3 text-blue-600" />
-                  <span>Peserta:</span>
-                </div>
-                <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                  {event.registeredCount || 0} Terdaftar
-                </div>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-black/40 border border-black/5 dark:border-white/5 space-y-0.5">
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                  <span>Penyelenggara:</span>
-                </div>
-                <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 truncate">
-                  {event.organizer || 'Kwartir'}
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      );
-    }
-
-    // Unconfigured Neutral Hero
-    return (
-      <section
-        id="section-hero"
-        className="relative overflow-hidden rounded-[36px] bg-gradient-to-br from-white via-slate-50 to-slate-100 dark:from-[#141418] dark:via-[#101014] dark:to-black border border-black/5 dark:border-white/10 p-6 sm:p-10 lg:p-12 shadow-sm space-y-6"
-      >
-        <div className="max-w-3xl space-y-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#208C60]/10 dark:bg-[#208C60]/20 border border-[#208C60]/20 text-[#208C60] dark:text-[#F47743] text-xs font-bold">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>SiEpang — Sistem Informasi Perkemahan</span>
-          </div>
-
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-900 dark:text-white tracking-tight leading-[1.15]">
-            Portal Resmi Kegiatan Perkemahan Pramuka
-          </h1>
-
-          <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed">
-            Pusat informasi publik terintegrasi untuk peserta, kontingen, panitia, dan orang tua. Menampilkan jadwal giat, perolehan ranking XP, album foto/video dokumentasi, dan verifikasi dokumen.
-          </p>
-
-          <div className="flex flex-wrap gap-2 pt-2">
-            <span className="px-3 py-1 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300 text-xs font-semibold">
-              ⚜️ Gerakan Pramuka
-            </span>
-            <span className="px-3 py-1 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300 text-xs font-semibold">
-              🛡️ Terverifikasi Resmi
-            </span>
-            <span className="px-3 py-1 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300 text-xs font-semibold">
-              🏕️ Portal Kegiatan Mandiri
-            </span>
           </div>
         </div>
 
-        <div className="pt-2 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={() => onOpenScanner?.()}
-            className="px-5 py-3 rounded-2xl bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white font-bold text-xs sm:text-sm shadow-md transition-all inline-flex items-center gap-2 cursor-pointer active:scale-95"
-          >
-            <QrCode className="w-4 h-4" />
-            <span>Buka Scanner QR</span>
-          </button>
+        {/* Event summary strip */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: 'Lokasi', value: eventLocation, icon: MapPin, tone: 'text-red-600 bg-red-50' },
+            { label: 'Tanggal', value: eventDate, icon: Calendar, tone: 'text-amber-600 bg-amber-50' },
+            { label: 'Peserta', value: `${event.registeredCount || 0} terdaftar`, icon: Users, tone: 'text-purple-600 bg-purple-50' },
+            { label: 'Penyelenggara', value: event.organizer || event.organizationalLevel || 'Kwartir', icon: ShieldCheck, tone: 'text-emerald-600 bg-emerald-50' },
+          ].map(item => {
+            const Icon = item.icon;
+            return (
+              <div key={item.label} className="min-w-0 rounded-[22px] border border-slate-100 bg-white p-3.5 shadow-sm sm:p-4">
+                <div className="flex items-center gap-2">
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${item.tone}`}>
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{item.label}</p>
+                    <p className="truncate text-xs font-extrabold text-slate-800 sm:text-sm">{item.value}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
-          {features.visitorRegistration && (
-            <button
-              type="button"
-              onClick={() => setShowVisitorModal(true)}
-              className="px-5 py-3 rounded-2xl bg-white dark:bg-white/10 hover:bg-slate-100 dark:hover:bg-white/15 text-slate-800 dark:text-white border border-black/10 dark:border-white/10 font-bold text-xs sm:text-sm shadow-xs transition-colors inline-flex items-center gap-2 cursor-pointer"
-            >
-              <Users className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-              <span>Daftar Tamu (Visitor)</span>
-            </button>
-          )}
+        {/* Quick menu */}
+        <div className="space-y-3">
+          <div className="flex items-end justify-between gap-3 px-1">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-red-500">Akses Cepat</p>
+              <h2 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">Menu SiEpang</h2>
+            </div>
+            <span className="text-xs font-semibold text-slate-400">Pilih layanan</span>
+          </div>
 
-          {features.schedule && onNavigateToSchedule && (
-            <button
-              type="button"
-              onClick={onNavigateToSchedule}
-              className="px-5 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs sm:text-sm transition-colors inline-flex items-center gap-2 cursor-pointer"
-            >
-              <Calendar className="w-4 h-4 text-amber-400 dark:text-amber-600" />
-              <span>Jadwal Kegiatan</span>
-            </button>
-          )}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {quickItems.filter(item => item.visible).map(item => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => {
+                    if (item.section === 'section-visitor') {
+                      setShowVisitorModal(true);
+                      return;
+                    }
+                    openPublicPage(item.section);
+                  }}
+                  className="group min-h-[118px] rounded-[22px] border border-slate-100 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
+                >
+                  <span className={`flex h-12 w-12 items-center justify-center rounded-[17px] ${item.tone} transition-transform group-hover:scale-105 group-active:scale-95`}>
+                    <Icon className="h-6 w-6" />
+                  </span>
+                  <span className="mt-3 block text-sm font-black text-slate-900">{item.label}</span>
+                  <span className="mt-0.5 block text-[11px] leading-tight text-slate-500">{item.caption}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </section>
     );
@@ -1443,7 +1603,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
         </nav>
 
         {/* Main Portal Body */}
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-8 flex-1 w-full">
+        <div className="max-w-6xl mx-auto w-full flex-1 px-4 py-5 pb-28 sm:px-6 sm:py-6 md:pb-8 space-y-7">
           {/* STATE 4 — NON-BLOCKING LOADING INDICATOR */}
           {isLoading && (
             <div className="rounded-2xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40 p-3 text-xs text-blue-800 dark:text-blue-300 flex items-center justify-between gap-3 animate-pulse">
@@ -1482,219 +1642,26 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               <h1 className="font-bold text-lg">{publicPageTitle[activePublicPage] || 'Layanan Publik'}</h1>
             </div>
           )}
-          {/* Modern grid launchpad shown only on the public home page. */}
-          {activePublicPage === 'home' && (
-          <section aria-label="Akses cepat SiEpang" className="mb-7 space-y-5">
-            <div className="relative overflow-hidden rounded-[28px] bg-[#172E2B] px-5 py-6 sm:px-7 sm:py-8 text-white shadow-lg">
-              <div aria-hidden="true" className="absolute -top-12 -right-12 h-44 w-44 rounded-full bg-[#F4B62C]/20 blur-2xl" />
-              <div aria-hidden="true" className="absolute -bottom-20 right-20 h-44 w-44 rounded-full bg-[#EE6547]/15 blur-2xl" />
-              <div className="relative max-w-xl space-y-3">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-bold text-[#FFE2A1]"><Sparkles className="h-3.5 w-3.5"/> PORTAL PERKEMAHAN</span>
-                <h1 className="text-2xl sm:text-3xl font-black leading-tight tracking-tight">{isConfigured ? event.name : 'Selamat Datang di SiEpang'}</h1>
-                <p className="text-sm text-slate-200 leading-relaxed">Jelajahi kegiatan, informasi resmi, dan layanan perkemahan dengan mudah.</p>
-                <div className="flex flex-wrap gap-2 pt-1">
-                  <button type="button" onClick={() => openPublicPage('section-schedule')} className="min-h-11 inline-flex items-center gap-2 rounded-full bg-[#F7BD36] px-5 py-2.5 font-bold text-sm text-[#272019] hover:bg-[#FFD36A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"><Calendar className="h-4 w-4"/> Lihat Jadwal <ArrowRight className="h-4 w-4"/></button>
-                  {onNavigateToLogin && <button type="button" onClick={() => onNavigateToLogin()} className="min-h-11 inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-4 py-2.5 font-semibold text-sm text-white hover:bg-white/20"><LogIn className="h-4 w-4"/> Masuk</button>}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">Jelajahi SiEpang</h2>
-              <span className="text-xs text-slate-500 dark:text-slate-400">Akses cepat</span>
-            </div>
-            <div className="grid grid-cols-4 gap-x-2 gap-y-4 sm:grid-cols-4 lg:grid-cols-8">
-              {([
-                {label:'Jadwal',icon:Calendar,section:'section-schedule',color:'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200'},
-                {label:'Unjuk Karya',icon:Trophy,section:'section-official-competitions',color:'bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-200'},
-                {label:'Scan QR',icon:QrCode,section:'section-qr-scanner',color:'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200'},
-                {label:'Informasi',icon:Bell,section:'section-announcements',color:'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200'},
-                {label:'Ranking',icon:Medal,section:'section-leaderboard',color:'bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-200'},
-                {label:'Galeri',icon:ImageIcon,section:'section-photo-gallery',color:'bg-sky-100 text-sky-800 dark:bg-sky-500/20 dark:text-sky-200'},
-                {label:'Tamu',icon:Users,section:'section-visitor',color:'bg-purple-100 text-purple-800 dark:bg-purple-500/20 dark:text-purple-200'},
-                {label:'Verifikasi',icon:ShieldCheck,section:'section-verification',color:'bg-slate-200 text-slate-800 dark:bg-slate-500/20 dark:text-slate-200'},
-              ] as const).filter(item => {
-                const sections: Record<string, PortalSectionKey> = {'section-schedule':'schedule','section-qr-scanner':'qr_scanner','section-announcements':'announcements','section-leaderboard':'leaderboard','section-photo-gallery':'photo_gallery','section-visitor':'visitor','section-verification':'verification'};
-                const section = sections[item.section];
-                return !section || portalConfig.section_visibility[section];
-              }).map(item => {
-                const Icon = item.icon;
-                return <button key={item.label} type="button" onClick={() => item.label === 'Scan QR' && onOpenScanner ? onOpenScanner() : openPublicPage(item.section)} className="group flex min-h-[88px] flex-col items-center gap-2 rounded-2xl p-1.5 text-center hover:bg-black/5 dark:hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#E9A929]" aria-label={`Buka ${item.label}`}>
-                  <span className={`flex h-14 w-14 items-center justify-center rounded-[19px] shadow-sm transition-transform group-active:scale-95 ${item.color}`}><Icon className="h-6 w-6"/></span>
-                  <span className="text-[11px] sm:text-xs font-semibold leading-tight text-slate-800 dark:text-slate-100">{item.label}</span>
-                </button>;
-              })}
-            </div>
-          </section>
-
-          )}
-          {/* Unjuk Karya: public participant posts + server-authoritative voting. */}
+          {/* Mata lomba resmi ditampilkan sebagai halaman tersendiri. */}
           {activePublicPage === 'competitions' && (
-          <section id="section-official-competitions" className="mb-8 space-y-5">
-            <div className="rounded-[28px] bg-white dark:bg-[#141418] border border-slate-200 dark:border-white/10 p-5 sm:p-7 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                <div>
-                  <div className="inline-flex items-center gap-2 rounded-full bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 px-3 py-1.5 text-xs font-bold text-[#F47743]">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    Ajang Prestasi & Kreativitas Kepramukaan
-                  </div>
-                  <h2 className="mt-3 text-2xl sm:text-3xl font-black text-[#21483D] dark:text-white tracking-tight">
-                    Unjuk Karya
-                  </h2>
-                  <p className="mt-1 text-sm sm:text-base text-slate-500 dark:text-slate-400">
-                    Saksikan karya peserta dan berikan dukungan melalui voting.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void refreshPublicWorks()}
-                  disabled={competitionLoading}
-                  className="shrink-0 rounded-xl px-4 py-2.5 text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 disabled:opacity-50 inline-flex items-center gap-2"
-                >
-                  <RefreshCw className={`w-4 h-4 ${competitionLoading ? 'animate-spin' : ''}`} />
-                  Muat Ulang
-                </button>
-              </div>
-
-              <div className="mt-5 grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/10">
-                {([
-                  ['all', `Photo dan Video (${digitalWorks.length})`],
-                  ['photo', `Foto (${digitalWorks.filter(w => w.mediaType === 'photo').length})`],
-                  ['video', `Video (${digitalWorks.filter(w => w.mediaType !== 'photo').length})`],
-                ] as const).map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setWorkFilter(value)}
-                    className={`py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${
-                      workFilter === value
-                        ? 'bg-white dark:bg-[#202025] text-[#F47743] shadow-sm'
-                        : 'text-slate-500 dark:text-slate-400'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+          <section id="section-official-competitions" className="mb-8 scroll-mt-24 rounded-3xl bg-white dark:bg-[#141418] border border-slate-200 dark:border-white/10 p-5 sm:p-6 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="font-bold text-lg flex items-center gap-2"><Trophy className="w-5 h-5 text-amber-500"/> Mata Lomba Resmi</h2>
+              <button type="button" onClick={() => void refreshOfficialCompetitions()} className="rounded-lg px-3 py-2 text-sm bg-slate-100 dark:bg-white/10">Muat Ulang</button>
             </div>
-
-            {voteMessage && (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200">
-                {voteMessage}
-              </div>
-            )}
-
-            {competitionLoading ? (
-              <div className="rounded-[28px] bg-white dark:bg-[#141418] border border-slate-200 dark:border-white/10 p-12 text-center">
-                <RefreshCw className="w-8 h-8 mx-auto text-[#F47743] animate-spin" />
-                <p className="mt-3 text-sm font-semibold text-slate-600 dark:text-slate-300">Memuat karya peserta…</p>
-              </div>
-            ) : competitionError ? (
-              <div className="rounded-[28px] bg-white dark:bg-[#141418] border border-rose-200 dark:border-rose-500/20 p-8 text-center">
-                <AlertTriangle className="w-8 h-8 mx-auto text-rose-500" />
-                <p className="mt-3 text-sm font-semibold text-rose-700 dark:text-rose-300">{competitionError}</p>
-                <button type="button" onClick={() => void refreshPublicWorks()} className="mt-4 rounded-xl bg-slate-900 text-white px-4 py-2 text-xs font-bold">
-                  Coba Lagi
-                </button>
-              </div>
-            ) : (() => {
-              const visibleWorks = digitalWorks.filter(work =>
-                workFilter === 'all' ||
-                (workFilter === 'photo' ? work.mediaType === 'photo' : work.mediaType !== 'photo')
-              );
-
-              if (visibleWorks.length === 0) {
-                return (
-                  <div className="rounded-[28px] bg-white dark:bg-[#141418] border border-slate-200 dark:border-white/10 p-12 text-center">
-                    <ImageIcon className="w-10 h-10 mx-auto text-slate-300" />
-                    <h3 className="mt-4 font-black text-lg text-[#21483D] dark:text-white">Belum ada karya yang dipublikasikan</h3>
-                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                      Karya peserta akan muncul di sini setelah dipublikasikan oleh panitia.
-                    </p>
-                  </div>
-                );
-              }
-
-              return (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
-                  {visibleWorks.map(work => {
-                    const alreadyVoted = votingService.hasVoted(work.id);
-                    return (
-                      <article key={work.id} className="overflow-hidden rounded-[26px] bg-white dark:bg-[#141418] border border-slate-200 dark:border-white/10 shadow-sm hover:shadow-md transition-shadow">
-                        <a
-                          href={work.originalUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="group relative block aspect-[4/3] bg-slate-100 dark:bg-black/30 overflow-hidden"
-                          aria-label={`Buka karya ${work.title}`}
-                        >
-                          {work.thumbnailUrl ? (
-                            <img
-                              src={work.thumbnailUrl}
-                              alt=""
-                              loading="lazy"
-                              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                              onError={event => {
-                                event.currentTarget.style.display = 'none';
-                                event.currentTarget.parentElement?.classList.add('bg-slate-200', 'dark:bg-slate-800');
-                              }}
-                            />
-                          ) : null}
-                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                            <div className="rounded-full bg-black/55 backdrop-blur-sm p-4 text-white">
-                              {work.mediaType === 'photo' ? <ImageIcon className="w-7 h-7" /> : <Play className="w-7 h-7 fill-current" />}
-                            </div>
-                          </div>
-                          <div className="absolute left-3 top-3 rounded-full bg-black/65 px-2.5 py-1 text-[10px] font-bold text-white">
-                            {work.mediaType === 'photo' ? 'PHOTO' : 'VIDEO'}
-                          </div>
-                        </a>
-
-                        <div className="p-4 sm:p-5">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <h3 className="font-black text-base text-slate-900 dark:text-white line-clamp-2">{work.title}</h3>
-                              <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400 truncate">
-                                {work.creatorName || 'Peserta'}{work.contingentName ? ` · ${work.contingentName}` : ''}
-                              </p>
-                            </div>
-                            <a href={work.originalUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-full bg-slate-100 dark:bg-white/10 p-2 text-slate-500 hover:text-[#F47743]" aria-label="Buka posting asli">
-                              <ExternalLink className="w-4 h-4" />
-                            </a>
-                          </div>
-
-                          {work.competitionTitle && (
-                            <p className="mt-3 text-[11px] font-bold text-[#208C60] dark:text-emerald-300">{work.competitionTitle}</p>
-                          )}
-
-                          <div className="mt-4 flex items-center justify-between gap-3">
-                            <div className="inline-flex items-center gap-1.5 text-sm font-bold text-slate-600 dark:text-slate-300">
-                              <Heart className={`w-4 h-4 ${alreadyVoted ? 'fill-rose-500 text-rose-500' : 'text-rose-500'}`} />
-                              {work.votesCount} dukungan
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => void handlePublicVote(work.id)}
-                              disabled={Boolean(votingWorkId) || alreadyVoted}
-                              className={`min-h-10 rounded-xl px-4 py-2 text-xs font-black inline-flex items-center gap-2 transition-all ${
-                                alreadyVoted
-                                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300 cursor-default'
-                                  : 'bg-gradient-to-r from-[#208C60] to-[#F47743] text-white hover:opacity-95 active:scale-95'
-                              } disabled:opacity-70`}
-                            >
-                              <Heart className={`w-4 h-4 ${alreadyVoted ? 'fill-current' : ''}`} />
-                              {alreadyVoted ? 'Sudah Vote' : votingWorkId === work.id ? 'Menyimpan…' : 'Vote'}
-                            </button>
-                          </div>
-                        </div>
-                      </article>
-                    );
-                  })}
+            {competitionLoading ? <p className="text-sm text-slate-500">Memuat mata lomba resmi…</p>
+              : competitionError ? <p role="alert" className="text-sm text-rose-600">{competitionError}</p>
+              : officialCompetitions.length === 0 ? <p className="text-sm text-slate-500">Belum ada mata lomba yang diresmikan panitia.</p>
+              : <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{officialCompetitions.map(comp => (
+                <div key={comp.id} className="rounded-2xl bg-slate-50 dark:bg-white/5 p-4 border border-slate-200 dark:border-white/10">
+                  <div className="font-bold">{comp.title}</div>
+                  <div className="text-xs text-emerald-600 font-semibold mt-1">✓ Resmi · {comp.category}</div>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 mt-2">{comp.scheduleTime} · {comp.location}</p>
                 </div>
-              );
-            })()}
+              ))}</div>}
           </section>
-          )}
 
+          )}
           {/* Only render the selected public page. Do not stack all sections below the homepage. */}
           <div className="space-y-10">
             {activePublicPage === 'home'
@@ -1704,6 +1671,43 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                 : null}
           </div>
         </div>
+
+        {/* Mobile public navigation — keeps the landing page app-like without changing routing. */}
+        <nav
+          aria-label="Navigasi utama publik"
+          className="fixed inset-x-3 bottom-3 z-40 mx-auto max-w-[430px] rounded-[24px] border border-slate-200/80 bg-white/95 p-1.5 shadow-[0_12px_35px_rgba(15,23,42,.16)] backdrop-blur-xl md:hidden"
+        >
+          <div className="grid grid-cols-5 gap-1">
+            {[
+              { label: 'Beranda', icon: Sparkles, action: () => openPublicPage('section-hero'), active: activePublicPage === 'home' },
+              { label: 'Jadwal', icon: Calendar, action: () => openPublicPage('section-schedule'), active: activePublicPage === 'schedule' },
+              { label: 'Scan QR', icon: QrCode, action: () => onOpenScanner?.(), active: false, primary: true },
+              { label: 'Info', icon: Bell, action: () => openPublicPage('section-announcements'), active: activePublicPage === 'announcements' },
+              { label: 'Masuk', icon: LogIn, action: () => onNavigateToLogin?.(), active: false },
+            ].map(item => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={item.action}
+                  disabled={item.label === 'Masuk' && !onNavigateToLogin}
+                  className={`flex min-h-[52px] flex-col items-center justify-center gap-0.5 rounded-[18px] text-[9px] font-bold transition active:scale-95 disabled:opacity-40 ${
+                    item.primary
+                      ? 'bg-[#E31B23] text-white shadow-md'
+                      : item.active
+                        ? 'bg-red-50 text-[#E31B23]'
+                        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                  }`}
+                  aria-label={item.label}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
 
         {/* Global Footer (Preserved reusable footer) */}
         <GlobalFooter />
