@@ -122,17 +122,42 @@ class CompetitionService {
     return this.getDigitalWorks();
   }
 
-  public async submitDigitalWork(work: Omit<DigitalWork, 'id' | 'votesCount' | 'hasVoted' | 'submittedAt'>): Promise<DigitalWork> {
-    const newWork: DigitalWork = {
-      ...work,
-      id: `work_${Date.now()}`,
-      votesCount: 0,
-      hasVoted: false,
-      submittedAt: new Date().toISOString(),
-    };
-    this.digitalWorks.unshift(newWork);
+  /**
+   * Submit karya peserta melalui GAS.
+   *
+   * Tidak membuat ID, vote count, creator, atau timestamp di browser.
+   * Identitas peserta dan status submission ditetapkan oleh backend berdasarkan
+   * session akun yang sedang aktif.
+   */
+  public async submitDigitalWork(
+    work: Omit<DigitalWork, 'id' | 'votesCount' | 'hasVoted' | 'submittedAt'>
+  ): Promise<DigitalWork> {
+    const response = await apiTransport.send<{ work: DigitalWork }>(
+      'competitions.entries.submit',
+      {
+        competition_id: work.competitionId,
+        title: work.title,
+        submission_url: work.originalUrl,
+        media_type: work.mediaType,
+        description: work.description || '',
+      },
+      { timeoutMs: 30000 }
+    );
+
+    if (!response.ok || !response.data?.work) {
+      throw new Error(
+        response.error?.message || 'Karya belum berhasil disimpan ke GAS.'
+      );
+    }
+
+    const saved = response.data.work as DigitalWork;
+    // Server is authoritative. Replace the local view with the saved record.
+    this.digitalWorks = [
+      saved,
+      ...this.digitalWorks.filter(existing => existing.id !== saved.id),
+    ];
     this.notify();
-    return newWork;
+    return saved;
   }
 
   // ==================== SCORING & WEIGHTED CALCULATION ====================
