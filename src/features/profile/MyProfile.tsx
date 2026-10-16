@@ -4,6 +4,7 @@ import { apiTransport } from '../../services/apiTransport';
 import { authService } from '../../services/authService';
 
 type Profile = { user_id: string; email: string; name: string; avatar: string; phone: string; institution: string; address: string; notes: string };
+type UserQr = { user_id: string; event_id: string; qr_token: string; already_exists?: boolean; rotated?: boolean };
 const empty: Profile = { user_id: '', email: '', name: '', avatar: '', phone: '', institution: '', address: '', notes: '' };
 const normalize = (value: Partial<Profile>): Profile => ({
   user_id: String(value.user_id || ''), email: String(value.email || ''),
@@ -22,6 +23,9 @@ export const MyProfile: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [userQr, setUserQr] = useState<UserQr | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrBroken, setQrBroken] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const mounted = useRef(true);
   const load = async () => {
@@ -33,6 +37,20 @@ export const MyProfile: React.FC = () => {
       const confirmed = normalize(res.data.profile);
       setProfile(confirmed); setDraft(confirmed); setPhoto(''); setPhotoBroken(false);
       authService.applyConfirmedProfile(confirmed);
+      setUserQr(null);
+      setQrBroken(false);
+      try {
+        setQrLoading(true);
+        const qrRes = await apiTransport.send<UserQr>('user.qr.get', {}, { timeoutMs: 45000 });
+        if (!qrRes.ok || !qrRes.data?.qr_token) {
+          throw new Error(qrRes.error?.message || 'QR identitas belum dapat dibuat oleh GAS.');
+        }
+        if (mounted.current) setUserQr(qrRes.data);
+      } catch (qrError: any) {
+        if (mounted.current) setError(qrError?.message || 'Gagal mengambil QR identitas dari GAS.');
+      } finally {
+        if (mounted.current) setQrLoading(false);
+      }
     } catch (e: any) { if (mounted.current) setError(e?.message || 'Gagal membaca profil dari GAS.'); }
     finally { if (mounted.current) setLoading(false); }
   };
@@ -79,6 +97,20 @@ export const MyProfile: React.FC = () => {
       const confirmed = normalize(res.data.profile);
       setProfile(confirmed); setDraft(confirmed); setPhoto(''); setPhotoBroken(false);
       authService.applyConfirmedProfile(confirmed);
+      setUserQr(null);
+      setQrBroken(false);
+      try {
+        setQrLoading(true);
+        const qrRes = await apiTransport.send<UserQr>('user.qr.get', {}, { timeoutMs: 45000 });
+        if (!qrRes.ok || !qrRes.data?.qr_token) {
+          throw new Error(qrRes.error?.message || 'QR identitas belum dapat dibuat oleh GAS.');
+        }
+        if (mounted.current) setUserQr(qrRes.data);
+      } catch (qrError: any) {
+        if (mounted.current) setError(qrError?.message || 'Gagal mengambil QR identitas dari GAS.');
+      } finally {
+        if (mounted.current) setQrLoading(false);
+      }
       setMessage('Perubahan profil sudah dikonfirmasi dan disimpan oleh GAS.');
     } catch (e: any) { if (mounted.current) setError(e?.message || 'Gagal menyimpan profil. Jika timeout, muat ulang untuk memeriksa data GAS sebelum mencoba lagi.'); }
     finally { if (mounted.current) setSaving(false); }
@@ -99,12 +131,21 @@ export const MyProfile: React.FC = () => {
             <section className="rounded-2xl border bg-white dark:bg-[#19191e] p-5 shadow-sm">
               <div className="flex flex-col sm:flex-row sm:items-center gap-5">
                 <div className="w-36 h-36 shrink-0 rounded-2xl border bg-white p-2 flex items-center justify-center">
-                  <img
-                    src={`https://quickchart.io/qr?text=${encodeURIComponent(draft.user_id)}&size=320&margin=2`}
-                    alt="QR Identitas Akun SiEpang"
-                    className="w-full h-full object-contain"
-                    loading="eager"
-                  />
+                  {qrLoading ? (
+                    <div className="text-center text-xs opacity-60">Memuat QR…</div>
+                  ) : userQr?.qr_token && !qrBroken ? (
+                    <img
+                      src={`https://quickchart.io/qr?text=${encodeURIComponent(userQr.qr_token)}&size=320&margin=2`}
+                      alt="QR Identitas Akun SiEpang"
+                      className="w-full h-full object-contain"
+                      loading="eager"
+                      onError={() => setQrBroken(true)}
+                    />
+                  ) : (
+                    <div className="text-center text-xs text-amber-700 dark:text-amber-400 px-2">
+                      QR belum tersedia
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2 min-w-0">
                   <div className="flex items-center gap-2">
@@ -114,13 +155,19 @@ export const MyProfile: React.FC = () => {
                     <h2 className="text-lg font-bold">QR Identitas Saya</h2>
                   </div>
                   <p className="text-sm opacity-70">
-                    QR ini merupakan identitas unik akun SiEpang dan dapat digunakan saat proses pemindaian identitas.
+                    QR ini diterbitkan oleh GAS dan berisi token identitas resmi akun SiEpang. Token dapat divalidasi oleh sistem saat QR dipindai.
                   </p>
                   <p className="text-xs opacity-60 break-all">
                     ID: {draft.user_id}
                   </p>
+                  {userQr?.qr_token && (
+                    <p className="text-xs opacity-50 break-all">
+                      Token: {userQr.qr_token}
+                    </p>
+                  )}
                   <a
-                    href={`https://quickchart.io/qr?text=${encodeURIComponent(draft.user_id)}&size=800&margin=8`}
+                    href={userQr?.qr_token ? `https://quickchart.io/qr?text=${encodeURIComponent(userQr.qr_token)}&size=800&margin=8` : '#'}
+                    onClick={e => { if (!userQr?.qr_token) e.preventDefault(); }}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-white/5"
