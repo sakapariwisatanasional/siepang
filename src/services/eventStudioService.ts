@@ -401,9 +401,18 @@ class EventStudioService {
       };
     }
 
+    const requestData: Record<string, any> = { ...(options?.data || {}) };
+    const activeEventId = String(this.event.id || '').trim();
+    if (activeEventId && !requestData.event_id && !requestData.eventId) {
+      // Event Studio is single-event scoped. Pass the authoritative event ID
+      // explicitly so schedule/activity reads never depend on a stale transport
+      // context during startup.
+      requestData.event_id = activeEventId;
+    }
+
     const res = await apiTransport.send<T>(
       action,
-      options?.data || {},
+      requestData,
       { timeoutMs: 30000 }
     );
 
@@ -783,6 +792,37 @@ class EventStudioService {
   // ==================== SCHEDULE CONTRACT ====================
 
   public listSchedules(): ScheduleItem[] {
+    return this.schedules;
+  }
+
+  /**
+   * Re-read schedules from GAS/Spreadsheet for the authoritative active event.
+   * This is intentionally explicit because the initial transport context can
+   * still be hydrating while Event Studio is mounting.
+   */
+  public async refreshSchedules(): Promise<ScheduleItem[]> {
+    const eventId = String(this.event.id || '').trim();
+    if (!eventId) {
+      this.schedules = [];
+      this.notify();
+      throw new Error('Event aktif belum tersedia dari GAS.');
+    }
+
+    const res = await this.request<ScheduleItem[]>('/api/schedules/list', {
+      data: { event_id: eventId },
+    });
+
+    if (!res.success || !Array.isArray(res.data)) {
+      throw new Error(res.error || 'Gagal membaca jadwal dari GAS/Spreadsheet.');
+    }
+
+    this.schedules = [...res.data]
+      .filter(item => item && item.archived !== true)
+      .sort((a, b) =>
+        ((a.dayNumber ?? 0) - (b.dayNumber ?? 0)) ||
+        String(a.startTime || a.time || '').localeCompare(String(b.startTime || b.time || ''))
+      );
+    this.notify();
     return this.schedules;
   }
 
