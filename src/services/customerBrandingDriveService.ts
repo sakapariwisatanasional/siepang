@@ -16,18 +16,18 @@ import {
 import { mediaResolverService } from './mediaResolverService';
 
 const DEFAULT_DRIVE_STRUCTURE: CustomerDriveFolderStructure = {
-  root_drive_folder_id: '1Drive_SiEpang_Root_Customer',
-  database_folder_id: '1Drive_Folder_Database',
-  branding_folder_id: '1Drive_Folder_Branding',
-  app_logo_folder_id: '1Drive_Folder_App_Logo',
-  favicon_folder_id: '1Drive_Folder_Favicon',
-  event_logo_folder_id: '1Drive_Folder_Event_Logo',
-  hero_folder_id: '1Drive_Folder_Hero',
-  documents_folder_id: '1Drive_Folder_Documents',
-  certificates_folder_id: '1Drive_Folder_Certificates',
-  id_cards_folder_id: '1Drive_Folder_ID_Cards',
-  backup_folder_id: '1Drive_Folder_Backup',
-  assets_folder_id: '1Drive_Folder_Assets',
+  root_drive_folder_id: '',
+  database_folder_id: '',
+  branding_folder_id: '',
+  app_logo_folder_id: '',
+  favicon_folder_id: '',
+  event_logo_folder_id: '',
+  hero_folder_id: '',
+  documents_folder_id: '',
+  certificates_folder_id: '',
+  id_cards_folder_id: '',
+  backup_folder_id: '',
+  assets_folder_id: '',
 };
 
 // Initial Default Customer Branding Assets (Pure clean installation: 0 dummy assets)
@@ -48,11 +48,20 @@ class CustomerBrandingDriveService {
     try {
       const storedFolders = localStorage.getItem('siepang_drive_folders');
       if (storedFolders) {
-        this.folderStructure = JSON.parse(storedFolders);
+        const parsedFolders = JSON.parse(storedFolders) as CustomerDriveFolderStructure;
+        const folderValues = Object.values(parsedFolders || {}).map(value => String(value || ''));
+        const hasLegacyFixture = folderValues.some(value => /^1Drive_/i.test(value));
+        if (!hasLegacyFixture) this.folderStructure = { ...DEFAULT_DRIVE_STRUCTURE, ...parsedFolders };
       }
       const storedAssets = localStorage.getItem('siepang_branding_assets');
       if (storedAssets) {
-        this.assets = JSON.parse(storedAssets);
+        const parsedAssets = JSON.parse(storedAssets) as CustomerBrandingAsset[];
+        this.assets = Array.isArray(parsedAssets)
+          ? parsedAssets.filter(asset =>
+              !/^1Drive_/i.test(String(asset.drive_file_id || '')) &&
+              !/^1Spr_/i.test(String(asset.drive_file_id || ''))
+            )
+          : [];
       }
       const storedVersion = localStorage.getItem('siepang_branding_version');
       if (storedVersion) {
@@ -139,7 +148,10 @@ class CustomerBrandingDriveService {
     file_size_bytes?: number;
     created_by?: string;
   }): Promise<CustomerBrandingAsset> {
-    const generatedFileId = payload.drive_file_id || `1Drive_File_${payload.asset_type}_${Date.now()}`;
+    const generatedFileId = payload.drive_file_id || '';
+    if (!generatedFileId) {
+      throw new Error('BRANDING_UPLOAD_FAILED: GAS tidak mengembalikan drive_file_id. Asset tidak disimpan sebagai record lokal.');
+    }
     const newVersion = (this.assets.filter(a => a.asset_type === payload.asset_type).length || 0) + 1;
 
     // Set previously active to archived
@@ -179,7 +191,7 @@ class CustomerBrandingDriveService {
     if (!defaultAsset) return;
 
     this.assets = this.assets.map(a => {
-      if (a.asset_type === assetType && (!workspaceId || a.workspace_id === (workspaceId || 'ws_banyuwangi'))) {
+      if (a.asset_type === assetType && (!workspaceId || a.workspace_id === workspaceId)) {
         if (a.branding_asset_id === defaultAsset.branding_asset_id) {
           return { ...a, status: 'ACTIVE' };
         }
