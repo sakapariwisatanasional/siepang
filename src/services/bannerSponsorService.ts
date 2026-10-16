@@ -21,7 +21,7 @@ import { mediaResolverService } from './mediaResolverService';
 import { eventStudioService } from './eventStudioService';
 import { eventService } from './eventService';
 import { workspaceService } from './workspaceService';
-import { spreadsheetRepository } from '../backend/repositories/spreadsheetRepository';
+import { apiTransport } from './apiTransport';
 
 class BannerSponsorService {
   private banners: Map<string, BannerItem> = new Map();
@@ -41,27 +41,26 @@ class BannerSponsorService {
     pauseOnTouch: true,
   };
   private listeners: Set<() => void> = new Set();
+  private settingsMutation: Promise<void> = Promise.resolve();
 
-  constructor() {
-    this.loadPersistentConfigs();
+  /** Browser storage is never an authoritative settings source. */
+  public async refreshSettingsFromGas(): Promise<void> {
+    const result = await apiTransport.send<{ settings: { rotator: BannerRotatorConfig; carousel: SponsorCarouselConfig } }>(
+      'banner.settings.get', {}, { skipAuth: true });
+    if (!result.ok || !result.data?.settings) throw new Error(result.error?.message || 'Pengaturan banner gagal dibaca dari GAS.');
+    this.rotatorConfig = { ...result.data.settings.rotator };
+    this.carouselConfig = { ...result.data.settings.carousel };
+    this.notify();
   }
 
-  private loadPersistentConfigs(): void {
-    try {
-      const storedCar = localStorage.getItem('siepang_sponsor_carousel_config');
-      if (storedCar) {
-        this.carouselConfig = { ...this.carouselConfig, ...JSON.parse(storedCar) };
-      }
-      const storedRot = localStorage.getItem('siepang_banner_rotator_config');
-      if (storedRot) {
-        this.rotatorConfig = { ...this.rotatorConfig, ...JSON.parse(storedRot) };
-      }
-    } catch {
-      // Memory defaults
-    }
+  private async saveSettings(nextRotator: BannerRotatorConfig, nextCarousel: SponsorCarouselConfig): Promise<void> {
+    const result = await apiTransport.send<{ settings: { rotator: BannerRotatorConfig; carousel: SponsorCarouselConfig } }>(
+      'banner.settings.set', { settings: { rotator: nextRotator, carousel: nextCarousel } });
+    if (!result.ok || !result.data?.settings) throw new Error(result.error?.message || 'Pengaturan gagal disimpan ke GAS.');
+    this.rotatorConfig = { ...result.data.settings.rotator };
+    this.carouselConfig = { ...result.data.settings.carousel };
+    this.notify();
   }
-
-
 
   // ==================== BANNER OPERATIONS ====================
 
@@ -364,22 +363,12 @@ class BannerSponsorService {
     return { ...this.carouselConfig };
   }
 
-  public updateCarouselConfig(updates: Partial<SponsorCarouselConfig>, eventId: string = ''): SponsorCarouselConfig {
-    this.carouselConfig = { ...this.carouselConfig, ...updates };
-    try {
-      localStorage.setItem('siepang_sponsor_carousel_config', JSON.stringify(this.carouselConfig));
-      // Authoritative sync to canonical SponsorSettings table
-      spreadsheetRepository.updateSponsorSettings(eventId, {
-        carousel_enabled: this.carouselConfig.enabled,
-        direction: this.carouselConfig.direction,
-        carousel_duration_seconds: this.carouselConfig.carousel_duration_seconds,
-        pause_on_hover: this.carouselConfig.pauseOnHover,
-      });
-    } catch {
-      // Storage unavailable
-    }
-    this.notify();
-    return this.carouselConfig;
+  public async updateCarouselConfig(updates: Partial<SponsorCarouselConfig>, _eventId: string = ''): Promise<SponsorCarouselConfig> {
+    const operation = this.settingsMutation.catch(() => {}).then(() =>
+      this.saveSettings(this.rotatorConfig, { ...this.carouselConfig, ...updates }));
+    this.settingsMutation = operation;
+    await operation;
+    return this.getCarouselConfig();
   }
 
   // ==================== ROTATOR SETTINGS ====================
@@ -388,15 +377,12 @@ class BannerSponsorService {
     return { ...this.rotatorConfig };
   }
 
-  public updateRotatorConfig(updates: Partial<BannerRotatorConfig>): BannerRotatorConfig {
-    this.rotatorConfig = { ...this.rotatorConfig, ...updates };
-    try {
-      localStorage.setItem('siepang_banner_rotator_config', JSON.stringify(this.rotatorConfig));
-    } catch {
-      // Storage unavailable
-    }
-    this.notify();
-    return this.rotatorConfig;
+  public async updateRotatorConfig(updates: Partial<BannerRotatorConfig>): Promise<BannerRotatorConfig> {
+    const operation = this.settingsMutation.catch(() => {}).then(() =>
+      this.saveSettings({ ...this.rotatorConfig, ...updates }, this.carouselConfig));
+    this.settingsMutation = operation;
+    await operation;
+    return this.getRotatorConfig();
   }
 
   // ==================== SUBSCRIPTION ====================
