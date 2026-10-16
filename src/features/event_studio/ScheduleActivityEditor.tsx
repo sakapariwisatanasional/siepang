@@ -404,29 +404,29 @@ export const ScheduleActivityEditor: React.FC = () => {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-full bg-[#F8F7F2] -m-4 p-4 sm:-m-6 sm:p-6 space-y-5">
       {toast && (
-        <div className="p-3.5 rounded-2xl bg-emerald-950/90 border border-emerald-500/50 text-xs text-emerald-300 font-semibold flex items-center justify-between shadow-lg">
+        <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-700 font-semibold flex items-center justify-between shadow-lg">
           <span>{toast}</span>
-          <button type="button" onClick={() => setToast(null)} className="text-emerald-400 hover:text-white">✕</button>
+          <button type="button" onClick={() => setToast(null)} className="text-red-600 hover:text-slate-900">✕</button>
         </div>
       )}
 
       {/* Top Header & Sub-Tab Switcher */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 p-5 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 shadow-xs">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 p-5 rounded-[28px] bg-white dark:bg-white border border-[#ECECEF] dark:border-slate-200 shadow-xs">
         <div>
-          <h2 className="text-base font-bold text-[#171717] dark:text-white tracking-tight">Manajemen Jadwal & Aktivitas Kemah</h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+          <h2 className="text-base font-bold text-[#171717] dark:text-slate-900 tracking-tight">Manajemen Jadwal & Aktivitas Kemah</h2>
+          <p className="text-xs text-slate-500 dark:text-slate-500 mt-0.5">
             Atur agenda harian, alokasi zona kegiatan, presensi QR, dan poin reward XP peserta.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 min-w-0">
-          <div className="p-1 rounded-2xl bg-[#FAFAFA] dark:bg-black/40 border border-[#ECECEF] dark:border-white/5 flex">
+          <div className="p-1 rounded-2xl bg-[#FAFAFA] dark:bg-slate-50 border border-[#ECECEF] dark:border-slate-200 flex">
             <button
               onClick={() => setSubTab('schedule')}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                subTab === 'schedule' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                subTab === 'schedule' ? 'bg-red-600 text-slate-900 shadow-xs' : 'text-slate-600 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-900'
               }`}
             >
               📅 Agenda Jadwal
@@ -434,7 +434,7 @@ export const ScheduleActivityEditor: React.FC = () => {
             <button
               onClick={() => setSubTab('activities')}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                subTab === 'activities' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                subTab === 'activities' ? 'bg-red-600 text-slate-900 shadow-xs' : 'text-slate-600 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-900'
               }`}
             >
               ⛺ Master Aktivitas
@@ -449,15 +449,15 @@ export const ScheduleActivityEditor: React.FC = () => {
                   setSelectedBatchItemIds(scheduleList.map(s => s.id));
                   setShowBatchPrintModal(true);
                 }}
-                className="px-3.5 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
+                className="px-3.5 py-2 bg-red-600 hover:bg-red-500 text-slate-900 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
                 title="Cetak Massal QR Kegiatan & Pos (A4 Sign & Grid)"
               >
-                <Printer className="w-4 h-4 text-amber-200" />
+                <Printer className="w-4 h-4 text-amber-700" />
                 <span>Cetak Batch QR</span>
               </button>
               <button
                 onClick={handleOpenAddSchedule}
-                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-amber-500 hover:from-emerald-500 hover:to-amber-400 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
+                className="px-4 py-2 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-slate-900 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
               >
                 <Plus className="w-4 h-4 stroke-[3]" />
                 <span>Tambah Jadwal</span>
@@ -466,7 +466,7 @@ export const ScheduleActivityEditor: React.FC = () => {
           ) : (
             <button
               onClick={() => setShowActivityModal(true)}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
+              className="px-4 py-2 bg-red-600 hover:bg-red-500 text-slate-900 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
               <span>+ Tambah Aktivitas</span>
@@ -476,7 +476,7 @@ export const ScheduleActivityEditor: React.FC = () => {
       </div>
 
       {!eventDays.length && (
-        <div role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-200 space-y-3">
+        <div role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-700 space-y-3">
           <p>
             {reloadingEvent
               ? 'Sedang membaca tanggal event resmi dari GAS…'
@@ -485,7 +485,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                 : 'Tanggal mulai atau selesai event tidak valid. Periksa Pengaturan Umum Event.'}
             {' '}Agenda yang sudah tersimpan tetap bisa dilihat melalui Semua Hari.
           </p>
-          <button type="button" onClick={retryEventLoad} disabled={reloadingEvent} className="inline-flex items-center rounded-xl bg-amber-700 px-4 py-2 font-semibold text-white disabled:opacity-50 hover:bg-amber-800">
+          <button type="button" onClick={retryEventLoad} disabled={reloadingEvent} className="inline-flex items-center rounded-xl bg-amber-700 px-4 py-2 font-semibold text-slate-900 disabled:opacity-50 hover:bg-amber-800">
             {reloadingEvent ? 'Memuat…' : 'Muat Ulang Tanggal dari GAS'}
           </button>
         </div>
@@ -495,7 +495,7 @@ export const ScheduleActivityEditor: React.FC = () => {
       {subTab === 'schedule' && (
         <div className="space-y-4">
           {/* Day & View Switcher */}
-          <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white dark:bg-[#141418] rounded-[24px] border border-[#ECECEF] dark:border-white/10 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white dark:bg-white rounded-[24px] border border-[#ECECEF] dark:border-slate-200 shadow-xs">
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
               {[...eventDays, { day: 'all' as const, label: 'Semua Hari', date: '' }].map(d => (
                 <button
@@ -503,8 +503,8 @@ export const ScheduleActivityEditor: React.FC = () => {
                   onClick={() => setSelectedDay(d.day as any)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap ${
                     selectedDay === d.day
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                      ? 'bg-red-50 text-red-700 border border-red-200'
+                      : 'text-slate-500 hover:bg-red-50 hover:text-slate-900'
                   }`}
                 >
                   {d.label}
@@ -512,16 +512,16 @@ export const ScheduleActivityEditor: React.FC = () => {
               ))}
             </div>
 
-            <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/5">
+            <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200">
               <button
                 onClick={() => setViewMode('cards')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium ${viewMode === 'cards' ? 'bg-white/10 text-white' : 'text-slate-500'}`}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium ${viewMode === 'cards' ? 'bg-white/10 text-slate-900' : 'text-slate-500'}`}
               >
                 Kartu
               </button>
               <button
                 onClick={() => setViewMode('timeline')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium ${viewMode === 'timeline' ? 'bg-white/10 text-white' : 'text-slate-500'}`}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium ${viewMode === 'timeline' ? 'bg-white/10 text-slate-900' : 'text-slate-500'}`}
               >
                 Garis Waktu
               </button>
@@ -530,14 +530,14 @@ export const ScheduleActivityEditor: React.FC = () => {
 
           {/* Operational Conflicts Warning Banner */}
           {conflicts.length > 0 && (
-            <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/40 flex items-start gap-2.5 text-xs text-amber-200">
+            <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/40 flex items-start gap-2.5 text-xs text-amber-700">
               <span className="text-base mt-0.5">⚠️</span>
               <div className="space-y-0.5 flex-1">
-                <div className="font-bold text-white flex items-center justify-between">
+                <div className="font-bold text-slate-900 flex items-center justify-between">
                   <span>Terdeteksi {conflicts.length} Potensi Bentrok Agenda Lapangan</span>
                   <span className="text-[10px] text-amber-300 font-mono">Integritas Jadwal</span>
                 </div>
-                <div className="text-[11px] text-slate-300">
+                <div className="text-[11px] text-slate-600">
                   Periksa tumpang tindih waktu, tempat, atau golongan peserta. Peringatan akan muncul bila Anda mempublikasikan jadwal yang bentrok.
                 </div>
               </div>
@@ -556,16 +556,16 @@ export const ScheduleActivityEditor: React.FC = () => {
                     className={`p-4 rounded-[24px] border flex flex-col justify-between gap-3 transition-all group shadow-xs ${
                       itemConflict
                         ? 'bg-amber-50/50 dark:bg-[#18231a] border-amber-300 dark:border-amber-500/40 hover:border-amber-400 dark:hover:border-amber-500/60'
-                        : 'bg-white dark:bg-[#141418] border-[#ECECEF] dark:border-white/10 hover:border-emerald-500/40'
+                        : 'bg-white dark:bg-white border-[#ECECEF] dark:border-slate-200 hover:border-red-200'
                     }`}
                   >
                     <div>
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
-                          <span className="px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-mono text-[11px] font-bold border border-emerald-200 dark:border-transparent">
+                          <span className="px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-red-50 text-emerald-700 dark:text-red-600 font-mono text-[11px] font-bold border border-emerald-200 dark:border-transparent">
                             {item.time}
                           </span>
-                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Hari ke-{item.dayNumber}</span>
+                          <span className="text-[10px] text-slate-500 dark:text-slate-500 font-medium">Hari ke-{item.dayNumber}</span>
                         </div>
                         <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 text-[10px] font-bold border border-amber-200 dark:border-transparent">
                           <Zap className="w-3 h-3" />
@@ -573,10 +573,10 @@ export const ScheduleActivityEditor: React.FC = () => {
                         </div>
                       </div>
 
-                      <h3 className="text-sm font-bold text-[#171717] dark:text-white mt-2 group-hover:text-emerald-600 dark:group-hover:text-emerald-300 transition-colors">
+                      <h3 className="text-sm font-bold text-[#171717] dark:text-slate-900 mt-2 group-hover:text-emerald-600 dark:group-hover:text-red-700 transition-colors">
                         {item.title}
                       </h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mt-1">{item.description}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-500 line-clamp-2 mt-1">{item.description}</p>
 
                       {/* Conflict Notification Badge */}
                       {itemConflict && (
@@ -586,13 +586,13 @@ export const ScheduleActivityEditor: React.FC = () => {
                         </div>
                       )}
 
-                      <div className="flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-3 pt-2 border-t border-[#ECECEF] dark:border-white/5">
-                      <span className="flex items-center gap-1 text-slate-700 dark:text-slate-300">
+                      <div className="flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-slate-500 mt-3 pt-2 border-t border-[#ECECEF] dark:border-slate-200">
+                      <span className="flex items-center gap-1 text-slate-700 dark:text-slate-600">
                         <MapPin className="w-3 h-3 text-amber-500 dark:text-amber-400" />
                         <span>{item.location}</span>
                       </span>
-                      <span className="text-slate-300 dark:text-slate-600">·</span>
-                      <span className="flex items-center gap-1 text-slate-700 dark:text-slate-300">
+                      <span className="text-slate-600 dark:text-slate-600">·</span>
+                      <span className="flex items-center gap-1 text-slate-700 dark:text-slate-600">
                         <Users className="w-3 h-3 text-sky-500 dark:text-sky-400" />
                         <span>{item.mandatoryFor.join(', ')}</span>
                       </span>
@@ -600,16 +600,16 @@ export const ScheduleActivityEditor: React.FC = () => {
                   </div>
 
                   {/* Operational Action Toolbar */}
-                  <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs">
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-xs">
                     {/* Move Day quick dropdown */}
-                    <div className="flex items-center gap-1 text-[11px] text-slate-400">
+                    <div className="flex items-center gap-1 text-[11px] text-slate-500">
                       <span>Pindah:</span>
                       {eventDays.filter(d => d.day !== item.dayNumber).map(({ day: d }) => (
                         <button
                           key={d}
                           type="button"
                           onClick={() => handleMoveDay(item.id, d)}
-                          className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white"
+                          className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-slate-100 text-slate-600 hover:text-slate-900"
                           title={`Pindah ke Hari ${d}`}
                         >
                           H{d}
@@ -638,7 +638,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                         onClick={() => handleTogglePublish(item)}
                         className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 transition-all whitespace-nowrap ${
                           item.isPublished !== false
-                            ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                            ? 'bg-emerald-500/10 hover:bg-red-500/20 text-red-700 border-emerald-500/30'
                             : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/30'
                         }`}
                         title={item.isPublished !== false ? 'Agenda sudah disiarkan ke Portal Publik. Klik untuk menarik kembali menjadi draf.' : 'Agenda belum disiarkan. Klik untuk menyiarkan ke Portal Publik.'}
@@ -650,7 +650,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleDuplicate(item.id)}
-                        className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white"
+                        className="p-1.5 rounded-lg bg-white/5 hover:bg-slate-100 text-slate-500 hover:text-slate-900"
                         title="Duplikasi Agenda"
                       >
                         <Copy className="w-3.5 h-3.5" />
@@ -658,7 +658,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleEditSchedule(item)}
-                        className="p-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400"
+                        className="p-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-600"
                         title="Edit Agenda"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
@@ -690,23 +690,23 @@ export const ScheduleActivityEditor: React.FC = () => {
 
           {/* Timeline View */}
           {viewMode === 'timeline' && (
-            <div className="p-5 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-4 shadow-xs">
+            <div className="p-5 rounded-[28px] bg-white dark:bg-white border border-[#ECECEF] dark:border-slate-200 space-y-4 shadow-xs">
               <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-emerald-500/30">
                 {filteredSchedule.map(item => (
                   <div key={item.id} className="relative group">
                     <div className="absolute -left-6 top-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white dark:border-[#141418] shadow" />
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400">{item.time}</span>
-                        <span className="text-sm font-bold text-[#171717] dark:text-white">{item.title}</span>
+                        <span className="font-mono text-xs font-bold text-emerald-600 dark:text-red-600">{item.time}</span>
+                        <span className="text-sm font-bold text-[#171717] dark:text-slate-900">{item.title}</span>
                       </div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                      <div className="text-[11px] text-slate-500 dark:text-slate-500 flex items-center gap-2">
                         <span className="text-amber-600 dark:text-amber-400 font-semibold">+{item.xpReward} XP</span>
                         <span>·</span>
                         <span>{item.location}</span>
                       </div>
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{item.description}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">{item.description}</p>
                   </div>
                 ))}
               </div>
@@ -720,9 +720,9 @@ export const ScheduleActivityEditor: React.FC = () => {
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
             {activityList.map(act => (
-              <div key={act.id} className="p-4 rounded-[24px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-2 shadow-xs">
+              <div key={act.id} className="p-4 rounded-[24px] bg-white dark:bg-white border border-[#ECECEF] dark:border-slate-200 space-y-2 shadow-xs">
                 <div className="flex items-center justify-between">
-                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold border border-emerald-200 dark:border-emerald-500/30">
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-red-600 text-[10px] font-bold border border-emerald-200 dark:border-emerald-500/30">
                     {act.type}
                   </span>
                   <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-bold">
@@ -731,17 +731,17 @@ export const ScheduleActivityEditor: React.FC = () => {
                   </div>
                 </div>
 
-                <h3 className="text-sm font-bold text-[#171717] dark:text-white">{act.name}</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">{act.description}</p>
+                <h3 className="text-sm font-bold text-[#171717] dark:text-slate-900">{act.name}</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-500">{act.description}</p>
 
-                <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500 dark:text-slate-400 pt-2 border-t border-[#ECECEF] dark:border-white/5">
-                  <div>Sasaran: <span className="text-slate-800 dark:text-white font-medium">{act.targetGroup}</span></div>
-                  <div>Lokasi: <span className="text-slate-800 dark:text-white font-medium">{act.location}</span></div>
-                  <div>Waktu: <span className="text-slate-800 dark:text-white font-medium">{act.startTime} - {act.endTime}</span></div>
-                  <div>Kapasitas: <span className="text-slate-800 dark:text-white font-medium">{act.capacity} Orang</span></div>
+                <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500 dark:text-slate-500 pt-2 border-t border-[#ECECEF] dark:border-slate-200">
+                  <div>Sasaran: <span className="text-slate-800 dark:text-slate-900 font-medium">{act.targetGroup}</span></div>
+                  <div>Lokasi: <span className="text-slate-800 dark:text-slate-900 font-medium">{act.location}</span></div>
+                  <div>Waktu: <span className="text-slate-800 dark:text-slate-900 font-medium">{act.startTime} - {act.endTime}</span></div>
+                  <div>Kapasitas: <span className="text-slate-800 dark:text-slate-900 font-medium">{act.capacity} Orang</span></div>
                 </div>
 
-                <div className="flex justify-end pt-2 border-t border-white/5">
+                <div className="flex justify-end pt-2 border-t border-slate-200">
                   <button
                     type="button"
                     onClick={() => setSelectedQrActivity({
@@ -751,7 +751,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                       location: act.location,
                       scheduleTime: `${act.startTime} - ${act.endTime}`,
                     })}
-                    className="px-3 py-1.5 rounded-xl bg-red-700/80 hover:bg-red-600 text-white text-[11px] font-bold flex items-center gap-1.5 shadow"
+                    className="px-3 py-1.5 rounded-xl bg-red-700/80 hover:bg-red-600 text-slate-900 text-[11px] font-bold flex items-center gap-1.5 shadow"
                   >
                     <QrCode className="w-3.5 h-3.5" />
                     <span>Kelola QR Pos & Tantangan</span>
@@ -765,15 +765,15 @@ export const ScheduleActivityEditor: React.FC = () => {
 
       {/* SCHEDULE MODAL (ADD / EDIT) */}
       {showScheduleModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="w-full max-w-lg bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90dvh] overflow-y-auto max-h-[90dvh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white0 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="w-full max-w-lg bg-white dark:bg-white border border-[#ECECEF] dark:border-slate-200 rounded-[28px] p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90dvh] overflow-y-auto max-h-[90dvh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-[#171717] dark:text-white">
+              <h3 className="text-base font-bold text-[#171717] dark:text-slate-900">
                 {editingScheduleId ? 'Edit Agenda Jadwal' : '+ Tambah Agenda Jadwal Baru'}
               </h3>
               <button
                 onClick={() => setShowScheduleModal(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-300 flex items-center justify-center cursor-pointer"
+                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-50 hover:bg-slate-200 dark:hover:bg-slate-100 text-slate-600 dark:text-slate-600 flex items-center justify-center cursor-pointer"
               >
                 ✕
               </button>
@@ -781,24 +781,24 @@ export const ScheduleActivityEditor: React.FC = () => {
 
             <form onSubmit={handleSaveSchedule} className="space-y-4 text-sm">
               <div>
-                <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Judul Kegiatan / Agenda:</label>
+                <label className="text-slate-700 dark:text-slate-700 font-semibold block mb-1">Judul Kegiatan / Agenda:</label>
                 <input
                   type="text"
                   value={scheduleForm.title}
                   onChange={e => setScheduleForm({ ...scheduleForm, title: e.target.value })}
                   placeholder="Contoh: Apel Senja & Penurunan Bendera"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-white border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-slate-900 placeholder:text-slate-500 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-emerald-500 focus:outline-none"
                   required
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Hari ke-:</label>
+                  <label className="text-slate-700 dark:text-slate-700 font-semibold block mb-1">Hari ke-:</label>
                   <select
                     value={scheduleForm.dayNumber}
                     onChange={e => setScheduleForm({ ...scheduleForm, dayNumber: Number(e.target.value) })}
-                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-white border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-slate-900 placeholder:text-slate-500 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                   >
                     {!eventDays.length && <option value={scheduleForm.dayNumber}>Tanggal event belum diatur</option>}
                     {eventDays.map(day => <option key={day.date} value={day.day}>{day.label} · {day.date}</option>)}
@@ -806,61 +806,61 @@ export const ScheduleActivityEditor: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Rentang Waktu:</label>
+                  <label className="text-slate-700 dark:text-slate-700 font-semibold block mb-1">Rentang Waktu:</label>
                   <input
                     type="text"
                     value={scheduleForm.time}
                     onChange={e => setScheduleForm({ ...scheduleForm, time: e.target.value })}
                     placeholder="08:00 - 10:00 WIB"
-                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 font-mono"
+                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-white border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-slate-900 placeholder:text-slate-500 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/30 font-mono"
                     required
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Lokasi Kegiatan / Venue:</label>
+                <label className="text-slate-700 dark:text-slate-700 font-semibold block mb-1">Lokasi Kegiatan / Venue:</label>
                 <input
                   type="text"
                   value={scheduleForm.location}
                   onChange={e => setScheduleForm({ ...scheduleForm, location: e.target.value })}
                   placeholder="Masukkan lokasi kegiatan"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-white border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-slate-900 placeholder:text-slate-500 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                   required
                 />
               </div>
 
               <div>
-                <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Sasaran / Peserta Wajib:</label>
+                <label className="text-slate-700 dark:text-slate-700 font-semibold block mb-1">Sasaran / Peserta Wajib:</label>
                 <input
                   type="text"
                   value={scheduleForm.mandatoryFor.join(', ')}
                   onChange={e => setScheduleForm({ ...scheduleForm, mandatoryFor: e.target.value.split(',').map(s => s.trim()) })}
                   placeholder="Semua Peserta, Penegak, Pembina Pendamping"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-white border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-slate-900 placeholder:text-slate-500 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Reward XP Peserta:</label>
+                  <label className="text-slate-700 dark:text-slate-700 font-semibold block mb-1">Reward XP Peserta:</label>
                   <div className="relative">
                     <input
                       type="number"
                       value={scheduleForm.xpReward}
                       onChange={e => setScheduleForm({ ...scheduleForm, xpReward: Number(e.target.value) })}
-                      className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-amber-700 dark:text-amber-400 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                      className="w-full px-3 py-2.5 bg-slate-50 dark:bg-white border border-slate-300 dark:border-slate-700 rounded-2xl text-amber-700 dark:text-amber-400 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-red-500/30"
                     />
                     <span className="absolute right-3 top-2.5 text-slate-500 font-bold">XP</span>
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Kategori Agenda:</label>
+                  <label className="text-slate-700 dark:text-slate-700 font-semibold block mb-1">Kategori Agenda:</label>
                   <select
                     value={scheduleForm.category}
                     onChange={e => setScheduleForm({ ...scheduleForm, category: e.target.value as any })}
-                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-white border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-slate-900 placeholder:text-slate-500 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                   >
                     <option value="ceremony">Upacara / Apel</option>
                     <option value="pioneering">Pioneering</option>
@@ -873,13 +873,13 @@ export const ScheduleActivityEditor: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Keterangan & Petunjuk Teknis:</label>
+                <label className="text-slate-700 dark:text-slate-700 font-semibold block mb-1">Keterangan & Petunjuk Teknis:</label>
                 <textarea
                   rows={2}
                   value={scheduleForm.description}
                   onChange={e => setScheduleForm({ ...scheduleForm, description: e.target.value })}
                   placeholder="Petunjuk pakaian, perlengkapan yang dibawa, dan formasi apel..."
-                  className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  className="w-full px-3.5 py-2 bg-slate-50 dark:bg-white border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-slate-900 placeholder:text-slate-500 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                 />
               </div>
 
@@ -888,7 +888,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                   type="button"
                   onClick={() => setShowScheduleModal(false)}
                   disabled={savingSchedule}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-slate-200 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-100 dark:hover:bg-white/15 text-slate-700 dark:text-slate-700 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Batal
                 </button>
@@ -896,7 +896,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                   type="submit"
                   disabled={savingSchedule}
                   aria-busy={savingSchedule}
-                  className="min-w-[150px] px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-75 disabled:cursor-wait transition-all"
+                  className="min-w-[150px] px-5 py-2.5 bg-red-600 hover:bg-red-500 text-slate-900 rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-75 disabled:cursor-wait transition-all"
                 >
                   {savingSchedule ? (
                     <>
@@ -918,13 +918,13 @@ export const ScheduleActivityEditor: React.FC = () => {
 
       {/* ACTIVITY MODAL */}
       {showActivityModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="w-full max-w-lg bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90dvh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white0 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="w-full max-w-lg bg-white dark:bg-white border border-[#ECECEF] dark:border-slate-200 rounded-[28px] p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90dvh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-[#171717] dark:text-white">+ Tambah Jenis Aktivitas Kemah</h3>
+              <h3 className="text-base font-bold text-[#171717] dark:text-slate-900">+ Tambah Jenis Aktivitas Kemah</h3>
               <button
                 onClick={() => setShowActivityModal(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-300 flex items-center justify-center cursor-pointer"
+                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-50 hover:bg-slate-200 dark:hover:bg-slate-100 text-slate-600 dark:text-slate-600 flex items-center justify-center cursor-pointer"
               >
                 ✕
               </button>
@@ -932,13 +932,13 @@ export const ScheduleActivityEditor: React.FC = () => {
 
             <form onSubmit={handleSaveActivity} className="space-y-4 text-sm">
               <div>
-                <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Nama Aktivitas:</label>
+                <label className="text-slate-700 dark:text-slate-700 font-semibold block mb-1">Nama Aktivitas:</label>
                 <input
                   type="text"
                   value={activityForm.name}
                   onChange={e => setActivityForm({ ...activityForm, name: e.target.value })}
                   placeholder="Contoh: Wide Game Penjelajahan Rimba"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-white border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-slate-900 placeholder:text-slate-500 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                   required
                 />
               </div>
@@ -946,11 +946,11 @@ export const ScheduleActivityEditor: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="text-slate-700 dark:text-slate-200 font-semibold block">Tipe Kegiatan:</label>
+                    <label className="text-slate-700 dark:text-slate-700 font-semibold block">Tipe Kegiatan:</label>
                     <button
                       type="button"
                       onClick={() => setShowAddTypeModal(true)}
-                      className="text-[10px] text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 font-bold underline"
+                      className="text-[10px] text-emerald-700 hover:text-emerald-800 dark:text-red-600 dark:hover:text-red-700 font-bold underline"
                     >
                       + Buat Tipe
                     </button>
@@ -958,7 +958,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                   <select
                     value={activityForm.type}
                     onChange={e => setActivityForm({ ...activityForm, type: e.target.value })}
-                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 font-medium"
+                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-white border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-slate-900 placeholder:text-slate-500 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/30 font-medium"
                   >
                     {activityTypes.map(t => (
                       <option key={t.id} value={t.name}>
@@ -969,23 +969,23 @@ export const ScheduleActivityEditor: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Poin XP Reward:</label>
+                  <label className="text-slate-700 dark:text-slate-700 font-semibold block mb-1">Poin XP Reward:</label>
                   <input
                     type="number"
                     value={activityForm.pointRule}
                     onChange={e => setActivityForm({ ...activityForm, pointRule: Number(e.target.value) })}
-                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-amber-700 dark:text-amber-400 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                    className="w-full px-3 py-2.5 bg-slate-50 dark:bg-white border border-slate-300 dark:border-slate-700 rounded-2xl text-amber-700 dark:text-amber-400 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-red-500/30"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Deskripsi Singkat:</label>
+                <label className="text-slate-700 dark:text-slate-700 font-semibold block mb-1">Deskripsi Singkat:</label>
                 <textarea
                   rows={2}
                   value={activityForm.description}
                   onChange={e => setActivityForm({ ...activityForm, description: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  className="w-full px-3.5 py-2 bg-slate-50 dark:bg-white border border-slate-300 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-slate-900 placeholder:text-slate-500 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                 />
               </div>
 
@@ -993,13 +993,13 @@ export const ScheduleActivityEditor: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowActivityModal(false)}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-slate-200 rounded-xl"
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-100 dark:hover:bg-white/15 text-slate-700 dark:text-slate-700 rounded-xl"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold"
+                  className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-slate-900 rounded-xl font-bold"
                 >
                   Simpan Aktivitas
                 </button>
@@ -1011,15 +1011,15 @@ export const ScheduleActivityEditor: React.FC = () => {
 
       {/* CREATE ACTIVITY TYPE MODAL */}
       {showAddTypeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="w-full max-w-lg bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90dvh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white0 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="w-full max-w-lg bg-white dark:bg-white border border-[#ECECEF] dark:border-slate-200 rounded-[28px] p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90dvh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-[#171717] dark:text-white">+ Buat Tipe Aktivitas Baru</h3>
+              <h3 className="text-base font-bold text-[#171717] dark:text-slate-900">+ Buat Tipe Aktivitas Baru</h3>
               <button
                 type="button"
                 onClick={() => setShowAddTypeModal(false)}
                 aria-label="Tutup form tipe aktivitas"
-                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-300 flex items-center justify-center cursor-pointer"
+                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-50 hover:bg-slate-200 dark:hover:bg-slate-100 text-slate-600 dark:text-slate-600 flex items-center justify-center cursor-pointer"
               >
                 ✕
               </button>
@@ -1027,26 +1027,26 @@ export const ScheduleActivityEditor: React.FC = () => {
 
             <form onSubmit={handleSaveType} className="space-y-4 text-sm">
               <div>
-                <label htmlFor="new-activity-type-name" className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Nama Tipe Aktivitas:</label>
+                <label htmlFor="new-activity-type-name" className="text-slate-700 dark:text-slate-700 font-semibold block mb-1">Nama Tipe Aktivitas:</label>
                 <input
                   id="new-activity-type-name"
                   type="text"
                   value={newTypeForm.name}
                   onChange={e => setNewTypeForm({ ...newTypeForm, name: e.target.value })}
                   placeholder="Contoh: Survival Laut, Drone Scouting..."
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-white border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-900 placeholder:text-slate-500 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                   required
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label htmlFor="new-activity-type-category" className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Kategori Utama:</label>
+                  <label htmlFor="new-activity-type-category" className="text-slate-700 dark:text-slate-700 font-semibold block mb-1">Kategori Utama:</label>
                   <select
                     id="new-activity-type-category"
                     value={newTypeForm.category}
                     onChange={e => setNewTypeForm({ ...newTypeForm, category: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-white border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-900 placeholder:text-slate-500 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                   >
                     <option value="scout_craft">Keterampilan</option>
                     <option value="adventure">Petualangan</option>
@@ -1057,26 +1057,26 @@ export const ScheduleActivityEditor: React.FC = () => {
                 </div>
 
                 <div>
-                  <label htmlFor="new-activity-type-xp" className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Default XP:</label>
+                  <label htmlFor="new-activity-type-xp" className="text-slate-700 dark:text-slate-700 font-semibold block mb-1">Default XP:</label>
                   <input
                     id="new-activity-type-xp"
                     type="number"
                     min={0}
                     value={newTypeForm.defaultXp}
                     onChange={e => setNewTypeForm({ ...newTypeForm, defaultXp: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-amber-700 dark:text-amber-400 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-white border border-slate-300 dark:border-slate-700 rounded-xl text-amber-700 dark:text-amber-400 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-red-500/30"
                   />
                 </div>
               </div>
 
               <div>
-                <label htmlFor="new-activity-type-description" className="text-slate-700 dark:text-slate-200 font-semibold block mb-1">Deskripsi Ringkas:</label>
+                <label htmlFor="new-activity-type-description" className="text-slate-700 dark:text-slate-700 font-semibold block mb-1">Deskripsi Ringkas:</label>
                 <textarea
                   id="new-activity-type-description"
                   rows={3}
                   value={newTypeForm.description}
                   onChange={e => setNewTypeForm({ ...newTypeForm, description: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-white border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-900 placeholder:text-slate-500 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/30"
                   placeholder="Penjelasan sasaran dan materi..."
                 />
               </div>
@@ -1085,13 +1085,13 @@ export const ScheduleActivityEditor: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowAddTypeModal(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-slate-200 rounded-xl"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-100 dark:hover:bg-white/15 text-slate-700 dark:text-slate-700 rounded-xl"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold flex items-center gap-1.5"
+                  className="px-5 py-2 bg-red-600 hover:bg-red-500 text-slate-900 rounded-xl font-bold flex items-center gap-1.5"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   <span>Simpan Tipe</span>
@@ -1104,27 +1104,27 @@ export const ScheduleActivityEditor: React.FC = () => {
 
       {/* SCHEDULE CHANGE NOTIFICATION MODAL (Requirement 19) */}
       {scheduleChangePrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-md bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white0 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-md bg-white dark:bg-white border border-[#ECECEF] dark:border-slate-200 rounded-[28px] p-6 shadow-2xl space-y-4">
             <div className="flex items-center gap-2 text-amber-500">
               <Bell className="w-5 h-5" />
-              <h3 className="text-base font-bold text-[#171717] dark:text-white">Kirim Pengumuman Perubahan Jadwal?</h3>
+              <h3 className="text-base font-bold text-[#171717] dark:text-slate-900">Kirim Pengumuman Perubahan Jadwal?</h3>
             </div>
-            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-600 leading-relaxed">
               Agenda yang diperbarui telah dipublikasikan ke peserta. Apakah Anda ingin menyiarkan pengumuman pembaruan ini ke seluruh peserta dan pembina?
             </p>
-            <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200 space-y-1">
-              <div className="font-bold text-white uppercase text-[10px]">Pratinjau Pengumuman:</div>
+            <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 space-y-1">
+              <div className="font-bold text-slate-900 uppercase text-[10px]">Pratinjau Pengumuman:</div>
               <div className="font-bold text-amber-300">📢 Jadwal Berubah</div>
-              <div className="font-semibold text-white">{scheduleChangePrompt.title}</div>
-              <div className="font-mono text-emerald-300">{scheduleChangePrompt.oldTime} → {scheduleChangePrompt.newTime}</div>
-              <div className="text-slate-300">📍 {scheduleChangePrompt.location}</div>
+              <div className="font-semibold text-slate-900">{scheduleChangePrompt.title}</div>
+              <div className="font-mono text-red-700">{scheduleChangePrompt.oldTime} → {scheduleChangePrompt.newTime}</div>
+              <div className="text-slate-600">📍 {scheduleChangePrompt.location}</div>
             </div>
-            <div className="pt-2 border-t border-white/8 flex justify-end gap-2 text-xs">
+            <div className="pt-2 border-t border-slate-200 flex justify-end gap-2 text-xs">
               <button
                 type="button"
                 onClick={() => setScheduleChangePrompt(null)}
-                className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-slate-400"
+                className="px-4 py-2 bg-white/5 hover:bg-slate-100 rounded-xl text-slate-500"
               >
                 Tidak Perlu
               </button>
@@ -1174,35 +1174,35 @@ export const ScheduleActivityEditor: React.FC = () => {
 
       {/* BATCH PRINT QR FILTER MODAL (Requirement 5) */}
       {showBatchPrintModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-2xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-[#ECECEF] dark:border-white/10 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-white0 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-2xl bg-white dark:bg-white border border-[#ECECEF] dark:border-slate-200 rounded-[28px] p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-[#ECECEF] dark:border-slate-200 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-red-50 dark:bg-red-600/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/30">
                   <Printer className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-[#171717] dark:text-white tracking-tight">Cetak Batch QR Kegiatan & Pos</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Pilih filter dan agenda yang akan dicetak massal (Sign A4 & Grid Kartu).</p>
+                  <h3 className="text-base font-bold text-[#171717] dark:text-slate-900 tracking-tight">Cetak Batch QR Kegiatan & Pos</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-500">Pilih filter dan agenda yang akan dicetak massal (Sign A4 & Grid Kartu).</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowBatchPrintModal(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 rounded-xl cursor-pointer"
+                className="text-slate-500 hover:text-slate-600 dark:hover:text-slate-900 p-1 rounded-xl cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
             {/* Filter Bar (Day, Category, Location) */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-black/40 rounded-2xl border border-white/5 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs">
               <div>
-                <label className="text-[11px] font-semibold text-slate-400 block mb-1">Filter Hari:</label>
+                <label className="text-[11px] font-semibold text-slate-500 block mb-1">Filter Hari:</label>
                 <select
                   value={batchFilterDay.toString()}
                   onChange={e => setBatchFilterDay(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 bg-[#0e1711] border border-white/10 rounded-xl text-white font-medium"
+                  className="w-full px-2.5 py-1.5 bg-[#0e1711] border border-slate-200 rounded-xl text-slate-900 font-medium"
                 >
                   <option value="all">Semua Hari Perkemahan</option>
                   {eventDays.map(d => (
@@ -1212,11 +1212,11 @@ export const ScheduleActivityEditor: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-[11px] font-semibold text-slate-400 block mb-1">Filter Kategori:</label>
+                <label className="text-[11px] font-semibold text-slate-500 block mb-1">Filter Kategori:</label>
                 <select
                   value={batchFilterCategory}
                   onChange={e => setBatchFilterCategory(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-[#0e1711] border border-white/10 rounded-xl text-white font-medium capitalize"
+                  className="w-full px-2.5 py-1.5 bg-[#0e1711] border border-slate-200 rounded-xl text-slate-900 font-medium capitalize"
                 >
                   <option value="all">Semua Kategori</option>
                   {Array.from(new Set(scheduleList.map(s => s.category))).map(cat => (
@@ -1226,11 +1226,11 @@ export const ScheduleActivityEditor: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-[11px] font-semibold text-slate-400 block mb-1">Filter Lokasi / Zona:</label>
+                <label className="text-[11px] font-semibold text-slate-500 block mb-1">Filter Lokasi / Zona:</label>
                 <select
                   value={batchFilterLocation}
                   onChange={e => setBatchFilterLocation(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-[#0e1711] border border-white/10 rounded-xl text-white font-medium truncate"
+                  className="w-full px-2.5 py-1.5 bg-[#0e1711] border border-slate-200 rounded-xl text-slate-900 font-medium truncate"
                 >
                   <option value="all">Semua Lokasi / Zona</option>
                   {Array.from(new Set(scheduleList.map(s => s.location))).map(loc => (
@@ -1254,8 +1254,8 @@ export const ScheduleActivityEditor: React.FC = () => {
               return (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs px-1">
-                    <span className="text-slate-400">
-                      Menampilkan <strong className="text-white">{matchedItems.length}</strong> agenda ({selectedBatchItemIds.length} dipilih)
+                    <span className="text-slate-500">
+                      Menampilkan <strong className="text-slate-900">{matchedItems.length}</strong> agenda ({selectedBatchItemIds.length} dipilih)
                     </span>
                     <div className="flex gap-2">
                       <button
@@ -1264,7 +1264,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                           const ids = Array.from(new Set([...selectedBatchItemIds, ...matchedItems.map(m => m.id)]));
                           setSelectedBatchItemIds(ids);
                         }}
-                        className="text-emerald-400 hover:text-emerald-300 font-semibold"
+                        className="text-red-600 hover:text-red-700 font-semibold"
                       >
                         Pilih Semua Tampil
                       </button>
@@ -1275,7 +1275,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                           const matchedSet = new Set(matchedItems.map(m => m.id));
                           setSelectedBatchItemIds(prev => prev.filter(id => !matchedSet.has(id)));
                         }}
-                        className="text-slate-400 hover:text-white"
+                        className="text-slate-500 hover:text-slate-900"
                       >
                         Hapus Pilihan
                       </button>
@@ -1295,8 +1295,8 @@ export const ScheduleActivityEditor: React.FC = () => {
                           }}
                           className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 text-xs ${
                             isChecked
-                              ? 'bg-red-950/30 border-red-500/50 text-white'
-                              : 'bg-black/20 border-white/5 text-slate-400 hover:bg-white/5'
+                              ? 'bg-red-950/30 border-red-500/50 text-slate-900'
+                              : 'bg-white border-slate-200 text-slate-500 hover:bg-red-50'
                           }`}
                         >
                           <div className="flex items-center gap-2.5">
@@ -1307,8 +1307,8 @@ export const ScheduleActivityEditor: React.FC = () => {
                               className="accent-red-600 rounded"
                             />
                             <div>
-                              <div className="font-bold text-white">{item.title}</div>
-                              <div className="text-[11px] text-slate-400 flex items-center gap-2">
+                              <div className="font-bold text-slate-900">{item.title}</div>
+                              <div className="text-[11px] text-slate-500 flex items-center gap-2">
                                 <span>Hari {item.dayNumber} · {item.time}</span>
                                 <span>·</span>
                                 <span>📍 {item.location}</span>
@@ -1322,7 +1322,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                                 +{item.xpReward} XP
                               </span>
                             )}
-                            <span className="px-2 py-0.5 rounded bg-white/5 text-slate-400 text-[10px] uppercase font-mono">
+                            <span className="px-2 py-0.5 rounded bg-white/5 text-slate-500 text-[10px] uppercase font-mono">
                               {item.category}
                             </span>
                           </div>
@@ -1335,15 +1335,15 @@ export const ScheduleActivityEditor: React.FC = () => {
             })()}
 
             {/* Modal Actions */}
-            <div className="pt-3 border-t border-white/10 flex items-center justify-between">
-              <span className="text-xs text-slate-400">
+            <div className="pt-3 border-t border-slate-200 flex items-center justify-between">
+              <span className="text-xs text-slate-500">
                 {selectedBatchItemIds.length} QR Code agenda siap dicetak
               </span>
               <div className="flex items-center gap-2 text-xs">
                 <button
                   type="button"
                   onClick={() => setShowBatchPrintModal(false)}
-                  className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-slate-300"
+                  className="px-4 py-2 bg-white/5 hover:bg-slate-100 rounded-xl text-slate-600"
                 >
                   Batal
                 </button>
@@ -1367,7 +1367,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                     setShowBatchPrintModal(false);
                     setPrintSignConfigs(configs);
                   }}
-                  className="px-5 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white font-bold rounded-xl flex items-center gap-2 shadow-lg shadow-red-950/50"
+                  className="px-5 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-40 text-slate-900 font-bold rounded-xl flex items-center gap-2 shadow-lg shadow-red-950/50"
                 >
                   <Printer className="w-4 h-4" />
                   <span>Buka Lembar Cetak ({selectedBatchItemIds.length})</span>
