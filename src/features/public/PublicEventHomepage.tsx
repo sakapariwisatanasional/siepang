@@ -63,12 +63,12 @@ import {
   PortalSectionKey,
   PublicPortalConfig,
 } from '../../services/portalConfigService';
-import { PublicHeroBanner } from '../../components/banners/PublicHeroBanner';
 import { PublicInformationBanner } from '../../components/banners/PublicInformationBanner';
 import { PublicSponsorStrip } from '../../components/banners/PublicSponsorStrip';
 import { GlobalFooter } from '../../components/layout/GlobalFooter';
 import { VisitorPublicRegistrationModal } from '../visitors/VisitorPublicRegistrationModal';
 import { MediaItem, LeaderboardEntry, ScheduleItem, Announcement } from '../../types';
+import campSceneIllustration from '../../assets/illustrations/camp-scene-arcane-2d.svg';
 
 export type InstallationState = 'LOADING' | 'CONFIGURED' | 'NOT_CONFIGURED' | 'BACKEND_UNREACHABLE';
 
@@ -342,96 +342,122 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
   // Section renderers
   const renderHeroSection = () => {
     if (isConfigured && features.heroBanner) {
+      const eventLogoUrl = String(event.logoUrl || '').trim();
+      const eventLogoSrc = eventLogoUrl
+        ? `${eventLogoUrl}${eventLogoUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(event.id || 'event')}`
+        : '';
+
       return (
-        <section id="section-hero" className="space-y-4">
-          <PublicHeroBanner
-            onNavigateRoute={route => {
-              if (route === 'gallery') onNavigateToGallery?.();
-              else if (route === 'schedule') onNavigateToSchedule?.();
-              else if (route === 'visitors') setShowVisitorModal(true);
-              else if (route === 'scanner') onOpenScanner?.();
-            }}
-            location="PUBLIC_HOME_TOP"
-          />
-
-          {/* Event Metadata Hero Summary */}
-          <div className="rounded-[28px] bg-white dark:bg-[#121215] border border-red-100 dark:border-white/10 p-5 sm:p-7 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="space-y-1">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-50 text-[#C51F1F] dark:text-[#D71920] text-xs font-bold">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>{event.organizationalLevel || 'Kwartir'} · Resmi</span>
+        <section id="section-hero" className="space-y-5">
+          <div className="relative overflow-hidden rounded-[32px] border border-red-100 bg-[linear-gradient(135deg,#fffaf5_0%,#fff6f1_45%,#fffdf9_100%)] p-5 shadow-[0_14px_50px_rgba(160,20,20,0.08)] sm:p-7 lg:p-8">
+            <div aria-hidden="true" className="pointer-events-none absolute -left-12 bottom-0 h-40 w-40 rounded-full bg-[#F4D53F]/18 blur-3xl" />
+            <div aria-hidden="true" className="pointer-events-none absolute -right-10 top-0 h-44 w-44 rounded-full bg-[#D71920]/10 blur-3xl" />
+            <div className="relative grid gap-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+              <div className="space-y-5">
+                <div className="inline-flex items-center gap-2 rounded-full border border-red-100 bg-white/90 px-3.5 py-1.5 text-[11px] font-bold text-[#C51F1F] shadow-sm backdrop-blur-sm">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>{event.organizationalLevel || 'Kwartir'} · Portal Kegiatan Resmi</span>
                 </div>
-                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">
-                  {event.name}
-                </h1>
-                {event.theme && (
-                  <p className="text-sm font-semibold text-[#D71920] italic">
-                    "{event.theme}"
-                  </p>
-                )}
-              </div>
 
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => onOpenScanner?.()}
-                  className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-[#B51218] via-[#D71920] to-[#EF4444] hover:opacity-95 text-white text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer active:scale-95"
-                >
-                  <QrCode className="w-4 h-4" />
-                  <span>Scan QR</span>
-                </button>
-                {features.visitorRegistration && (
+                <div className="flex items-start gap-3">
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[22px] border border-red-100 bg-white shadow-sm sm:h-20 sm:w-20">
+                    {eventLogoSrc ? (
+                      <img
+                        src={eventLogoSrc}
+                        alt={`Logo ${event.name}`}
+                        className="h-full w-full object-contain p-1.5"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <Tent className="h-8 w-8 text-[#D71920]" />
+                    )}
+                  </div>
+
+                  <div className="min-w-0 space-y-2">
+                    <h1 className="text-3xl font-black leading-[1.02] tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">
+                      <span className="block">{event.name}</span>
+                      <span className="mt-1 block text-[#D71920]">{event.shortName || 'Kegiatan Pramuka'}</span>
+                    </h1>
+                    <p className="max-w-xl text-sm leading-relaxed text-slate-600 sm:text-base">
+                      Akses cepat ke jadwal kegiatan, ranking, galeri, layanan QR, verifikasi, dan informasi resmi penyelenggaraan.
+                    </p>
+                    {event.theme && (
+                      <p className="text-sm font-semibold italic text-[#0F7A47]">“{event.theme}”</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-[22px] border border-red-100 bg-white/85 p-4 shadow-sm backdrop-blur-sm">
+                    <div className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#C51F1F]">
+                      <Calendar className="h-3.5 w-3.5" />
+                      Tanggal Kegiatan
+                    </div>
+                    <div className="text-base font-black text-slate-900">{event.startDate || 'Diumumkan'}</div>
+                    <div className="text-sm font-semibold text-slate-500">{event.endDate ? `s.d. ${event.endDate}` : 'Menunggu pembaruan jadwal'}</div>
+                  </div>
+                  <div className="rounded-[22px] border border-red-100 bg-white/85 p-4 shadow-sm backdrop-blur-sm">
+                    <div className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#C51F1F]">
+                      <MapPin className="h-3.5 w-3.5" />
+                      Lokasi
+                    </div>
+                    <div className="text-base font-black text-slate-900">{event.campGround || 'Bumi Perkemahan'}</div>
+                    <div className="text-sm font-semibold text-slate-500">{event.location || event.organizer || 'Lokasi akan diumumkan'}</div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2.5">
                   <button
                     type="button"
-                    onClick={() => setShowVisitorModal(true)}
-                    className="px-4 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                    onClick={() => onNavigateToSchedule?.()}
+                    className="inline-flex min-h-12 items-center gap-2 rounded-2xl bg-[#D71920] px-5 text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(215,25,32,0.22)] transition-transform hover:-translate-y-0.5"
                   >
-                    <Users className="w-4 h-4" />
-                    <span>Daftar Tamu</span>
+                    <Calendar className="h-4.5 w-4.5" />
+                    <span>Jadwal Kegiatan</span>
                   </button>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-black/40 border border-black/5 dark:border-white/5 space-y-0.5">
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
-                  <MapPin className="w-3 h-3 text-[#D71920]" />
-                  <span>Lokasi:</span>
-                </div>
-                <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                  {event.campGround || 'Bumi Perkemahan'}
-                </div>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-black/40 border border-black/5 dark:border-white/5 space-y-0.5">
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
-                  <Calendar className="w-3 h-3 text-purple-600" />
-                  <span>Tanggal:</span>
-                </div>
-                <div className="text-xs font-bold text-amber-600 dark:text-amber-400 truncate">
-                  {event.startDate || 'Diumumkan'} {event.endDate ? `- ${event.endDate}` : ''}
+                  <button
+                    type="button"
+                    onClick={() => onOpenScanner?.()}
+                    className="inline-flex min-h-12 items-center gap-2 rounded-2xl border border-red-100 bg-white px-5 text-sm font-bold text-slate-900 shadow-sm transition-colors hover:border-red-200 hover:text-[#C51F1F]"
+                  >
+                    <QrCode className="h-4.5 w-4.5 text-[#D71920]" />
+                    <span>Scan QR</span>
+                  </button>
+                  {features.visitorRegistration && (
+                    <button
+                      type="button"
+                      onClick={() => setShowVisitorModal(true)}
+                      className="inline-flex min-h-12 items-center gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-5 text-sm font-bold text-emerald-800 shadow-sm transition-colors hover:bg-emerald-100"
+                    >
+                      <Users className="h-4.5 w-4.5" />
+                      <span>Registrasi Tamu</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-black/40 border border-black/5 dark:border-white/5 space-y-0.5">
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
-                  <Users className="w-3 h-3 text-blue-600" />
-                  <span>Peserta:</span>
-                </div>
-                <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                  {event.registeredCount || 0} Terdaftar
-                </div>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-black/40 border border-black/5 dark:border-white/5 space-y-0.5">
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                  <span>Penyelenggara:</span>
-                </div>
-                <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 truncate">
-                  {event.organizer || 'Kwartir'}
+              <div className="relative min-h-[260px] overflow-hidden rounded-[28px] border border-red-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.94)_0%,rgba(255,250,245,0.98)_100%)] p-4 shadow-[0_8px_24px_rgba(90,30,20,0.06)] sm:min-h-[320px] lg:min-h-[380px]">
+                <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#D71920]/8 to-transparent" />
+                <img
+                  src={campSceneIllustration}
+                  alt="Ilustrasi suasana perkemahan"
+                  className="pointer-events-none absolute bottom-0 right-0 w-full max-w-[640px] select-none object-contain"
+                />
+                <div className="relative z-10 flex h-full flex-col justify-between">
+                  <div className="flex justify-end">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1 text-[11px] font-bold text-slate-700 shadow-sm">
+                      <Tent className="h-3.5 w-3.5 text-[#D71920]" />
+                      Ilustrasi 2D Transparan
+                    </span>
+                  </div>
+                  <div className="max-w-[270px] rounded-[22px] border border-white/70 bg-white/85 p-4 shadow-[0_12px_28px_rgba(50,30,20,0.08)] backdrop-blur-sm">
+                    <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#C51F1F]">
+                      <ShieldCheck className="h-3.5 w-3.5" />
+                      Penyelenggara
+                    </div>
+                    <div className="text-lg font-black text-slate-900">{event.organizer || 'Kwartir Ranting'}</div>
+                    <div className="mt-1 text-sm text-slate-500">Peserta terdaftar: <span className="font-bold text-slate-900">{event.registeredCount || 0}</span></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1150,7 +1176,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-black text-slate-900 dark:text-slate-100 flex flex-col justify-between selection:bg-[#F47743] selection:text-white transition-colors">
+    <div className="min-h-screen bg-[#FAF6F2] dark:bg-black text-slate-900 dark:text-slate-100 flex flex-col justify-between selection:bg-[#D71920] selection:text-white transition-colors">
       {/* 1. Header Bar with Status & Quick Navigation */}
       <div className="bg-white/95 dark:bg-[#121215]/95 backdrop-blur-md border-b border-red-100 dark:border-white/10 px-3.5 sm:px-6 py-2 flex items-center justify-between text-xs z-40 sticky top-0 transition-colors">
         <div className="flex items-center gap-2">
@@ -1453,7 +1479,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
 
           {activePublicPage !== 'home' && (
             <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#141418]">
-              <button type="button" onClick={() => openPublicPage('section-hero')} className="rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-bold text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-200" aria-label="Kembali ke beranda">← Kembali</button>
+              <button type="button" onClick={() => openPublicPage('section-hero')} className="rounded-xl border border-red-100 bg-red-50 px-4 py-2.5 text-sm font-bold text-[#C51F1F] hover:bg-red-100 dark:bg-red-900/30 dark:text-red-200" aria-label="Kembali ke beranda">← Kembali</button>
               <h1 className="font-bold text-lg">{publicPageTitle[activePublicPage] || 'Layanan Publik'}</h1>
             </div>
           )}
