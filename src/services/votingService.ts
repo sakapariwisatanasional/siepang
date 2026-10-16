@@ -1,63 +1,135 @@
 /**
  * @license
- * SiEpang - Digital Works Voting Service
+ * SiEpang - Public Digital Works Voting Service
+ *
+ * Anonymous public voting is persisted by GAS. The browser only keeps a
+ * voter token so the UI can immediately reflect a vote already made from
+ * this browser. The Votes sheet remains the authoritative source.
  */
 
 import { competitionService } from './competitionService';
-import { syncQueueService } from '../offline/syncQueueService';
-import { localCampServerService } from './localCampServerService';
+
+const VOTER_TOKEN_KEY = 'siepang_public_voter_token_v1';
+
+function createVoterToken(): string {
+  try {
+    const existing = localStorage.getItem(VOTER_TOKEN_KEY);
+    if (existing && existing.length >= 24) return existing;
+
+    const token =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? `vtr_${crypto.randomUUID().replace(/-/g, '')}`
+        : `vtr_${Date.now()}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
+
+    localStorage.setItem(VOTER_TOKEN_KEY, token);
+    return token;
+  } catch {
+    return `vtr_${Date.now()}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
+  }
+}
 
 class VotingService {
-  private votedIds: Set<string> = new Set(); // No fabricated prior votes; session-only UI state until server voting is integrated.
+  private votedIds: Set<string> = new Set();
   private listeners: Set<() => void> = new Set();
 
-  public hasVoted(workId: string): boolean {
-    return this.votedIds.has(workId);
+  constructor() {
+    this.hydrateLocalVotes();
   }
 
-  public async toggleVote(workId: string): Promise<{ voted: boolean; newCount: number; isProvisional: boolean }> {
-    const works = competitionService.getDigitalWorks();
-    const work = works.find(w => w.id === workId);
-    if (!work) throw new Error('Karya tidak ditemukan');
+  private hydrateLocalVotes() {
+    try {
+      const raw = localStorage.getItem(`${VOTER_TOKEN_KEY}:votes`);
+      if (!raw) return;
+      const ids = JSON.parse(raw);
+      if (Array.isArray(ids)) {
+        ids.filter((id): id is string => typeof id === 'string').forEach(id => this.votedIds.add(id));
+      }
+    } catch {}
+  }
 
-    const currentlyVoted = this.votedIds.has(workId);
-    const isOffline = syncQueueService.getConnectionState() === 'offline';
-    const isProvisional = isOffline || localCampServerService.getOperationalMode() !== 'cloud';
+  private persistLocalVotes() {
+    try {
+      localStorage.setItem(`${VOTER_TOKEN_KEY}:votes`, JSON.stringify([...this.votedIds]));
+    } catch {}
+  }
 
-    if (currentlyVoted) {
-      this.votedIds.delete(workId);
-      work.votesCount = Math.max(0, work.votesCount - 1);
-      work.hasVoted = false;
-    } else {
-      this.votedIds.add(workId);
-      work.votesCount += 1;
-      work.hasVoted = true;
+  private getVoterToken(): string {
+    return createVoterToken();
+  }
 
-      // Add to centralized offline transaction engine with UUID and provisional mark
-      syncQueueService.enqueueTransaction({
-        entity: 'vote',
-        action: 'VOTE',
-        record_id: workId,
-        payload: {
-          workId,
-          workTitle: work.title,
-          currentVoteCount: this.votedIds.size,
-          maxVotes: 3,
-          isProvisional,
-          timestamp: new Date().toISOString(),
-        },
-      });
+  public hasVoted(workId: string): boolean {
+    const work = competitionService.getDigitalWorks().find(item => item.id === workId);
+    return Boolean(work?.hasVoted || this.votedIds.has(workId));
+  }
+
+  /**
+   * A public vote is intentionally one-way. There is no client-side "unvote"
+   * because removing a vote would make the XP ledger reversible from the
+   * browser and would undermine the server-side audit trail.
+   */
+  public async vote(workId: string): Promise<{
+    voted: boolean;
+    newCount: number;
+    xpAwarded: number;
+    isAlreadyVoted?: boolean;
+  }> {
+    const work = competitionService.getDigitalWorks().find(item => item.id === workId);
+    if (!work) throw new Error('Karya tidak ditemukan.');
+
+    if (this.hasVoted(workId)) {
+      return {
+        voted: false,
+        newCount: work.votesCount,
+        xpAwarded: 0,
+        isAlreadyVoted: true,
+      };
     }
 
+    const { apiTransport } = await import('./apiTransport');
+    const response = await apiTransport.send<{
+      vote: {
+        id: string;
+        candidate_id: string;
+        new_count: number;
+        xp_awarded: number;
+      };
+    }>(
+      'votes.public.submit',
+      {
+        candidate_id: workId,
+        voter_token: this.getVoterToken(),
+      },
+      { skipAuth: true, timeoutMs: 30000 }
+    );
+
+    if (!response.ok || !response.data?.vote) {
+      throw new Error(response.error?.message || 'Voting belum berhasil disimpan ke GAS.');
+    }
+
+    const result = response.data.vote;
+    const newCount = Number(result.new_count ?? work.votesCount) || 0;
+    work.votesCount = newCount;
+    work.hasVoted = true;
+    this.votedIds.add(workId);
+    this.persistLocalVotes();
     this.notify();
-    return { voted: !currentlyVoted, newCount: work.votesCount, isProvisional };
+
+    return {
+      voted: true,
+      newCount,
+      xpAwarded: Number(result.xp_awarded ?? 0) || 0,
+    };
+  }
+
+  // Backwards-compatible alias for existing callers. Public voting is
+  // intentionally one-way; a second click returns "already voted".
+  public async toggleVote(workId: string) {
+    return this.vote(workId);
   }
 
   public subscribe(cb: () => void) {
     this.listeners.add(cb);
-    return () => {
-      this.listeners.delete(cb);
-    };
+    return () => this.listeners.delete(cb);
   }
 
   private notify() {
