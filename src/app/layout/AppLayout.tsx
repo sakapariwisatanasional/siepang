@@ -52,14 +52,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
   if (isPublicView) {
     return (
-      <div className="min-h-screen flex flex-col bg-[#F7F7F8] dark:bg-[#0E0E12] text-[#171717] dark:text-slate-100 transition-colors">
+      <div className="min-h-screen flex flex-col bg-[#FAF8F4] dark:bg-[#0E0E12] text-[#1F1F1F] dark:text-slate-100 transition-colors">
         <main className="flex-1 flex flex-col min-w-0">{children}</main>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F7F7F8] dark:bg-[#0E0E12] text-[#171717] dark:text-slate-100 transition-colors">
+    <div className="min-h-screen flex flex-col bg-[#FAF8F4] dark:bg-[#0E0E12] text-[#1F1F1F] dark:text-slate-100 transition-colors">
       {/* Top Header */}
       <GlobalHeader
         onOpenScanner={onOpenScanner}
@@ -88,7 +88,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               <section aria-label="Akses cepat fitur SiEpang" className="mb-7">
                 <div className="flex items-start sm:items-center justify-between gap-3 mb-4">
                   <div>
-                    <p className="text-xs font-semibold tracking-widest uppercase text-emerald-700 dark:text-emerald-400 mb-1">Navigasi Cepat</p>
+                    <p className="text-xs font-semibold tracking-widest uppercase text-[#C51F1F] dark:text-red-300 mb-1">Navigasi Cepat</p>
                     <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
                       <LayoutGrid className="w-5 h-5" aria-hidden="true" /> Jelajahi SiEpang
                     </h2>
@@ -101,10 +101,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                       key={id}
                       type="button"
                       onClick={() => onTabChange(id)}
-                      className="group text-left min-h-[122px] rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#191b23] p-4 shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-emerald-300 dark:hover:border-emerald-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 transition-all"
+                      className="group text-left min-h-[122px] rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#191b23] p-4 shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-red-300 dark:hover:border-red-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#D71920] transition-all"
                     >
                       <div className="flex items-start justify-between gap-2 mb-3">
-                        <span className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">
+                        <span className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-red-50 dark:bg-red-900/30 text-[#C51F1F] dark:text-red-300">
                           <Icon className="w-5 h-5" aria-hidden="true" />
                         </span>
                         <ArrowUpRight className="w-4 h-4 text-slate-400 opacity-50 group-hover:opacity-100" aria-hidden="true" />
