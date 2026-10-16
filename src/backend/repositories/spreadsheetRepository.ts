@@ -726,7 +726,7 @@ class SpreadsheetRepository {
     const updated: RegisteredDevice = {
       device_id: device.device_id,
       workspace_id: device.workspace_id,
-      user_id: device.user_id || existing?.user_id || 'usr_anonymous',
+      user_id: device.user_id || existing?.user_id || '',
       device_name: device.device_name || existing?.device_name || 'Browser Device',
       device_type: device.device_type || existing?.device_type || 'mobile',
       registration_timestamp: existing?.registration_timestamp || new Date().toISOString().replace('T', ' ').substring(0, 19),
