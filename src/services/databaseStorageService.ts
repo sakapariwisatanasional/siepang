@@ -6,7 +6,7 @@
  */
 
 import { SpreadsheetConnectionConfig } from '../types';
-import { customerBrandingDriveService } from './customerBrandingDriveService';
+import { apiTransport } from './apiTransport';
 import {
   CANONICAL_SCHEMA_VERSION,
   CANONICAL_TABLE_NAMES,
@@ -63,7 +63,11 @@ class DatabaseStorageService {
     try {
       const stored = localStorage.getItem('siepang_database_config');
       if (stored) {
-        this.config = JSON.parse(stored);
+        const parsed = JSON.parse(stored) as SpreadsheetConnectionConfig;
+        const looksLikeLegacyFixture =
+          /^1Spr_/i.test(String(parsed.spreadsheet_id || '')) ||
+          /^1Drive_/i.test(String(parsed.drive_folder_id || ''));
+        this.config = looksLikeLegacyFixture ? { ...DEFAULT_CONFIG } : { ...DEFAULT_CONFIG, ...parsed };
       } else {
         const instStr = localStorage.getItem('siepang_installation_record');
         if (instStr) {
@@ -116,39 +120,20 @@ class DatabaseStorageService {
    * Create under /SiEpang/Database/ -> Create -> Provision Canonical Schema -> Seed -> Validate -> Save -> Health Check -> READY
    */
   public async createNewSpreadsheet(
-    title: string,
-    workspaceId: string = 'ws_banyuwangi'
+    _title: string,
+    _workspaceId?: string
   ): Promise<SpreadsheetConnectionConfig> {
-    const folders = customerBrandingDriveService.getFolderStructure();
-    const newSpreadsheetId = `1Spr_Auto_${Date.now()}_${workspaceId}`;
-    const cleanTitle = title.trim() || `SiEpang DB - ${new Date().getFullYear()}`;
+    throw new Error(
+      'DATABASE_CREATE_NOT_AVAILABLE: SiEpang tidak membuat Spreadsheet palsu dari frontend. ' +
+      'Gunakan Spreadsheet customer yang nyata lalu hubungkan melalui GAS.'
+    );
+  }
 
-    // Simulate creation latency and schema provisioning
-    await new Promise(res => setTimeout(res, 600));
-
-    this.config = {
-      workspace_id: workspaceId,
-      spreadsheet_id: newSpreadsheetId,
-      spreadsheet_url: `https://docs.google.com/spreadsheets/d/${newSpreadsheetId}/edit`,
-      status: 'CONNECTED',
-      schema_version: STANDARD_SCHEMA_VERSION,
-      connected_at: new Date().toISOString(),
-      last_sync: 'Baru saja',
-      title: cleanTitle,
-      sheet_names: [...REQUIRED_SPREADSHEET_SHEETS],
-      drive_folder_id: folders.database_folder_id || '1Drive_Folder_Database',
-      health: {
-        can_read: true,
-        can_write: true,
-        missing_sheets: [],
-        schema_matched: true,
-        latency_ms: 118,
-      },
-    };
-
-    this.saveToStorage();
-    this.notify();
-    return this.config;
+  private extractSpreadsheetId(inputUrlOrId: string): string {
+    const trimmed = String(inputUrlOrId || '').trim();
+    if (!trimmed) return '';
+    const match = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    return (match?.[1] || trimmed).trim();
   }
 
   /**
@@ -190,31 +175,37 @@ class DatabaseStorageService {
       };
     }
 
-    // Simulate inspection
-    await new Promise(res => setTimeout(res, 500));
+    const response = await apiTransport.send<{
+      spreadsheet_id: string;
+      spreadsheet_name: string;
+      spreadsheet_url: string;
+      sheet_names: string[];
+      sheets: Array<{ name: string; row_count: number; column_count: number; headers: string[] }>;
+    }>('database.inspect', { spreadsheet_id: extractedId });
 
-    // Handle test cases: e.g. empty, older schema, valid
-    if (extractedId.includes('empty') || extractedId.endsWith('_0')) {
-      return CanonicalSchemaValidator.classifySpreadsheet(['Sheet1']);
-    } else if (extractedId.includes('v1.4') || extractedId.includes('old')) {
-      return CanonicalSchemaValidator.classifySpreadsheet(
-        ['Events', 'Schedules', 'Activities', 'Participants', 'Contingents', 'Campsites'],
-        {},
-        'v1.4'
-      );
-    } else if (extractedId.includes('v2.0') || extractedId.includes('future')) {
-      return CanonicalSchemaValidator.classifySpreadsheet(
-        REQUIRED_SPREADSHEET_SHEETS,
-        {},
-        'v2.0'
-      );
+    if (!response.ok || !response.data) {
+      return {
+        status: 'ACCESS_DENIED',
+        targetVersion: CANONICAL_SCHEMA_VERSION,
+        tableCount: 0,
+        expectedTableCount: REQUIRED_SPREADSHEET_SHEETS.length,
+        requiredTableCount: REQUIRED_TABLE_NAMES.length,
+        missingRequiredTables: [...REQUIRED_TABLE_NAMES],
+        tableDetails: [],
+        message: response.error?.message || 'Spreadsheet tidak dapat diperiksa melalui GAS.',
+        canAutoMigrate: false,
+      };
     }
 
-    // Default: valid spreadsheet matching canonical schema
+    const sheets = response.data.sheets || [];
+    const headersBySheet: Record<string, string[]> = {};
+    sheets.forEach(sheet => {
+      headersBySheet[sheet.name] = (sheet.headers || []).filter(Boolean);
+    });
+
     return CanonicalSchemaValidator.classifySpreadsheet(
-      REQUIRED_SPREADSHEET_SHEETS,
-      {},
-      CANONICAL_SCHEMA_VERSION
+      response.data.sheet_names || sheets.map(sheet => sheet.name),
+      headersBySheet
     );
   }
 
@@ -223,7 +214,7 @@ class DatabaseStorageService {
    */
   public async connectExistingSpreadsheet(
     inputUrlOrId: string,
-    workspaceId: string = 'ws_banyuwangi'
+    workspaceId: string = ''
   ): Promise<{ success: boolean; config?: SpreadsheetConnectionConfig; classification?: DatabaseClassificationResult; error?: string }> {
     const classification = await this.classifySpreadsheet(inputUrlOrId);
 
@@ -281,37 +272,47 @@ class DatabaseStorageService {
    */
   public async provisionEmptySpreadsheet(
     inputUrlOrId: string,
-    workspaceId: string = 'ws_banyuwangi'
+    workspaceId: string = ''
   ): Promise<SpreadsheetConnectionConfig> {
-    let extractedId = inputUrlOrId.trim();
-    const match = inputUrlOrId.match(/\/d\/([a-zA-Z0-9_-]+)/);
-    if (match && match[1]) {
-      extractedId = match[1];
+    const extractedId = this.extractSpreadsheetId(inputUrlOrId);
+    if (!extractedId) throw new Error('SPREADSHEET_ID_REQUIRED: ID atau URL Spreadsheet wajib diisi.');
+
+    const configuredId = this.config.spreadsheet_id;
+    if (!configuredId || configuredId !== extractedId) {
+      throw new Error(
+        'DATABASE_PROVISION_REQUIRES_CANONICAL_BINDING: Spreadsheet harus lebih dahulu ditetapkan sebagai database canonical pada GAS. Tidak ada provisioning simulasi dari browser.'
+      );
     }
 
-    await new Promise(res => setTimeout(res, 800));
+    const response = await apiTransport.send('database.provision_schema_v19', {});
+    if (!response.ok) {
+      throw new Error(response.error?.message || 'Gagal melakukan provisioning schema melalui GAS.');
+    }
 
-    const folders = customerBrandingDriveService.getFolderStructure();
+    const classification = await this.classifySpreadsheet(extractedId);
+    if (!classification.status === 'VALID_SIEPANG_DATABASE') {
+      throw new Error(classification.message || 'Schema canonical belum terverifikasi setelah provisioning GAS.');
+    }
+
     this.config = {
-      workspace_id: workspaceId,
+      ...this.config,
+      workspace_id: workspaceId || this.config.workspace_id,
       spreadsheet_id: extractedId,
       spreadsheet_url: `https://docs.google.com/spreadsheets/d/${extractedId}/edit`,
       status: 'CONNECTED',
       schema_version: STANDARD_SCHEMA_VERSION,
-      connected_at: new Date().toISOString(),
-      last_sync: 'Baru saja',
-      title: `SiEpang DB - Baru Diinisialisasi (${extractedId.substring(0, 8)})`,
+      connected_at: this.config.connected_at || new Date().toISOString(),
+      last_sync: new Date().toISOString(),
+      title: this.config.title || 'SiEpang Database',
       sheet_names: [...REQUIRED_SPREADSHEET_SHEETS],
-      drive_folder_id: folders.database_folder_id,
       health: {
+        ...this.config.health,
         can_read: true,
         can_write: true,
         missing_sheets: [],
         schema_matched: true,
-        latency_ms: 130,
       },
     };
-
     this.saveToStorage();
     this.notify();
     return this.config;
@@ -321,59 +322,14 @@ class DatabaseStorageService {
    * Backup & Migrate older schema to v1.6 (Req 27 & 48)
    */
   public async migrateOlderSchema(
-    inputUrlOrId: string,
-    sourceVersion: string = 'v1.5',
-    workspaceId: string = 'ws_banyuwangi'
+    _inputUrlOrId: string,
+    _sourceVersion: string = '',
+    _workspaceId: string = ''
   ): Promise<{ success: boolean; backupRecord: DatabaseBackupRecord; config: SpreadsheetConnectionConfig }> {
-    let extractedId = inputUrlOrId.trim();
-    const match = inputUrlOrId.match(/\/d\/([a-zA-Z0-9_-]+)/);
-    if (match && match[1]) {
-      extractedId = match[1];
-    }
-
-    const folders = customerBrandingDriveService.getFolderStructure();
-
-    // 1. Mandatory Pre-Migration Backup (Req 48)
-    const backupRecord: DatabaseBackupRecord = {
-      backup_id: `bak_${Date.now()}`,
-      source_schema_version: sourceVersion,
-      target_schema_version: STANDARD_SCHEMA_VERSION,
-      spreadsheet_id: extractedId,
-      drive_folder_id: folders.backup_folder_id || '1Drive_Folder_Backup',
-      created_at: new Date().toISOString(),
-      created_by: 'Admin Migrasi SiEpang',
-      file_name: `Backup_${extractedId.substring(0, 8)}_PreMigration_${Date.now()}.xlsx`,
-      status: 'COMPLETED',
-    };
-    this.backups.unshift(backupRecord);
-
-    // 2. Simulate schema migration steps
-    await new Promise(res => setTimeout(res, 900));
-
-    // 3. Update configuration to canonical v1.5
-    this.config = {
-      workspace_id: workspaceId,
-      spreadsheet_id: extractedId,
-      spreadsheet_url: `https://docs.google.com/spreadsheets/d/${extractedId}/edit`,
-      status: 'CONNECTED',
-      schema_version: STANDARD_SCHEMA_VERSION,
-      connected_at: new Date().toISOString(),
-      last_sync: 'Baru saja',
-      title: `SiEpang DB - Bermigrasi ke ${STANDARD_SCHEMA_VERSION}`,
-      sheet_names: [...REQUIRED_SPREADSHEET_SHEETS],
-      drive_folder_id: folders.database_folder_id,
-      health: {
-        can_read: true,
-        can_write: true,
-        missing_sheets: [],
-        schema_matched: true,
-        latency_ms: 140,
-      },
-    };
-
-    this.saveToStorage();
-    this.notify();
-    return { success: true, backupRecord, config: this.config };
+    throw new Error(
+      'DATABASE_MIGRATION_NOT_AVAILABLE: Migrasi schema tidak boleh disimulasikan di browser. ' +
+      'Migrasi harus dijalankan oleh endpoint GAS yang membuat backup dan mencatat hasil aktual.'
+    );
   }
 
   /**
@@ -381,29 +337,9 @@ class DatabaseStorageService {
    * Tests write access using isolated metadata sheet / safe heartbeat without polluting business tables.
    */
   public async performSafeWriteTest(): Promise<{ success: boolean; latencyMs: number; message: string }> {
-    if (this.config.status === 'DISCONNECTED') {
-      return { success: false, latencyMs: 0, message: 'Spreadsheet belum terhubung.' };
-    }
-
-    await new Promise(res => setTimeout(res, 350));
-
-    const latency = Math.floor(Math.random() * 60) + 115;
-    this.config.health = {
-      can_read: true,
-      can_write: true,
-      missing_sheets: [],
-      schema_matched: true,
-      latency_ms: latency,
-    };
-    this.config.last_sync = 'Baru saja';
-    this.saveToStorage();
-    this.notify();
-
-    return {
-      success: true,
-      latencyMs: latency,
-      message: `Uji Baca & Tulis Aman Berhasil (${latency}ms). Tabel bisnis tidak dimodifikasi (Req 30).`,
-    };
+    throw new Error(
+      'DATABASE_SAFE_WRITE_TEST_NOT_AVAILABLE: Uji tulis harus menggunakan endpoint GAS yang nyata. Frontend tidak boleh mensimulasikan latency atau status write.'
+    );
   }
 
   /**
@@ -412,7 +348,7 @@ class DatabaseStorageService {
    */
   public async replaceSpreadsheet(
     newUrlOrId: string,
-    workspaceId: string = 'ws_banyuwangi'
+    workspaceId: string = ''
   ): Promise<{ success: boolean; oldId: string; newId: string; message: string }> {
     const oldId = this.config.spreadsheet_id;
     const res = await this.connectExistingSpreadsheet(newUrlOrId, workspaceId);
@@ -458,25 +394,9 @@ class DatabaseStorageService {
    * Manual backup trigger
    */
   public async createBackup(): Promise<DatabaseBackupRecord> {
-    const folders = customerBrandingDriveService.getFolderStructure();
-    await new Promise(res => setTimeout(res, 400));
-
-    const backupRecord: DatabaseBackupRecord = {
-      backup_id: `bak_${Date.now()}`,
-      source_schema_version: this.config.schema_version,
-      target_schema_version: this.config.schema_version,
-      spreadsheet_id: this.config.spreadsheet_id,
-      drive_folder_id: folders.backup_folder_id || '1Drive_Folder_Backup',
-      created_at: new Date().toISOString(),
-      created_by: 'Administrator SiEpang',
-      file_name: `Backup_${this.config.title.replace(/\s+/g, '_')}_${Date.now()}.xlsx`,
-      status: 'COMPLETED',
-    };
-
-    this.backups.unshift(backupRecord);
-    this.saveToStorage();
-    this.notify();
-    return backupRecord;
+    throw new Error(
+      'DATABASE_BACKUP_NOT_AVAILABLE: Backup harus dibuat oleh GAS/Drive secara nyata. Frontend tidak membuat record backup palsu.'
+    );
   }
 
   public subscribe(cb: () => void): () => void {
