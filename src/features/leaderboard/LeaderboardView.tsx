@@ -31,7 +31,7 @@ export const LeaderboardView: React.FC = () => {
   // Process contingent ranking based on method
   const sortedContingents = [...contingents]
     .map(c => {
-      const avgXp = Math.round(c.totalXp / c.participantCount);
+      const avgXp = c.participantCount > 0 ? Math.round(c.totalXp / c.participantCount) : 0;
       return {
         ...c,
         avgXp,
@@ -43,6 +43,30 @@ export const LeaderboardView: React.FC = () => {
       }
       return b.totalXp - a.totalXp;
     });
+
+  // Never dereference currentUserEntry when the leaderboard is empty.
+  // This keeps the page usable during an empty/first-load state instead of
+  // sending the entire application to the recovery screen.
+  if (leaderboard.length === 0) {
+    return (
+      <div className="space-y-5 max-w-xl mx-auto pb-8">
+        <div className="bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 p-6 rounded-[28px] shadow-xs text-center">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-300 mb-4">
+            <Trophy className="w-7 h-7" />
+          </div>
+          <h1 className="text-xl font-black text-[#171717] dark:text-white">
+            Peringkat & XP
+          </h1>
+          <p className="mt-2 text-sm text-[#6B7280] dark:text-slate-400">
+            Belum ada data peringkat peserta.
+          </p>
+          <p className="mt-1 text-xs text-[#9CA3AF] dark:text-slate-500">
+            Peringkat akan tampil setelah data peserta dan perolehan XP tersedia.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 max-w-xl mx-auto pb-8">
