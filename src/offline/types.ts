@@ -252,7 +252,7 @@ export interface SneakernetSyncBundle {
   bundle_version: string; // e.g. "1.1"
   workspace_id: string;
   event_id: string;
-  source_server_id: string; // e.g. EDGE-BWI-BUPER-01
+  source_server_id: string;
   source_device_id?: string;
   created_at: string;
   expires_at: string; // Shorter validity for air-gapped bundles (e.g. 48h)
