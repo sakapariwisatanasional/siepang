@@ -74,69 +74,6 @@ export interface TwoAccountAcceptanceReport {
   verifiedAt: string;
 }
 
-// REAL CUSTOMER PROFILES (Milestone v1.8 Release Candidate)
-export const CUSTOMER_A_RECORD: CustomerInstallationRecord = {
-  installation_id: 'SIM-INST-ALPHA-2026',
-  installation_code: 'SIEPANG-KWRT-ALPHA-7F92K',
-  workspace_id: 'ws_alpha_2026',
-  active_event_id: 'SIM-EVENT-ALPHA-2026',
-  organization_id: 'SIM-ORG-KWARRAN-ALPHA',
-  organization_name: 'Kwartir Pelaksana Alpha',
-  spreadsheet_id: '1Spr_SiEpang_Kwarran_Alpha_2026',
-  root_drive_folder_id: '1Drive_SiEpang_Alpha_Root',
-  database_folder_id: '1Drive_Folder_Database_Alpha',
-  branding_folder_id: '1Drive_Folder_Branding_Alpha',
-  script_id: '1Gas_SiEpang_Customer_Backend_Alpha',
-  deployment_id: 'AKfycbz_alpha_prod_v180',
-  web_app_url: 'https://script.google.com/macros/s/AKfycbz_alpha_prod_v180/exec',
-  frontend_version: FRONTEND_APPLICATION_VERSION,
-  backend_version: CUSTOMER_GAS_BACKEND_VERSION,
-  schema_version: CANONICAL_SCHEMA_VERSION,
-  environment: 'PRODUCTION',
-  installation_status: 'READY',
-  installation_mode: 'GUIDED_INSTALLATION',
-  installed_at: '2026-08-01T10:00:00Z',
-  installed_by: 'admin.kwarran@alpha.pramuka.test',
-  owner_account_email: 'admin.kwarran@alpha.pramuka.test',
-  owner_status: 'VERIFIED',
-  last_health_check: 'Baru saja',
-  authorization_granted: true,
-  handshake_nonce: 'nonce_alpha_sec_9942a',
-  bootstrap_superadmin_email: 'scoutpreneur@gmail.com',
-  bootstrap_superadmin_status: 'ACTIVE',
-};
-
-export const CUSTOMER_B_RECORD: CustomerInstallationRecord = {
-  installation_id: 'SIM-INST-BOJONGSARI-2026',
-  installation_code: 'SIEPANG-KWRT-BOJONGSARI-8E41X',
-  workspace_id: 'ws_bojongsari_2026',
-  active_event_id: 'SIM-JAMRAN-BOJONGSARI-2026',
-  organization_id: 'SIM-ORG-KWARRAN-BOJONGSARI',
-  organization_name: 'Kwartir Ranting Bojongsari',
-  spreadsheet_id: '1Spr_SiEpang_Kwarran_Bojongsari_2026',
-  root_drive_folder_id: '1Drive_SiEpang_Bojongsari_Root',
-  database_folder_id: '1Drive_Folder_Database_Bojongsari',
-  branding_folder_id: '1Drive_Folder_Branding_Bojongsari',
-  script_id: '1Gas_SiEpang_Customer_Backend_Bojongsari',
-  deployment_id: 'AKfycbz_bojongsari_prod_v180',
-  web_app_url: 'https://script.google.com/macros/s/AKfycbz_bojongsari_prod_v180/exec',
-  frontend_version: FRONTEND_APPLICATION_VERSION,
-  backend_version: CUSTOMER_GAS_BACKEND_VERSION,
-  schema_version: CANONICAL_SCHEMA_VERSION,
-  environment: 'PRODUCTION',
-  installation_status: 'READY',
-  installation_mode: 'GUIDED_INSTALLATION',
-  installed_at: '2026-08-15T08:30:00Z',
-  installed_by: 'admin.kwarran@bojongsari.pramuka.test',
-  owner_account_email: 'admin.kwarran@bojongsari.pramuka.test',
-  owner_status: 'VERIFIED',
-  last_health_check: 'Baru saja',
-  authorization_granted: true,
-  handshake_nonce: 'nonce_bjs_sec_7718b',
-  bootstrap_superadmin_email: 'scoutpreneur@gmail.com',
-  bootstrap_superadmin_status: 'ACTIVE',
-};
-
 export const FRESH_INSTALLATION_RECORD: CustomerInstallationRecord = {
   installation_id: '',
   installation_code: '',
@@ -163,7 +100,7 @@ export const FRESH_INSTALLATION_RECORD: CustomerInstallationRecord = {
   owner_status: 'UNAVAILABLE',
   last_health_check: '',
   authorization_granted: false,
-  bootstrap_superadmin_email: 'scoutpreneur@gmail.com',
+  bootstrap_superadmin_email: '',
   bootstrap_superadmin_status: 'PENDING',
 };
 
@@ -174,7 +111,7 @@ const DEFAULT_INSTALLATION_RECORD: CustomerInstallationRecord = {
 class CustomerInstallationService {
   private record: CustomerInstallationRecord = { ...DEFAULT_INSTALLATION_RECORD };
   private activeStep: number = 1;
-  private activeTenant: 'CUSTOMER_A' | 'CUSTOMER_B' | 'CUSTOM' = 'CUSTOM';
+  private activeTenant: 'CUSTOM' = 'CUSTOM';
   private listeners: Set<() => void> = new Set();
 
   constructor() {
@@ -186,18 +123,26 @@ class CustomerInstallationService {
       const stored = localStorage.getItem('siepang_installation_record');
       if (stored) {
         const parsed = JSON.parse(stored);
-        this.record = {
-          ...DEFAULT_INSTALLATION_RECORD,
-          ...parsed,
-          frontend_version: FRONTEND_APPLICATION_VERSION,
-          bootstrap_superadmin_email: 'scoutpreneur@gmail.com',
-          bootstrap_superadmin_status: parsed.bootstrap_superadmin_status || (parsed.installation_status === 'READY' ? 'ACTIVE' : 'PENDING'),
-        };
+        const looksLikeLegacyFixture =
+          /^SIM-/i.test(String(parsed.installation_id || '')) ||
+          /^SIM-/i.test(String(parsed.active_event_id || '')) ||
+          /^SIM-/i.test(String(parsed.organization_id || '')) ||
+          /^1Spr_/i.test(String(parsed.spreadsheet_id || '')) ||
+          /^1Drive_/i.test(String(parsed.root_drive_folder_id || '')) ||
+          /^1Gas_/i.test(String(parsed.script_id || '')) ||
+          /^AKfycbz_/i.test(String(parsed.deployment_id || ''));
+        this.record = looksLikeLegacyFixture
+          ? { ...DEFAULT_INSTALLATION_RECORD }
+          : {
+              ...DEFAULT_INSTALLATION_RECORD,
+              ...parsed,
+              frontend_version: FRONTEND_APPLICATION_VERSION,
+              bootstrap_superadmin_email: String(parsed.bootstrap_superadmin_email || ''),
+              bootstrap_superadmin_status: parsed.bootstrap_superadmin_status || (parsed.installation_status === 'READY' ? 'ACTIVE' : 'PENDING'),
+            };
       }
-      const storedTenant = localStorage.getItem('siepang_active_tenant');
-      if (storedTenant === 'CUSTOMER_A' || storedTenant === 'CUSTOMER_B' || storedTenant === 'CUSTOM') {
-        this.activeTenant = storedTenant;
-      }
+      // Customer identity is not selected from bundled fixtures.
+      // The active installation is the one returned by the configured GAS backend.
       const storedStep = localStorage.getItem('siepang_installation_wizard_step');
       if (storedStep) {
         this.activeStep = parseInt(storedStep, 10) || 1;
@@ -221,14 +166,14 @@ class CustomerInstallationService {
     return { ...this.record };
   }
 
-  public getActiveTenant(): 'CUSTOMER_A' | 'CUSTOMER_B' | 'CUSTOM' {
+  public getActiveTenant(): 'CUSTOM' {
     return this.activeTenant;
   }
 
   /**
    * Authoritative Installation Configured Check (Requirements 32, 33, 39)
    * An installation is strictly NOT considered configured or completed
-   * unless the initial bootstrap superadmin scoutpreneur@gmail.com is ACTIVE.
+   * unless the initial bootstrap superadmin administrator bootstrap yang dikonfigurasi is ACTIVE.
    */
   public isConfigured(): boolean {
     return (
@@ -240,37 +185,17 @@ class CustomerInstallationService {
     );
   }
 
+  /** Customer switching is disabled: one frontend deployment belongs to its configured customer installation. */
   public loadCustomerAProfile(): CustomerInstallationRecord {
-    return this.switchActiveCustomer('CUSTOMER_A');
+    throw new Error('CUSTOMER_SWITCH_DISABLED: Tidak ada profil customer contoh di frontend.');
   }
 
   public loadCustomerBProfile(): CustomerInstallationRecord {
-    return this.switchActiveCustomer('CUSTOMER_B');
+    throw new Error('CUSTOMER_SWITCH_DISABLED: Tidak ada profil customer contoh di frontend.');
   }
 
-  /**
-   * Switch Active Customer Tenant (Customer A vs Customer B)
-   * Facilitates seamless verification of two separate real Google accounts.
-   */
-  public switchActiveCustomer(tenant: 'CUSTOMER_A' | 'CUSTOMER_B'): CustomerInstallationRecord {
-    this.activeTenant = tenant;
-    if (tenant === 'CUSTOMER_A') {
-      this.record = { ...CUSTOMER_A_RECORD };
-    } else {
-      this.record = { ...CUSTOMER_B_RECORD };
-    }
-    this.saveToStorage();
-
-    // Re-bind database storage connection to active customer's spreadsheet
-    if (this.record.spreadsheet_id) {
-      databaseStorageService.connectExistingSpreadsheet(
-        this.record.spreadsheet_id,
-        this.record.workspace_id
-      );
-    }
-
-    this.notify();
-    return { ...this.record };
+  public switchActiveCustomer(_tenant: 'CUSTOMER_A' | 'CUSTOMER_B'): CustomerInstallationRecord {
+    throw new Error('CUSTOMER_SWITCH_DISABLED: Identitas customer harus berasal dari GAS.');
   }
 
   public getActiveWizardStep(): number {
@@ -402,7 +327,7 @@ class CustomerInstallationService {
     else if (stepNumber === 2) {
       this.record.organization_id = stepPayload?.organization_id || `org_${Date.now()}`;
       this.record.organization_name = stepPayload?.organization_name || 'Kwartir Penyelenggara Kegiatan';
-      this.record.workspace_id = stepPayload?.workspace_id || `ws_${Date.now()}`;
+      this.record.workspace_id = stepPayload?.workspace_id || '';
       if (!this.record.installation_code) {
         this.record.installation_code = this.generateInstallationCode('KWCB');
       }
@@ -425,7 +350,7 @@ class CustomerInstallationService {
     // 5. Backend Google Apps Script Project
     else if (stepNumber === 5) {
       const inputScriptId = stepPayload?.script_id;
-      this.record.script_id = inputScriptId || `1Gas_Customer_Project_${Date.now().toString(36)}`;
+      this.record.script_id = inputScriptId || '';
       this.record.backend_version = CUSTOMER_GAS_BACKEND_VERSION;
       this.record.installation_status = 'BACKEND_READY';
       this.activeStep = 6;
@@ -444,7 +369,7 @@ class CustomerInstallationService {
       }
       this.record.web_app_url = inputUrl;
       const parts = inputUrl.split('/');
-      this.record.deployment_id = parts[parts.length - 2] || `AKfycbz_${Date.now()}`;
+      this.record.deployment_id = parts[parts.length - 2] || '';
       this.activeStep = 8;
     }
     // 8. Branding
@@ -469,7 +394,7 @@ class CustomerInstallationService {
           return {
             success: false,
             nextStep: 9,
-            message: `Gagal membuat Initial SuperAdmin resmi (scoutpreneur@gmail.com): ${bootRes.message}`,
+            message: `Gagal membuat Initial SuperAdmin resmi (administrator bootstrap yang dikonfigurasi): ${bootRes.message}`,
           };
         }
         this.record.installation_status = 'READY';
@@ -489,30 +414,19 @@ class CustomerInstallationService {
   }
 
   /**
-   * Ensures initial superadmin scoutpreneur@gmail.com is created and active (Requirements 32, 33, 36, 37, 39, 40)
+   * Ensures initial superadmin administrator bootstrap yang dikonfigurasi is created and active (Requirements 32, 33, 36, 37, 39, 40)
    * Idempotent: checks table Users -> if missing creates -> role superadmin -> status ACTIVE.
    */
   public async ensureBootstrapSuperAdmin(): Promise<{ success: boolean; message: string; user?: any }> {
     try {
-      const superadmin = userManagementService.ensureBootstrapSuperadmin(this.record.workspace_id);
-      if (!superadmin || superadmin.role !== 'superadmin' || superadmin.status !== 'active') {
-        this.record.bootstrap_superadmin_status = 'FAILED';
-        this.saveToStorage();
-        this.notify();
-        return {
-          success: false,
-          message: 'Status akun Initial Superadmin tidak aktif.',
-        };
-      }
-
-      this.record.bootstrap_superadmin_email = 'scoutpreneur@gmail.com';
+      const superadmin = await userManagementService.ensureBootstrapSuperadmin(this.record.workspace_id);
+      this.record.bootstrap_superadmin_email = superadmin.email || '';
       this.record.bootstrap_superadmin_status = 'ACTIVE';
       this.saveToStorage();
       this.notify();
-
       return {
         success: true,
-        message: 'Initial SuperAdmin scoutpreneur@gmail.com aktif.',
+        message: 'Bootstrap administrator aktif pada data GAS.',
         user: superadmin,
       };
     } catch (err: any) {
@@ -521,13 +435,9 @@ class CustomerInstallationService {
       this.notify();
       return {
         success: false,
-        message: err.message || 'Gagal inisialisasi superadmin',
+        message: err?.message || 'Gagal memverifikasi bootstrap administrator.',
       };
     }
-  }
-
-  public generateHandshakeNonce(): string {
-    return 'nonce_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
   }
 
   /**
@@ -555,7 +465,7 @@ class CustomerInstallationService {
       if (!import.meta.env.PROD && (url.includes('.test') || url.includes('localhost') || url.includes('mock'))) {
         const simulatedDetails = {
           installation_id: this.record.installation_id || 'DEV-INST-001',
-          workspace_id: this.record.workspace_id || 'ws_dev',
+          workspace_id: this.record.workspace_id || '',
           backend_version: CUSTOMER_GAS_BACKEND_VERSION,
           schema_version: CANONICAL_SCHEMA_VERSION,
           environment: 'DEVELOPMENT',
@@ -658,212 +568,15 @@ class CustomerInstallationService {
    * Verifies Customer A vs Customer B complete separation, anti-tampering, and dev independence.
    */
   public runTwoAccountAcceptanceTest(): TwoAccountAcceptanceReport {
-    const custA = {
-      name: CUSTOMER_A_RECORD.organization_name || 'Customer Organization A',
-      accountEmail: CUSTOMER_A_RECORD.installed_by,
-      installationCode: CUSTOMER_A_RECORD.installation_code,
-      workspaceId: CUSTOMER_A_RECORD.workspace_id,
-      spreadsheetId: CUSTOMER_A_RECORD.spreadsheet_id,
-      driveFolderId: CUSTOMER_A_RECORD.root_drive_folder_id,
-      backendUrl: CUSTOMER_A_RECORD.web_app_url,
-    };
-
-    const custB = {
-      name: CUSTOMER_B_RECORD.organization_name || 'Customer Organization B',
-      accountEmail: CUSTOMER_B_RECORD.installed_by,
-      installationCode: CUSTOMER_B_RECORD.installation_code,
-      workspaceId: CUSTOMER_B_RECORD.workspace_id,
-      spreadsheetId: CUSTOMER_B_RECORD.spreadsheet_id,
-      driveFolderId: CUSTOMER_B_RECORD.root_drive_folder_id,
-      backendUrl: CUSTOMER_B_RECORD.web_app_url,
-    };
-
-    const tests: AcceptanceTestItem[] = [
-      {
-        id: 'ACC_01_ACCOUNTS',
-        name: 'Isolasi Akun Google Customer A & B',
-        category: 'ISOLATION',
-        passed: custA.accountEmail !== custB.accountEmail,
-        expectedResult: 'Akun Google pemilik berbeda secara fisik',
-        actualResult: `Customer A: ${custA.accountEmail} vs Customer B: ${custB.accountEmail}`,
-        details: 'Kedua instalasi dikonfigurasi pada akun Google terpisah tanpa akun bersama.',
-      },
-      {
-        id: 'ACC_02_DRIVE_FOLDERS',
-        name: 'Pemisahan Struktur Google Drive (/SiEpang/)',
-        category: 'ISOLATION',
-        passed: custA.driveFolderId !== custB.driveFolderId,
-        expectedResult: 'Root Drive ID dan 7 subfolder terpisah di akun masing-masing',
-        actualResult: `Customer A (${custA.driveFolderId}) ≠ Customer B (${custB.driveFolderId})`,
-        details: 'Subfolder Database/, Branding/, Documents/, Certificates/, ID Cards/, Backup/, Assets/ independen 100%.',
-      },
-      {
-        id: 'ACC_03_SPREADSHEET_DB',
-        name: 'Pemisahan Spreadsheet Database Kanonikal (39 Tabel)',
-        category: 'ISOLATION',
-        passed: custA.spreadsheetId !== custB.spreadsheetId,
-        expectedResult: 'File spreadsheet terpisah dengan 39 tabel kanonikal independen',
-        actualResult: `Sheet A (${custA.spreadsheetId}) ≠ Sheet B (${custB.spreadsheetId})`,
-        details: 'Tidak ada baris data atau tabel bersama antara kedua kwarcab.',
-      },
-      {
-        id: 'ACC_04_GAS_PROJECTS',
-        name: 'Pemisahan Apps Script Project & Deployment Web App',
-        category: 'ISOLATION',
-        passed: custA.backendUrl !== custB.backendUrl,
-        expectedResult: 'Web App URL & Deployment ID berbeda 100%',
-        actualResult: `Deploy A: ...${custA.backendUrl.slice(-25)} ≠ Deploy B: ...${custB.backendUrl.slice(-25)}`,
-        details: 'Setiap customer memiliki standalone Apps Script project berotonomi tinggi.',
-      },
-      {
-        id: 'ACC_05_CROSS_A_TO_B',
-        name: 'Uji Serangan Silang (A Frontend → B Backend)',
-        category: 'CROSS_BINDING',
-        passed: true,
-        httpStatus: 403,
-        expectedResult: 'HTTP 403 INSTALLATION_MISMATCH ditolak',
-        actualResult: 'HTTP 403 INSTALLATION_MISMATCH: Target instalasi tidak sesuai dengan project backend.',
-        details: 'Backend Customer B memvalidasi context.installationId dan menolak payload milik Customer A.',
-      },
-      {
-        id: 'ACC_06_CROSS_B_TO_A',
-        name: 'Uji Serangan Silang (B Sesi → A Backend)',
-        category: 'CROSS_BINDING',
-        passed: true,
-        httpStatus: 403,
-        expectedResult: 'HTTP 403 WORKSPACE_MISMATCH ditolak',
-        actualResult: 'HTTP 403 WORKSPACE_MISMATCH: Workspace tidak diizinkan mengakses data instans ini.',
-        details: 'Backend Customer A memvalidasi context.workspaceId dan menolak token asing.',
-      },
-      {
-        id: 'ACC_07_SPREADSHEET_TAMPER',
-        name: 'Proteksi Manipulasi Injeksi Spreadsheet ID (Tamper Defense)',
-        category: 'TAMPER_DEFENSE',
-        passed: true,
-        expectedResult: 'Backend mengabaikan spreadsheet_id di request body',
-        actualResult: 'Aman: Backend menyelesaikan database melalui Script Properties SIEPANG_SPREADSHEET_ID terpercaya.',
-        details: 'Injeksi spreadsheet_id Customer B ke dalam request Customer A tidak berpengaruh ke runtime database.',
-      },
-      {
-        id: 'ACC_08_DRIVE_TAMPER',
-        name: 'Proteksi Manipulasi Folder Google Drive (Drive Spoofing)',
-        category: 'TAMPER_DEFENSE',
-        passed: true,
-        expectedResult: 'Root drive folder diisolasi oleh Script Properties',
-        actualResult: 'Aman: Root drive folder diambil dari Script Properties SIEPANG_ROOT_DRIVE_FOLDER_ID.',
-        details: 'Upaya spoofing folder ID tidak dipercaya sebagai penyimpanan runtime otoritatif.',
-      },
-      {
-        id: 'ACC_09_DEV_INDEPENDENCE',
-        name: 'Uji Independensi Sumber Daya Developer (Zero Dev Dependency)',
-        category: 'DEVELOPER_INDEPENDENCE',
-        passed: true,
-        expectedResult: '9 modul inti beroperasi penuh saat hak akses developer dicabut',
-        actualResult: '100% Beroperasi: Auth, Peserta, Jadwal, QR Kegiatan, Presensi, Sponsor, Galeri, Sertifikat, Branding.',
-        details: 'Seluruh operasi runtime dieksekusi di atas infrastruktur Google milik customer mandiri.',
-      },
-      // ACCEPTANCE CRITERIA 13-19 (Requirements 32-43)
-      {
-        id: 'ACC_13_SUPERADMIN_AVAILABLE',
-        name: 'Ketersediaan Initial Superadmin (scoutpreneur@gmail.com)',
-        category: 'ISOLATION',
-        passed: true,
-        expectedResult: 'Akun scoutpreneur@gmail.com terdaftar di tabel Users',
-        actualResult: 'Tersedia: Akun scoutpreneur@gmail.com aktif pada instalasi',
-        details: 'Initial superadmin dibuat otomatis setelah backend dan database siap.',
-      },
-      {
-        id: 'ACC_14_SUPERADMIN_ROLE',
-        name: 'Validasi Peran Superadmin Resmi',
-        category: 'ISOLATION',
-        passed: true,
-        expectedResult: 'Role terdaftar persis "superadmin"',
-        actualResult: 'Role: superadmin (Global System Scope)',
-        details: 'Memiliki kewenangan penuh sesuai skema RBAC kanonikal SiEpang.',
-      },
-      {
-        id: 'ACC_15_SUPERADMIN_STATUS',
-        name: 'Status Akun Superadmin Aktif',
-        category: 'ISOLATION',
-        passed: true,
-        expectedResult: 'Status = ACTIVE',
-        actualResult: 'Status: ACTIVE (Diverifikasi)',
-        details: 'Akun siap digunakan langsung untuk konfigurasi awal perkemahan.',
-      },
-      {
-        id: 'ACC_16_NO_HARDCODED_PASSWORD',
-        name: 'Bebas Password Hardcoded / Plaintext / Default',
-        category: 'TAMPER_DEFENSE',
-        passed: true,
-        expectedResult: 'Tidak ada password plaintext, PIN default, atau secret di source code',
-        actualResult: '100% Bebas Password: Auth berbasis Email + OTP + SHA-256 + Trusted Device',
-        details: 'Dilarang keras menyimpan password default atau secret login di source code.',
-      },
-      {
-        id: 'ACC_17_NO_AUTH_BYPASS',
-        name: 'Bebas Email-Based Authorization Bypass',
-        category: 'TAMPER_DEFENSE',
-        passed: true,
-        expectedResult: 'Otorisasi berbasis User -> Role -> Permission -> RBAC',
-        actualResult: 'Kanonikal RBAC: Tidak ada bypass hardcoded berbasis email',
-        details: 'Semua operasi diperiksa melalui Backend RBAC kanonikal, bukan pencocokan string email.',
-      },
-      {
-        id: 'ACC_18_IDEMPOTENT_BOOTSTRAP',
-        name: 'Idempotensi Bootstrap Superadmin',
-        category: 'TAMPER_DEFENSE',
-        passed: true,
-        expectedResult: 'Inisialisasi berulang tidak menghasilkan user duplikat',
-        actualResult: 'Idempotent: Tepat 1 user terdaftar untuk scoutpreneur@gmail.com',
-        details: 'Pemeriksaan canonical normalized email mencegah duplikasi baris pengguna.',
-      },
-      {
-        id: 'ACC_19_CANONICAL_LOGIN_FLOW',
-        name: 'Alur Login Kanonikal (OTP & Trusted Device)',
-        category: 'CROSS_BINDING',
-        passed: true,
-        expectedResult: 'Login device baru wajib OTP 6-digit; device tepercaya auto-session',
-        actualResult: 'Alur Kanonikal Aktif: Email -> OTP 10 menit -> Trusted Device -> Sesi 30 hari',
-        details: 'First admin login tidak otomatis bypass autentikasi.',
-      },
-    ];
-
-    const passedCount = tests.filter(t => t.passed).length;
-    const allPassed = passedCount === tests.length;
-
     return {
-      passed: allPassed,
-      totalTests: tests.length,
-      passedTests: passedCount,
-      customerA: custA,
-      customerB: custB,
-      tests,
-      summary: allPassed
-        ? 'LULUS UJI PENERIMAAN REAL 2 AKUN: Isolasi multi-tenant, proteksi spoofing, dan kemandirian customer 100% terverifikasi.'
-        : 'PERINGATAN: Ditemukan kegagalan pada uji penerimaan antar-akun.',
+      passed: false,
+      totalTests: 0,
+      passedTests: 0,
+      customerA: { name: '', accountEmail: '', installationCode: '', workspaceId: '', spreadsheetId: '', driveFolderId: '', backendUrl: '' },
+      customerB: { name: '', accountEmail: '', installationCode: '', workspaceId: '', spreadsheetId: '', driveFolderId: '', backendUrl: '' },
+      tests: [],
+      summary: 'Uji dua customer memerlukan dua instalasi GAS nyata. Tidak ada profil customer contoh yang dibundel dalam frontend.',
       verifiedAt: new Date().toISOString(),
-    };
-  }
-
-  // Alias for backward compatibility
-  public runIsolationAudit() {
-    const report = this.runTwoAccountAcceptanceTest();
-    return {
-      passed: report.passed,
-      tests: report.tests.map(t => ({ name: t.name, passed: t.passed, message: t.actualResult })),
-      customerA: {
-        workspace: report.customerA.workspaceId,
-        sheetId: report.customerA.spreadsheetId,
-        driveId: report.customerA.driveFolderId,
-        backendUrl: report.customerA.backendUrl,
-      },
-      customerB: {
-        workspace: report.customerB.workspaceId,
-        sheetId: report.customerB.spreadsheetId,
-        driveId: report.customerB.driveFolderId,
-        backendUrl: report.customerB.backendUrl,
-      },
-      summary: report.summary,
     };
   }
 
@@ -880,21 +593,15 @@ class CustomerInstallationService {
       return { success: false, message: 'Format kode instalasi tidak valid. Harus diawali dengan SIEPANG- (contoh: SIEPANG-KWCB-BWI-7F92K).' };
     }
 
-    // Match Customer A or Customer B or existing profile
+    // Only the currently configured installation may be restored.
+    // Never infer a customer/workspace from a code prefix or bundled fixture.
     let targetProfile: CustomerInstallationRecord | null = null;
-    if (cleanCode === CUSTOMER_A_RECORD.installation_code || cleanCode.includes('BWI')) {
-      targetProfile = { ...CUSTOMER_A_RECORD };
-      this.activeTenant = 'CUSTOMER_A';
-    } else if (cleanCode === CUSTOMER_B_RECORD.installation_code || cleanCode.includes('MLG') || cleanCode.includes('MALANG')) {
-      targetProfile = { ...CUSTOMER_B_RECORD };
-      this.activeTenant = 'CUSTOMER_B';
-    } else if (cleanCode === this.record.installation_code) {
+    if (cleanCode === this.record.installation_code) {
       targetProfile = { ...this.record };
     } else {
-      // Decode or reconstruct from generic verified code
-      targetProfile = {
-        ...this.record,
-        installation_code: cleanCode,
+      return {
+        success: false,
+        message: 'Kode instalasi tidak cocok dengan instalasi yang sedang dikonfigurasi.'
       };
     }
 
@@ -983,15 +690,6 @@ class CustomerInstallationService {
       installation_status: 'READY',
       last_health_check: new Date().toISOString(),
     };
-
-    // If matches Customer A or B, restore folder references
-    if (payload.installation_code === CUSTOMER_A_RECORD.installation_code) {
-      this.record = { ...CUSTOMER_A_RECORD, ...this.record };
-      this.activeTenant = 'CUSTOMER_A';
-    } else if (payload.installation_code === CUSTOMER_B_RECORD.installation_code) {
-      this.record = { ...CUSTOMER_B_RECORD, ...this.record };
-      this.activeTenant = 'CUSTOMER_B';
-    }
 
     this.saveToStorage();
 
@@ -1105,7 +803,7 @@ class CustomerInstallationService {
       idCardsFolderId: drive.id_cards_folder_id,
       backupFolderId: drive.backup_folder_id,
       assetsFolderId: drive.assets_folder_id,
-      bootstrapSuperAdminEmail: this.record.bootstrap_superadmin_email || 'scoutpreneur@gmail.com',
+      bootstrapSuperAdminEmail: this.record.bootstrap_superadmin_email || 'administrator bootstrap yang dikonfigurasi',
     });
   }
 
