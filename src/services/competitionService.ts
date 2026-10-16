@@ -8,6 +8,7 @@
 import { Competition, DigitalWork } from '../types';
 import { pointService } from './pointService';
 import { documentService } from './documentService';
+import { apiTransport } from './apiTransport';
 
 export type ScoreLifecycleStatus = 'DRAFT' | 'SUBMITTED' | 'LOCKED';
 
@@ -75,6 +76,50 @@ class CompetitionService {
       return this.digitalWorks.filter(w => w.competitionId === filterCategory);
     }
     return this.digitalWorks;
+  }
+
+
+  /**
+   * Public Unjuk Karya feed.
+   *
+   * The browser never fabricates entries. GAS returns only entries that are
+   * explicitly published for the authoritative active event.
+   */
+  public async refreshPublicDigitalWorks(): Promise<DigitalWork[]> {
+    const response = await apiTransport.send<{ works: any[] }>(
+      'competitions.public.works.list',
+      {},
+      { skipAuth: true, timeoutMs: 30000 }
+    );
+
+    if (!response.ok || !Array.isArray(response.data?.works)) {
+      throw new Error(
+        response.error?.message || 'Karya peserta belum dapat dimuat dari GAS.'
+      );
+    }
+
+    this.digitalWorks = response.data.works.map((raw: any): DigitalWork => ({
+      id: String(raw.id || ''),
+      competitionId: String(raw.competitionId || raw.competition_id || ''),
+      competitionTitle: String(raw.competitionTitle || raw.competition_title || ''),
+      title: String(raw.title || raw.entry_title || 'Karya Peserta'),
+      creatorName: String(raw.creatorName || raw.creator_name || ''),
+      contingentName: String(raw.contingentName || raw.contingent_name || ''),
+      mediaType: (
+        ['photo', 'video', 'poster'].includes(String(raw.mediaType || raw.media_type))
+          ? String(raw.mediaType || raw.media_type)
+          : 'video'
+      ) as DigitalWork['mediaType'],
+      thumbnailUrl: String(raw.thumbnailUrl || raw.thumbnail_url || ''),
+      originalUrl: String(raw.originalUrl || raw.original_url || raw.submission_url || ''),
+      description: String(raw.description || ''),
+      votesCount: Number(raw.votesCount ?? raw.votes_count ?? 0) || 0,
+      hasVoted: Boolean(raw.hasVoted ?? raw.has_voted ?? false),
+      submittedAt: String(raw.submittedAt || raw.submitted_at || ''),
+    })).filter(work => work.id && work.originalUrl);
+
+    this.notify();
+    return this.getDigitalWorks();
   }
 
   public async submitDigitalWork(work: Omit<DigitalWork, 'id' | 'votesCount' | 'hasVoted' | 'submittedAt'>): Promise<DigitalWork> {
