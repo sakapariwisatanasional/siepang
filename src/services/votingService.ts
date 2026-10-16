@@ -2,60 +2,25 @@
  * @license
  * SiEpang - Public Digital Works Voting Service
  *
- * Anonymous public voting is persisted by GAS. The browser only keeps a
- * voter token so the UI can immediately reflect a vote already made from
- * this browser. The Votes sheet remains the authoritative source.
+ * Votes are authoritative in GAS/Spreadsheet. The browser does not persist
+ * vote records in browser storage and never changes a vote count
+ * without a successful GAS response.
  */
 
 import { competitionService } from './competitionService';
 
-const VOTER_TOKEN_KEY = 'siepang_public_voter_token_v1';
-
 function createVoterToken(): string {
-  try {
-    const existing = localStorage.getItem(VOTER_TOKEN_KEY);
-    if (existing && existing.length >= 24) return existing;
-
-    const token =
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? `vtr_${crypto.randomUUID().replace(/-/g, '')}`
-        : `vtr_${Date.now()}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
-
-    localStorage.setItem(VOTER_TOKEN_KEY, token);
-    return token;
-  } catch {
-    return `vtr_${Date.now()}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
+  const cryptoObj = typeof crypto !== 'undefined' ? crypto : undefined;
+  if (cryptoObj && 'randomUUID' in cryptoObj) {
+    return `vtr_${cryptoObj.randomUUID().replace(/-/g, '')}`;
   }
+  return `vtr_${Date.now()}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
 }
 
 class VotingService {
+  private voterToken = createVoterToken();
   private votedIds: Set<string> = new Set();
   private listeners: Set<() => void> = new Set();
-
-  constructor() {
-    this.hydrateLocalVotes();
-  }
-
-  private hydrateLocalVotes() {
-    try {
-      const raw = localStorage.getItem(`${VOTER_TOKEN_KEY}:votes`);
-      if (!raw) return;
-      const ids = JSON.parse(raw);
-      if (Array.isArray(ids)) {
-        ids.filter((id): id is string => typeof id === 'string').forEach(id => this.votedIds.add(id));
-      }
-    } catch {}
-  }
-
-  private persistLocalVotes() {
-    try {
-      localStorage.setItem(`${VOTER_TOKEN_KEY}:votes`, JSON.stringify([...this.votedIds]));
-    } catch {}
-  }
-
-  private getVoterToken(): string {
-    return createVoterToken();
-  }
 
   public hasVoted(workId: string): boolean {
     const work = competitionService.getDigitalWorks().find(item => item.id === workId);
@@ -63,9 +28,8 @@ class VotingService {
   }
 
   /**
-   * A public vote is intentionally one-way. There is no client-side "unvote"
-   * because removing a vote would make the XP ledger reversible from the
-   * browser and would undermine the server-side audit trail.
+   * GAS is authoritative. The token only lives in memory for this page
+   * lifetime; it is never written to browser storage.
    */
   public async vote(workId: string): Promise<{
     voted: boolean;
@@ -97,7 +61,7 @@ class VotingService {
       'votes.public.submit',
       {
         candidate_id: workId,
-        voter_token: this.getVoterToken(),
+        voter_token: this.voterToken,
       },
       { skipAuth: true, timeoutMs: 30000 }
     );
@@ -108,10 +72,11 @@ class VotingService {
 
     const result = response.data.vote;
     const newCount = Number(result.new_count ?? work.votesCount) || 0;
+
+    // Do not fabricate the count; it comes from GAS.
     work.votesCount = newCount;
     work.hasVoted = true;
     this.votedIds.add(workId);
-    this.persistLocalVotes();
     this.notify();
 
     return {
@@ -121,8 +86,6 @@ class VotingService {
     };
   }
 
-  // Backwards-compatible alias for existing callers. Public voting is
-  // intentionally one-way; a second click returns "already voted".
   public async toggleVote(workId: string) {
     return this.vote(workId);
   }
