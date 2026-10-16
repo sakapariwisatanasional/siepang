@@ -46,7 +46,7 @@ if (typeof (globalThis as any).document === 'undefined') {
 
 async function run() {
   const { runBootstrapSecuritySuite } = await import('./src/tests/bootstrapSecuritySuite');
-  console.log('Running SiEpang Bootstrap Security Suite (TEST 1 - TEST 8)...');
+  console.log('Running SiEpang Bootstrap Security Regression Suite...');
   const report = await runBootstrapSecuritySuite();
   console.log('\n==================================================');
   console.log('TEST SUITE RESULTS:');
@@ -56,11 +56,11 @@ async function run() {
     console.log(`       ${r.actualResult}`);
   });
   console.log('==================================================');
-  console.log(`Summary: ${report.passedTests}/${report.totalTests} tests passed.`);
-  console.log(`All Passed: ${report.allPassed}`);
+  console.log(`Summary: ${report.passedCount}/${report.total} tests passed.`);
+  console.log(`All Passed: ${report.passed}`);
   console.log('==================================================\n');
 
-  process.exit(report.allPassed ? 0 : 1);
+  process.exit(report.passed ? 0 : 1);
 }
 
 run().catch((err) => {
