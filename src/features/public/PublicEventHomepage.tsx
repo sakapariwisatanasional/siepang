@@ -48,8 +48,6 @@ import {
   Medal,
   Zap,
   Menu,
-  Shield,
-  Tent,
 } from 'lucide-react';
 import { eventService } from '../../services/eventService';
 import { bootstrapService } from '../../services/bootstrapService';
@@ -68,7 +66,6 @@ import { PublicSponsorStrip } from '../../components/banners/PublicSponsorStrip'
 import { GlobalFooter } from '../../components/layout/GlobalFooter';
 import { VisitorPublicRegistrationModal } from '../visitors/VisitorPublicRegistrationModal';
 import { MediaItem, LeaderboardEntry, ScheduleItem, Announcement } from '../../types';
-import campSceneIllustration from '../../assets/illustrations/camp-scene-arcane-2d.svg';
 
 export type InstallationState = 'LOADING' | 'CONFIGURED' | 'NOT_CONFIGURED' | 'BACKEND_UNREACHABLE';
 
@@ -200,7 +197,6 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
 
   // Data fetching from existing services
   const event = eventService.getCurrentEvent();
-  const publicEventLogoUrl = String(event.logoUrl || '').trim();
   const announcements: Announcement[] = useMemo(() => {
     return isConfigured ? eventService.getAnnouncements().slice(0, 4) : [];
   }, [isConfigured]);
@@ -342,195 +338,287 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
 
   // Section renderers
   const renderHeroSection = () => {
-    if (isConfigured && features.heroBanner) {
-      const eventLogoUrl = String(event.logoUrl || '').trim();
-      const eventLogoSrc = eventLogoUrl
-        ? `${eventLogoUrl}${eventLogoUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(event.id || 'event')}`
-        : '';
+    const primaryRed = '#E31B23';
+    const deepRed = '#B80F1A';
+    const quickItems = [
+      {
+        label: 'Jadwal',
+        caption: 'Agenda kegiatan',
+        icon: Calendar,
+        section: 'section-schedule',
+        visible: features.schedule,
+        tone: 'bg-red-50 text-red-600',
+      },
+      {
+        label: 'Peserta',
+        caption: 'Peringkat & XP',
+        icon: Users,
+        section: 'section-leaderboard',
+        visible: features.leaderboard,
+        tone: 'bg-purple-50 text-purple-600',
+      },
+      {
+        label: 'Lomba',
+        caption: 'Mata lomba resmi',
+        icon: Trophy,
+        section: 'section-official-competitions',
+        visible: true,
+        tone: 'bg-amber-50 text-amber-600',
+      },
+      {
+        label: 'Galeri',
+        caption: 'Foto & video',
+        icon: ImageIcon,
+        section: 'section-photo-gallery',
+        visible: features.photoDocumentation || features.videoDocumentation,
+        tone: 'bg-emerald-50 text-emerald-600',
+      },
+      {
+        label: 'Informasi',
+        caption: 'Warta kegiatan',
+        icon: Bell,
+        section: 'section-announcements',
+        visible: features.announcements || features.infoBanner,
+        tone: 'bg-rose-50 text-rose-600',
+      },
+      {
+        label: 'Buku Tamu',
+        caption: 'Registrasi tamu',
+        icon: Users,
+        section: 'section-visitor',
+        visible: features.visitorRegistration,
+        tone: 'bg-violet-50 text-violet-600',
+      },
+    ];
 
-      return (
-        <section id="section-hero" className="space-y-5">
-          <div className="relative overflow-hidden rounded-[32px] border border-red-100 bg-[linear-gradient(135deg,#fffaf5_0%,#fff6f1_45%,#fffdf9_100%)] p-5 shadow-[0_14px_50px_rgba(160,20,20,0.08)] sm:p-7 lg:p-8">
-            <div aria-hidden="true" className="pointer-events-none absolute -left-12 bottom-0 h-40 w-40 rounded-full bg-[#F4D53F]/18 blur-3xl" />
-            <div aria-hidden="true" className="pointer-events-none absolute -right-10 top-0 h-44 w-44 rounded-full bg-[#D71920]/10 blur-3xl" />
-            <div className="relative grid gap-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
-              <div className="space-y-5">
-                <div className="inline-flex items-center gap-2 rounded-full border border-red-100 bg-white/90 px-3.5 py-1.5 text-[11px] font-bold text-[#C51F1F] shadow-sm backdrop-blur-sm">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  <span>{event.organizationalLevel || 'Kwartir'} · Portal Kegiatan Resmi</span>
-                </div>
+    const firstAgenda = scheduleList[0];
+    const eventLogo = event.logoUrl || event.logo_url || '';
+    const eventLocation =
+      event.location ||
+      event.venue ||
+      event.campGround ||
+      event.camp_ground ||
+      'Bumi Perkemahan';
+    const eventDate =
+      event.startDate ||
+      event.start_date ||
+      'Tanggal kegiatan diumumkan';
+    const eventDateEnd = event.endDate || event.end_date || '';
 
-                <div className="flex items-start gap-3">
-                  <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[22px] border border-red-100 bg-white shadow-sm sm:h-20 sm:w-20">
-                    {eventLogoSrc ? (
+    return (
+      <section id="section-hero" aria-label="Beranda publik SiEpang" className="space-y-5">
+        {/* Public landing hero */}
+        <div
+          className="relative overflow-hidden rounded-[30px] sm:rounded-[36px] min-h-[430px] sm:min-h-[500px] shadow-xl"
+          style={{ background: `linear-gradient(135deg, ${primaryRed} 0%, ${deepRed} 58%, #8F0C15 100%)` }}
+        >
+          {/* Decorative vector camping illustration: 80% transparent = 20% opacity */}
+          <img
+            src="/assets/siepang-scout-campsite.png"
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute bottom-[-8px] right-[-90px] w-[92%] max-w-[720px] opacity-20 select-none sm:right-[-55px] sm:w-[68%] lg:right-[-20px] lg:w-[58%]"
+          />
+
+          <div aria-hidden="true" className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
+          <div aria-hidden="true" className="absolute -bottom-28 -left-24 h-72 w-72 rounded-full bg-[#F8C13A]/20 blur-3xl" />
+          <div aria-hidden="true" className="absolute left-[48%] top-8 h-2 w-2 rounded-full bg-white/50 shadow-[40px_55px_0_rgba(255,255,255,.25),90px_20px_0_rgba(255,255,255,.18),150px_80px_0_rgba(255,255,255,.2)]" />
+
+          <div className="relative z-10 flex min-h-[430px] flex-col justify-between p-5 sm:min-h-[500px] sm:p-8 lg:p-10">
+            <div className="flex items-start justify-between gap-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.12em] text-white backdrop-blur-sm sm:text-[11px]">
+                <Sparkles className="h-3.5 w-3.5 text-[#FFD86B]" />
+                Portal Publik Resmi
+              </div>
+
+              {onNavigateToLogin && (
+                <button
+                  type="button"
+                  onClick={() => onNavigateToLogin()}
+                  className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-3.5 py-2 text-xs font-bold text-white backdrop-blur-sm transition hover:bg-white/20 active:scale-95"
+                >
+                  <LogIn className="h-4 w-4" />
+                  Masuk
+                </button>
+              )}
+            </div>
+
+            <div className="grid items-end gap-6 lg:grid-cols-[minmax(0,1fr)_250px]">
+              <div className="max-w-[620px] space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-[22px] bg-white p-2.5 shadow-lg sm:h-[86px] sm:w-[86px] sm:rounded-[26px]">
+                    {eventLogo ? (
                       <img
-                        src={eventLogoSrc}
-                        alt={`Logo ${event.name}`}
-                        className="h-full w-full object-contain p-1.5"
-                        referrerPolicy="no-referrer"
+                        src={eventLogo}
+                        alt={`Logo ${event.name || 'kegiatan'}`}
+                        className="h-full w-full object-contain"
                       />
                     ) : (
-                      <Tent className="h-8 w-8 text-[#D71920]" />
+                      <span className="text-3xl">⚜️</span>
                     )}
                   </div>
-
-                  <div className="min-w-0 space-y-2">
-                    <h1 className="text-3xl font-black leading-[1.02] tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">
-                      <span className="block">{event.name}</span>
-                      <span className="mt-1 block text-[#D71920]">{event.shortName || 'Kegiatan Pramuka'}</span>
-                    </h1>
-                    <p className="max-w-xl text-sm leading-relaxed text-slate-600 sm:text-base">
-                      Akses cepat ke jadwal kegiatan, ranking, galeri, layanan QR, verifikasi, dan informasi resmi penyelenggaraan.
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-white/75">
+                      {event.organizationalLevel || 'Kwartir'} · Kegiatan Pramuka
                     </p>
-                    {event.theme && (
-                      <p className="text-sm font-semibold italic text-[#0F7A47]">“{event.theme}”</p>
-                    )}
+                    <h1 className="mt-0.5 text-[28px] font-black leading-[1.05] tracking-tight text-white sm:text-4xl lg:text-5xl">
+                      {isConfigured ? event.name : 'Selamat Datang di SiEpang'}
+                    </h1>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="rounded-[22px] border border-red-100 bg-white/85 p-4 shadow-sm backdrop-blur-sm">
-                    <div className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#C51F1F]">
-                      <Calendar className="h-3.5 w-3.5" />
-                      Tanggal Kegiatan
-                    </div>
-                    <div className="text-base font-black text-slate-900">{event.startDate || 'Diumumkan'}</div>
-                    <div className="text-sm font-semibold text-slate-500">{event.endDate ? `s.d. ${event.endDate}` : 'Menunggu pembaruan jadwal'}</div>
-                  </div>
-                  <div className="rounded-[22px] border border-red-100 bg-white/85 p-4 shadow-sm backdrop-blur-sm">
-                    <div className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#C51F1F]">
-                      <MapPin className="h-3.5 w-3.5" />
-                      Lokasi
-                    </div>
-                    <div className="text-base font-black text-slate-900">{event.campGround || 'Bumi Perkemahan'}</div>
-                    <div className="text-sm font-semibold text-slate-500">{event.location || event.organizer || 'Lokasi akan diumumkan'}</div>
-                  </div>
+                {event.theme && (
+                  <p className="max-w-xl text-sm font-semibold italic text-white/85 sm:text-base">
+                    “{event.theme}”
+                  </p>
+                )}
+
+                <div className="flex flex-wrap gap-2 text-xs font-semibold text-white/90">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-black/15 px-3 py-1.5 backdrop-blur-sm">
+                    <MapPin className="h-3.5 w-3.5 text-[#FFD86B]" />
+                    <span className="max-w-[250px] truncate">{eventLocation}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-black/15 px-3 py-1.5 backdrop-blur-sm">
+                    <Calendar className="h-3.5 w-3.5 text-[#FFD86B]" />
+                    <span>{eventDate}{eventDateEnd ? ` – ${eventDateEnd}` : ''}</span>
+                  </span>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => onNavigateToSchedule?.()}
-                    className="inline-flex min-h-12 items-center gap-2 rounded-2xl bg-[#D71920] px-5 text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(215,25,32,0.22)] transition-transform hover:-translate-y-0.5"
-                  >
-                    <Calendar className="h-4.5 w-4.5" />
-                    <span>Jadwal Kegiatan</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onOpenScanner?.()}
-                    className="inline-flex min-h-12 items-center gap-2 rounded-2xl border border-red-100 bg-white px-5 text-sm font-bold text-slate-900 shadow-sm transition-colors hover:border-red-200 hover:text-[#C51F1F]"
-                  >
-                    <QrCode className="h-4.5 w-4.5 text-[#D71920]" />
-                    <span>Scan QR</span>
-                  </button>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {features.schedule && (
+                    <button
+                      type="button"
+                      onClick={() => openPublicPage('section-schedule')}
+                      className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-extrabold text-[#C5141E] shadow-lg transition hover:bg-white/90 active:scale-95"
+                    >
+                      <Calendar className="h-4 w-4" />
+                      Lihat Jadwal
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  )}
                   {features.visitorRegistration && (
                     <button
                       type="button"
                       onClick={() => setShowVisitorModal(true)}
-                      className="inline-flex min-h-12 items-center gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-5 text-sm font-bold text-emerald-800 shadow-sm transition-colors hover:bg-emerald-100"
+                      className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-bold text-white backdrop-blur-sm transition hover:bg-white/20 active:scale-95"
                     >
-                      <Users className="h-4.5 w-4.5" />
-                      <span>Registrasi Tamu</span>
+                      <Users className="h-4 w-4" />
+                      Buku Tamu
                     </button>
                   )}
                 </div>
               </div>
 
-              <div className="relative min-h-[260px] overflow-hidden rounded-[28px] border border-red-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.94)_0%,rgba(255,250,245,0.98)_100%)] p-4 shadow-[0_8px_24px_rgba(90,30,20,0.06)] sm:min-h-[320px] lg:min-h-[380px]">
-                <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#D71920]/8 to-transparent" />
-                <img
-                  src={campSceneIllustration}
-                  alt="Ilustrasi suasana perkemahan"
-                  className="pointer-events-none absolute bottom-0 right-0 w-full max-w-[640px] select-none object-contain"
-                />
-                <div className="relative z-10 flex h-full flex-col justify-between">
-                  <div className="flex justify-end">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1 text-[11px] font-bold text-slate-700 shadow-sm">
-                      <Tent className="h-3.5 w-3.5 text-[#D71920]" />
-                      Ilustrasi 2D Transparan
-                    </span>
+              {/* Agenda preview */}
+              <div className="hidden rounded-[26px] border border-white/20 bg-white/95 p-4 shadow-2xl backdrop-blur-md lg:block">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Agenda Hari Ini</p>
+                    <p className="text-sm font-black text-slate-900">Kegiatan Terdekat</p>
                   </div>
-                  <div className="max-w-[270px] rounded-[22px] border border-white/70 bg-white/85 p-4 shadow-[0_12px_28px_rgba(50,30,20,0.08)] backdrop-blur-sm">
-                    <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#C51F1F]">
-                      <ShieldCheck className="h-3.5 w-3.5" />
-                      Penyelenggara
-                    </div>
-                    <div className="text-lg font-black text-slate-900">{event.organizer || 'Kwartir Ranting'}</div>
-                    <div className="mt-1 text-sm text-slate-500">Peserta terdaftar: <span className="font-bold text-slate-900">{event.registeredCount || 0}</span></div>
-                  </div>
+                  <span className="rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-extrabold text-red-600">
+                    LIVE
+                  </span>
                 </div>
+
+                {firstAgenda ? (
+                  <div className="mt-3 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-extrabold text-red-600">
+                        {firstAgenda.time || `${firstAgenda.startTime || ''} - ${firstAgenda.endTime || ''}`}
+                      </span>
+                      {firstAgenda.xpReward > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">
+                          <Zap className="h-3 w-3" />
+                          +{firstAgenda.xpReward} XP
+                        </span>
+                      )}
+                    </div>
+                    <h2 className="mt-2 text-sm font-black leading-tight text-slate-900">{firstAgenda.title}</h2>
+                    <p className="mt-1.5 flex items-center gap-1 text-[11px] text-slate-500">
+                      <MapPin className="h-3 w-3 shrink-0 text-red-500" />
+                      <span className="truncate">{firstAgenda.location || 'Lapangan Utama'}</span>
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-2xl border border-dashed border-slate-200 p-4 text-center">
+                    <Calendar className="mx-auto mb-1.5 h-5 w-5 text-slate-300" />
+                    <p className="text-[11px] font-semibold text-slate-500">Belum ada agenda yang dipublikasikan.</p>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => openPublicPage('section-schedule')}
+                  className="mt-3 flex w-full items-center justify-center gap-1 rounded-xl py-2 text-xs font-bold text-red-600 transition hover:bg-red-50"
+                >
+                  Lihat semua jadwal <ArrowRight className="h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
           </div>
-        </section>
-      );
-    }
-
-    // Unconfigured Neutral Hero
-    return (
-      <section
-        id="section-hero"
-        className="relative overflow-hidden rounded-[36px] bg-gradient-to-br from-white via-slate-50 to-slate-100 dark:from-[#141418] dark:via-[#101014] dark:to-black border border-red-100 dark:border-white/10 p-6 sm:p-10 lg:p-12 shadow-sm space-y-6"
-      >
-        <div className="max-w-3xl space-y-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-50 dark:bg-[#D71920]/20 border border-[#208C60]/20 text-[#C51F1F] dark:text-[#D71920] text-xs font-bold">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>SiEpang — Sistem Informasi Perkemahan</span>
-          </div>
-
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-900 dark:text-white tracking-tight leading-[1.15]">
-            Portal Resmi Kegiatan Perkemahan Pramuka
-          </h1>
-
-          <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed">
-            Pusat informasi publik terintegrasi untuk peserta, kontingen, panitia, dan orang tua. Menampilkan jadwal giat, perolehan ranking XP, album foto/video dokumentasi, dan verifikasi dokumen.
-          </p>
-
-          <div className="flex flex-wrap gap-2 pt-2">
-            <span className="px-3 py-1 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300 text-xs font-semibold">
-              <Shield className="w-3.5 h-3.5 text-[#6F2DA8]" /> Gerakan Pramuka
-            </span>
-            <span className="px-3 py-1 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300 text-xs font-semibold">
-              <ShieldCheck className="w-3.5 h-3.5 text-[#12B24B]" /> Terverifikasi Resmi
-            </span>
-            <span className="px-3 py-1 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300 text-xs font-semibold">
-              <Tent className="w-3.5 h-3.5 text-[#D71920]" /> Portal Kegiatan Mandiri
-            </span>
-          </div>
         </div>
 
-        <div className="pt-2 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={() => onOpenScanner?.()}
-            className="px-5 py-3 rounded-2xl bg-gradient-to-r from-[#B51218] via-[#D71920] to-[#EF4444] hover:opacity-95 text-white font-bold text-xs sm:text-sm shadow-md transition-all inline-flex items-center gap-2 cursor-pointer active:scale-95"
-          >
-            <QrCode className="w-4 h-4" />
-            <span>Buka Scanner QR</span>
-          </button>
+        {/* Event summary strip */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: 'Lokasi', value: eventLocation, icon: MapPin, tone: 'text-red-600 bg-red-50' },
+            { label: 'Tanggal', value: `${eventDate}${eventDateEnd ? ` – ${eventDateEnd}` : ''}`, icon: Calendar, tone: 'text-amber-600 bg-amber-50' },
+            { label: 'Peserta', value: `${event.registeredCount || 0} terdaftar`, icon: Users, tone: 'text-purple-600 bg-purple-50' },
+            { label: 'Penyelenggara', value: event.organizer || event.organizationalLevel || 'Kwartir', icon: ShieldCheck, tone: 'text-emerald-600 bg-emerald-50' },
+          ].map(item => {
+            const Icon = item.icon;
+            return (
+              <div key={item.label} className="min-w-0 rounded-[22px] border border-slate-100 bg-white p-3.5 shadow-sm sm:p-4">
+                <div className="flex items-center gap-2">
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${item.tone}`}>
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{item.label}</p>
+                    <p className="truncate text-xs font-extrabold text-slate-800 sm:text-sm">{item.value}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
-          {features.visitorRegistration && (
-            <button
-              type="button"
-              onClick={() => setShowVisitorModal(true)}
-              className="px-5 py-3 rounded-2xl bg-white dark:bg-white/10 hover:bg-slate-100 dark:hover:bg-white/15 text-slate-800 dark:text-white border border-black/10 dark:border-white/10 font-bold text-xs sm:text-sm shadow-xs transition-colors inline-flex items-center gap-2 cursor-pointer"
-            >
-              <Users className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-              <span>Daftar Tamu (Visitor)</span>
-            </button>
-          )}
+        {/* Quick menu */}
+        <div className="space-y-3">
+          <div className="flex items-end justify-between gap-3 px-1">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-red-500">Akses Cepat</p>
+              <h2 className="text-xl font-black tracking-tight text-slate-900 sm:text-2xl">Menu SiEpang</h2>
+            </div>
+            <span className="text-xs font-semibold text-slate-400">Pilih layanan</span>
+          </div>
 
-          {features.schedule && onNavigateToSchedule && (
-            <button
-              type="button"
-              onClick={onNavigateToSchedule}
-              className="px-5 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs sm:text-sm transition-colors inline-flex items-center gap-2 cursor-pointer"
-            >
-              <Calendar className="w-4 h-4 text-amber-400 dark:text-amber-600" />
-              <span>Jadwal Kegiatan</span>
-            </button>
-          )}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {quickItems.filter(item => item.visible).map(item => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => {
+                    if (item.section === 'section-visitor') {
+                      setShowVisitorModal(true);
+                      return;
+                    }
+                    openPublicPage(item.section);
+                  }}
+                  className="group min-h-[118px] rounded-[22px] border border-slate-100 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
+                >
+                  <span className={`flex h-12 w-12 items-center justify-center rounded-[17px] ${item.tone} transition-transform group-hover:scale-105 group-active:scale-95`}>
+                    <Icon className="h-6 w-6" />
+                  </span>
+                  <span className="mt-3 block text-sm font-black text-slate-900">{item.label}</span>
+                  <span className="mt-0.5 block text-[11px] leading-tight text-slate-500">{item.caption}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </section>
     );
@@ -560,7 +648,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
         </div>
 
         {announcements.length === 0 ? (
-          <div className="p-6 rounded-2xl bg-white dark:bg-[#121215] border border-red-100 dark:border-white/10 text-center text-xs text-slate-500 dark:text-slate-400">
+          <div className="p-6 rounded-2xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 text-center text-xs text-slate-500 dark:text-slate-400">
             Belum ada warta pengumuman yang dipublikasikan.
           </div>
         ) : (
@@ -581,7 +669,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                       ? 'border-rose-400 dark:border-rose-800/60 bg-rose-50/30'
                       : isWarning
                       ? 'border-amber-300 dark:border-amber-800/60'
-                      : 'border-red-100 dark:border-white/10'
+                      : 'border-black/5 dark:border-white/10'
                   } shadow-xs space-y-2`}
                 >
                   <div className="flex items-center justify-between text-[11px]">
@@ -634,7 +722,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
             <button
               type="button"
               onClick={onNavigateToSchedule}
-              className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-700 dark:text-slate-200 border border-red-100 dark:border-white/10 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-700 dark:text-slate-200 border border-black/5 dark:border-white/10 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <span>Lihat Semua Jadwal</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -643,7 +731,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
         </div>
 
         {scheduleList.length === 0 ? (
-          <div className="p-8 rounded-2xl bg-white dark:bg-[#121215] border border-red-100 dark:border-white/10 text-center text-xs text-slate-500 dark:text-slate-400 space-y-1">
+          <div className="p-8 rounded-2xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 text-center text-xs text-slate-500 dark:text-slate-400 space-y-1">
             <Calendar className="w-6 h-6 mx-auto text-slate-400 opacity-60 mb-2" />
             <p className="font-semibold text-slate-700 dark:text-slate-300">
               Tidak ada jadwal yang dipublikasikan.
@@ -655,11 +743,11 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
             {scheduleList.map(sch => (
               <div
                 key={sch.id}
-                className="p-4 rounded-2xl bg-white dark:bg-[#121215] border border-red-100 dark:border-white/10 shadow-xs space-y-2.5 flex flex-col justify-between"
+                className="p-4 rounded-2xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 shadow-xs space-y-2.5 flex flex-col justify-between"
               >
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-mono text-xs font-bold text-[#D71920] flex items-center gap-1">
+                    <span className="font-mono text-xs font-bold text-[#F47743] flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5" />
                       <span>{sch.time || `${sch.startTime || ''} - ${sch.endTime || ''}`}</span>
                     </span>
@@ -681,7 +769,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                     Hari ke-{sch.dayNumber || 1}
                   </span>
                   {sch.xpReward > 0 && (
-                    <span className="font-bold text-[#D71920]">+{sch.xpReward} XP</span>
+                    <span className="font-bold text-[#F47743]">+{sch.xpReward} XP</span>
                   )}
                 </div>
               </div>
@@ -712,7 +800,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
             <button
               type="button"
               onClick={onNavigateToLeaderboard}
-              className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-700 dark:text-slate-200 border border-red-100 dark:border-white/10 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-700 dark:text-slate-200 border border-black/5 dark:border-white/10 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <span>Lihat Ranking Lengkap</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -721,7 +809,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
         </div>
 
         {leaderboardList.length === 0 ? (
-          <div className="p-8 rounded-2xl bg-white dark:bg-[#121215] border border-red-100 dark:border-white/10 text-center text-xs text-slate-500 dark:text-slate-400 space-y-1">
+          <div className="p-8 rounded-2xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 text-center text-xs text-slate-500 dark:text-slate-400 space-y-1">
             <Medal className="w-6 h-6 mx-auto text-slate-400 opacity-60 mb-2" />
             <p className="font-semibold text-slate-700 dark:text-slate-300">
               Belum ada hasil peringkat.
@@ -733,7 +821,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
             {leaderboardList.map((entry, idx) => (
               <div
                 key={entry.id || idx}
-                className="p-4 rounded-2xl bg-white dark:bg-[#121215] border border-red-100 dark:border-white/10 shadow-xs flex flex-col items-center text-center space-y-2 relative"
+                className="p-4 rounded-2xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 shadow-xs flex flex-col items-center text-center space-y-2 relative"
               >
                 <div className="absolute top-2.5 left-2.5">
                   <span
@@ -774,7 +862,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                   </p>
                 </div>
 
-                <div className="w-full pt-1.5 border-t border-black/5 dark:border-white/5 flex items-center justify-center gap-1 text-xs font-black text-[#D71920]">
+                <div className="w-full pt-1.5 border-t border-black/5 dark:border-white/5 flex items-center justify-center gap-1 text-xs font-black text-[#F47743]">
                   <Zap className="w-3.5 h-3.5 fill-current" />
                   <span>{entry.xp} XP</span>
                 </div>
@@ -805,7 +893,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
           <button
             type="button"
             onClick={() => onNavigateToGallery?.('photos')}
-            className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-700 dark:text-slate-200 border border-red-100 dark:border-white/10 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-700 dark:text-slate-200 border border-black/5 dark:border-white/10 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <span>Lihat Semua Foto</span>
             <ArrowRight className="w-3.5 h-3.5" />
@@ -813,7 +901,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
         </div>
 
         {photoPreviews.length === 0 ? (
-          <div className="p-8 rounded-2xl bg-white dark:bg-[#121215] border border-red-100 dark:border-white/10 text-center text-xs text-slate-500 dark:text-slate-400 space-y-1">
+          <div className="p-8 rounded-2xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 text-center text-xs text-slate-500 dark:text-slate-400 space-y-1">
             <ImageIcon className="w-6 h-6 mx-auto text-slate-400 opacity-60 mb-2" />
             <p className="font-semibold text-slate-700 dark:text-slate-300">
               Belum ada foto yang dipublikasikan.
@@ -826,7 +914,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               <div
                 key={photo.media_id}
                 onClick={() => onNavigateToGallery?.('photos')}
-                className="group relative cursor-pointer overflow-hidden rounded-2xl bg-white dark:bg-[#121215] border border-red-100 dark:border-white/10 hover:border-[#208C60]/50 transition-all duration-300 flex flex-col shadow-xs"
+                className="group relative cursor-pointer overflow-hidden rounded-2xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 hover:border-[#208C60]/50 transition-all duration-300 flex flex-col shadow-xs"
               >
                 <div className="aspect-square w-full overflow-hidden bg-slate-100 dark:bg-black/40">
                   <img
@@ -838,7 +926,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                   />
                 </div>
                 <div className="p-2.5">
-                  <h3 className="text-[11px] font-bold text-slate-900 dark:text-white line-clamp-1 group-hover:text-[#C51F1F] dark:group-hover:text-[#D71920] transition-colors">
+                  <h3 className="text-[11px] font-bold text-slate-900 dark:text-white line-clamp-1 group-hover:text-[#208C60] dark:group-hover:text-[#F47743] transition-colors">
                     {photo.title}
                   </h3>
                   <div className="text-[9px] text-slate-400 font-mono mt-0.5">
@@ -858,7 +946,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
       <section id="section-video-gallery" className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Film className="w-5 h-5 text-[#D71920]" />
+            <Film className="w-5 h-5 text-[#F47743]" />
             <div>
               <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
                 Galeri Video & Siaran Resmi
@@ -872,7 +960,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
           <button
             type="button"
             onClick={() => onNavigateToGallery?.('videos')}
-            className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-700 dark:text-slate-200 border border-red-100 dark:border-white/10 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-700 dark:text-slate-200 border border-black/5 dark:border-white/10 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <span>Lihat Semua Video</span>
             <ArrowRight className="w-3.5 h-3.5" />
@@ -880,7 +968,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
         </div>
 
         {videoPreviews.length === 0 ? (
-          <div className="p-8 rounded-2xl bg-white dark:bg-[#121215] border border-red-100 dark:border-white/10 text-center text-xs text-slate-500 dark:text-slate-400 space-y-1">
+          <div className="p-8 rounded-2xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 text-center text-xs text-slate-500 dark:text-slate-400 space-y-1">
             <Film className="w-6 h-6 mx-auto text-slate-400 opacity-60 mb-2" />
             <p className="font-semibold text-slate-700 dark:text-slate-300">
               Belum ada video dokumentasi.
@@ -893,7 +981,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               <div
                 key={video.media_id}
                 onClick={() => setActiveVideoModal(video)}
-                className="group relative cursor-pointer overflow-hidden rounded-[24px] bg-white dark:bg-[#121215] border border-red-100 dark:border-white/10 hover:border-[#F47743]/50 transition-all shadow-xs flex flex-col"
+                className="group relative cursor-pointer overflow-hidden rounded-[24px] bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 hover:border-[#F47743]/50 transition-all shadow-xs flex flex-col"
               >
                 <div className="aspect-video w-full overflow-hidden bg-black/80 relative">
                   <img
@@ -918,7 +1006,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                 </div>
 
                 <div className="p-3.5 space-y-1">
-                  <h3 className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-[#D71920] transition-colors line-clamp-1">
+                  <h3 className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-[#F47743] transition-colors line-clamp-1">
                     {video.title}
                   </h3>
                   {video.caption && (
@@ -938,13 +1026,13 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
   const renderQrScannerSection = () => {
     return (
       <section id="section-qr-scanner">
-        <div className="rounded-[32px] bg-gradient-to-br from-[#208C60]/10 via-[#F47743]/10 to-amber-500/10 dark:from-[#208C60]/20 dark:via-[#141418] dark:to-black border border-red-100 dark:border-white/10 p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
+        <div className="rounded-[32px] bg-gradient-to-br from-[#208C60]/10 via-[#F47743]/10 to-amber-500/10 dark:from-[#208C60]/20 dark:via-[#141418] dark:to-black border border-black/5 dark:border-white/10 p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
           <div className="flex items-start gap-4 max-w-xl">
             <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-[#208C60] via-[#F47743] to-[#FFD36A] text-white flex items-center justify-center shrink-0 shadow-lg text-2xl">
               <QrCode className="w-8 h-8" />
             </div>
             <div className="space-y-1.5">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/80 dark:bg-black/60 border border-red-100 dark:border-white/10 text-[10px] font-bold text-[#D71920]">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/80 dark:bg-black/60 border border-black/5 dark:border-white/10 text-[10px] font-bold text-[#F47743]">
                 <span>FITUR UTAMA PERKEMAHAN</span>
               </div>
               <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
@@ -960,7 +1048,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
             <button
               type="button"
               onClick={() => onOpenScanner?.()}
-              className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#B51218] via-[#D71920] to-[#EF4444] hover:opacity-95 text-white font-bold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+              className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white font-bold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
             >
               <QrCode className="w-5 h-5" />
               <span>Buka Scanner QR</span>
@@ -984,7 +1072,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
   const renderVisitorSection = () => {
     return (
       <section id="section-visitor" className="space-y-4">
-        <div className="rounded-[28px] bg-white dark:bg-[#121215] border border-red-100 dark:border-white/10 p-6 sm:p-7 shadow-xs">
+        <div className="rounded-[28px] bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 p-6 sm:p-7 shadow-xs">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="space-y-2 max-w-xl">
               <div className="flex items-center gap-2">
@@ -1023,7 +1111,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               <button
                 type="button"
                 onClick={() => setShowVisitorModal(true)}
-                className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#B51218] via-[#D71920] to-[#EF4444] hover:opacity-95 text-white font-bold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white font-bold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
               >
                 <Users className="w-4 h-4" />
                 <span>Daftar Visitor Pass</span>
@@ -1038,7 +1126,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
   const renderVerificationSection = () => {
     return (
       <section id="section-verification" className="space-y-4">
-        <div className="rounded-[28px] bg-white dark:bg-[#121215] border border-red-100 dark:border-white/10 p-6 sm:p-7 shadow-xs space-y-4">
+        <div className="rounded-[28px] bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 p-6 sm:p-7 shadow-xs space-y-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
               <ShieldCheck className="w-5 h-5" />
@@ -1136,7 +1224,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
         </div>
 
         {activeSponsors.length === 0 ? (
-          <div className="p-6 rounded-2xl bg-white dark:bg-[#121215] border border-red-100 dark:border-white/10 text-center text-xs text-slate-500 dark:text-slate-400">
+          <div className="p-6 rounded-2xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 text-center text-xs text-slate-500 dark:text-slate-400">
             Belum ada sponsor yang ditampilkan.
           </div>
         ) : (
@@ -1177,9 +1265,9 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF6F2] dark:bg-black text-slate-900 dark:text-slate-100 flex flex-col justify-between selection:bg-[#D71920] selection:text-white transition-colors">
+    <div className="min-h-screen bg-slate-50 dark:bg-black text-slate-900 dark:text-slate-100 flex flex-col justify-between selection:bg-[#F47743] selection:text-white transition-colors">
       {/* 1. Header Bar with Status & Quick Navigation */}
-      <div className="bg-white/95 dark:bg-[#121215]/95 backdrop-blur-md border-b border-red-100 dark:border-white/10 px-3.5 sm:px-6 py-2 flex items-center justify-between text-xs z-40 sticky top-0 transition-colors">
+      <div className="bg-white/95 dark:bg-[#121215]/95 backdrop-blur-md border-b border-black/5 dark:border-white/10 px-3.5 sm:px-6 py-2 flex items-center justify-between text-xs z-40 sticky top-0 transition-colors">
         <div className="flex items-center gap-2">
           {isLoading ? (
             <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
@@ -1200,13 +1288,13 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
 
         {/* Viewport switcher & Admin link */}
         <div className="flex items-center gap-1 sm:gap-2">
-          <div className="hidden lg:flex items-center bg-slate-100 dark:bg-white/5 rounded-lg p-0.5 border border-red-100 dark:border-white/10 mr-2">
+          <div className="hidden lg:flex items-center bg-slate-100 dark:bg-white/5 rounded-lg p-0.5 border border-black/5 dark:border-white/10 mr-2">
             <button
               type="button"
               onClick={() => setDeviceViewport('desktop')}
               className={`p-1 rounded-md transition-colors ${
                 deviceViewport === 'desktop'
-                  ? 'bg-white dark:bg-black/50 text-[#D71920] shadow-xs'
+                  ? 'bg-white dark:bg-black/50 text-[#F47743] shadow-xs'
                   : 'text-slate-400 hover:text-slate-600'
               }`}
               title="Desktop 100%"
@@ -1218,7 +1306,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               onClick={() => setDeviceViewport('tablet')}
               className={`p-1 rounded-md transition-colors ${
                 deviceViewport === 'tablet'
-                  ? 'bg-white dark:bg-black/50 text-[#D71920] shadow-xs'
+                  ? 'bg-white dark:bg-black/50 text-[#F47743] shadow-xs'
                   : 'text-slate-400 hover:text-slate-600'
               }`}
               title="Tablet 768px"
@@ -1230,7 +1318,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               onClick={() => setDeviceViewport('mobile')}
               className={`p-1 rounded-md transition-colors ${
                 deviceViewport === 'mobile'
-                  ? 'bg-white dark:bg-black/50 text-[#D71920] shadow-xs'
+                  ? 'bg-white dark:bg-black/50 text-[#F47743] shadow-xs'
                   : 'text-slate-400 hover:text-slate-600'
               }`}
               title="Mobile 390px"
@@ -1243,7 +1331,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
             <button
               type="button"
               onClick={() => onNavigateToLogin()}
-              className="relative z-50 px-3 py-2.5 sm:px-3 sm:py-1.5 rounded-xl bg-red-50 hover:bg-[#D71920]/20 active:bg-[#D71920]/25 text-[#C51F1F] dark:text-[#D71920] border border-[#208C60]/30 font-bold transition-colors text-xs flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-[38px] cursor-pointer touch-manipulation shrink-0"
+              className="relative z-50 px-3 py-2.5 sm:px-3 sm:py-1.5 rounded-xl bg-[#208C60]/10 hover:bg-[#208C60]/20 active:bg-[#208C60]/25 text-[#208C60] dark:text-[#F47743] border border-[#208C60]/30 font-bold transition-colors text-xs flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-[38px] cursor-pointer touch-manipulation shrink-0"
               title="Masuk ke SiEpang"
               aria-label="Masuk ke SiEpang"
             >
@@ -1257,21 +1345,13 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
       {/* 2. Responsive Container */}
       <div className={`transition-all duration-300 flex-1 flex flex-col justify-between ${viewportWidthClass}`}>
         {/* Top Navbar with Branding & Quick Anchor Navigation */}
-        <nav className="bg-white/90 dark:bg-[#121215]/90 backdrop-blur-md border-b border-red-100 dark:border-white/10 px-4 sm:px-8 py-3.5 sticky top-10 z-30 transition-colors">
+        <nav className="bg-white/90 dark:bg-[#121215]/90 backdrop-blur-md border-b border-black/5 dark:border-white/10 px-4 sm:px-8 py-3.5 sticky top-10 z-30 transition-colors">
           <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-white border-2 border-[#D71920]/20 shadow-sm flex items-center justify-center shrink-0 overflow-hidden">
-                {isConfigured && event.logoUrl ? (
-                  <img
-                    src={event.logoUrl}
-                    alt={`Logo ${event.name}`}
-                    className="w-full h-full object-contain p-1"
-                    loading="eager"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <Shield className="w-6 h-6 text-[#D71920]" strokeWidth={2.2} aria-hidden="true" />
-                )}
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#208C60] via-[#F47743] to-[#FFD36A] p-[1.5px] shadow-sm flex items-center justify-center shrink-0">
+                <div className="w-full h-full rounded-[14px] bg-white dark:bg-[#121215] flex items-center justify-center font-black text-lg">
+                  ⚜️
+                </div>
               </div>
               <div className="min-w-0">
                 <div className="text-base font-black text-slate-900 dark:text-white tracking-tight leading-tight truncate">
@@ -1290,49 +1370,49 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               <button
                 type="button"
                 onClick={() => openPublicPage('section-hero')}
-                className="px-2.5 py-1.5 rounded-lg hover:text-[#D71920] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Beranda
               </button>
               <button
                 type="button"
                 onClick={() => openPublicPage('section-schedule')}
-                className="px-2.5 py-1.5 rounded-lg hover:text-[#D71920] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Jadwal
               </button>
               <button
                 type="button"
                 onClick={() => openPublicPage('section-leaderboard')}
-                className="px-2.5 py-1.5 rounded-lg hover:text-[#D71920] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Ranking
               </button>
               <button
                 type="button"
                 onClick={() => openPublicPage('section-photo-gallery')}
-                className="px-2.5 py-1.5 rounded-lg hover:text-[#D71920] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Galeri
               </button>
               <button
                 type="button"
                 onClick={() => openPublicPage('section-qr-scanner')}
-                className="px-2.5 py-1.5 rounded-lg hover:text-[#D71920] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Scan QR
               </button>
               <button
                 type="button"
                 onClick={() => openPublicPage('section-visitor')}
-                className="px-2.5 py-1.5 rounded-lg hover:text-[#D71920] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Visitor
               </button>
               <button
                 type="button"
                 onClick={() => openPublicPage('section-verification')}
-                className="px-2.5 py-1.5 rounded-lg hover:text-[#D71920] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Verifikasi
               </button>
@@ -1343,7 +1423,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               <button
                 type="button"
                 onClick={() => onOpenScanner?.()}
-                className="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-gradient-to-r from-[#B51218] via-[#D71920] to-[#EF4444] hover:opacity-95 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 min-w-[38px] min-h-[38px] cursor-pointer"
+                className="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 min-w-[38px] min-h-[38px] cursor-pointer"
                 title="Buka Scanner QR"
               >
                 <QrCode className="w-4 h-4" />
@@ -1363,7 +1443,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
 
           {/* Mobile Dropdown Menu */}
           {mobileMenuOpen && (
-            <div className="md:hidden pt-3 pb-2 border-t border-red-100 dark:border-white/10 mt-3 space-y-1 text-xs">
+            <div className="md:hidden pt-3 pb-2 border-t border-black/5 dark:border-white/10 mt-3 space-y-1 text-xs">
               {onNavigateToLogin && (
                 <button
                   type="button"
@@ -1371,7 +1451,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                     setMobileMenuOpen(false);
                     onNavigateToLogin();
                   }}
-                  className="w-full min-h-[48px] text-left px-4 py-3 mb-2 rounded-xl bg-red-50 text-[#C51F1F] dark:text-[#D71920] border border-red-200 font-bold flex items-center gap-2 touch-manipulation active:bg-[#D71920]/20"
+                  className="w-full min-h-[48px] text-left px-4 py-3 mb-2 rounded-xl bg-[#208C60]/10 text-[#208C60] dark:text-[#F47743] border border-[#208C60]/25 font-bold flex items-center gap-2 touch-manipulation active:bg-[#208C60]/20"
                 >
                   <LogIn className="w-5 h-5" />
                   Masuk ke SiEpang
@@ -1445,7 +1525,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
         </nav>
 
         {/* Main Portal Body */}
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-8 flex-1 w-full">
+        <div className="max-w-6xl mx-auto w-full flex-1 px-4 py-5 pb-28 sm:px-6 sm:py-6 md:pb-8 space-y-7">
           {/* STATE 4 — NON-BLOCKING LOADING INDICATOR */}
           {isLoading && (
             <div className="rounded-2xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40 p-3 text-xs text-blue-800 dark:text-blue-300 flex items-center justify-between gap-3 animate-pulse">
@@ -1480,62 +1560,9 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
 
           {activePublicPage !== 'home' && (
             <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#141418]">
-              <button type="button" onClick={() => openPublicPage('section-hero')} className="rounded-xl border border-red-100 bg-red-50 px-4 py-2.5 text-sm font-bold text-[#C51F1F] hover:bg-red-100 dark:bg-red-900/30 dark:text-red-200" aria-label="Kembali ke beranda">← Kembali</button>
+              <button type="button" onClick={() => openPublicPage('section-hero')} className="rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-bold text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-200" aria-label="Kembali ke beranda">← Kembali</button>
               <h1 className="font-bold text-lg">{publicPageTitle[activePublicPage] || 'Layanan Publik'}</h1>
             </div>
-          )}
-          {/* Modern grid launchpad shown only on the public home page. */}
-          {activePublicPage === 'home' && (
-          <section aria-label="Akses cepat SiEpang" className="mb-7 space-y-6">
-            <div className="relative overflow-hidden rounded-[30px] border border-red-100 bg-[linear-gradient(135deg,#D71920_0%,#C91D22_58%,#A91319_100%)] px-5 py-6 text-white shadow-[0_16px_40px_rgba(176,20,25,0.16)] sm:px-8 sm:py-8">
-              <div aria-hidden="true" className="absolute -right-16 -top-20 h-56 w-56 rounded-full bg-[#F4D53F]/18 blur-3xl" />
-              <div aria-hidden="true" className="absolute -bottom-24 left-1/3 h-48 w-48 rounded-full bg-white/8 blur-3xl" />
-              <img src={campSceneIllustration} alt="" aria-hidden="true" className="pointer-events-none absolute bottom-0 right-0 w-[58%] max-w-[560px] object-contain opacity-[0.24] sm:w-[48%]" />
-              <div className="relative z-10 max-w-3xl space-y-4">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/12 px-3 py-1.5 text-[11px] font-extrabold tracking-wide text-[#FFF3B0] backdrop-blur-sm"><Sparkles className="h-3.5 w-3.5"/> PORTAL PERKEMAHAN</span>
-                <div className="flex items-center gap-3 sm:gap-4">
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[18px] border border-white/25 bg-white shadow-sm sm:h-16 sm:w-16">
-                    {publicEventLogoUrl ? <img src={publicEventLogoUrl} alt={`Logo ${event.name}`} className="h-full w-full object-contain p-1.5" referrerPolicy="no-referrer" /> : <Shield className="h-7 w-7 text-[#D71920]" />}
-                  </div>
-                  <div className="min-w-0">
-                    <h1 className="text-2xl font-black leading-tight tracking-tight sm:text-4xl">{isConfigured ? event.name : 'Selamat Datang di SiEpang'}</h1>
-                    <p className="mt-1 text-sm font-medium text-white/80">{isConfigured ? `${event.organizationalLevel || 'Kwartir'} · ${event.campGround || 'Bumi Perkemahan'}` : 'Sistem Informasi Perkemahan Pramuka'}</p>
-                  </div>
-                </div>
-                <p className="max-w-xl text-sm leading-relaxed text-white/85 sm:text-base">Jelajahi kegiatan, informasi resmi, dan layanan perkemahan dengan mudah.</p>
-                <div className="flex flex-wrap gap-2.5 pt-1">
-                  <button type="button" onClick={() => openPublicPage('section-schedule')} className="min-h-11 inline-flex items-center gap-2 rounded-full bg-[#F4D53F] px-5 py-2.5 text-sm font-extrabold text-[#272019] shadow-sm hover:bg-[#FFE66B]"><Calendar className="h-4 w-4"/> Lihat Jadwal <ArrowRight className="h-4 w-4"/></button>
-                  {onNavigateToLogin && <button type="button" onClick={() => onNavigateToLogin()} className="min-h-11 inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-bold text-white hover:bg-white/20"><LogIn className="h-4 w-4"/> Masuk</button>}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between gap-3 px-1">
-              <div><h2 className="text-lg font-extrabold text-slate-900 dark:text-white">Jelajahi SiEpang</h2><p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Pilih menu untuk membuka halaman fitur.</p></div>
-              <span className="hidden text-xs font-semibold text-[#C51F1F] sm:block">Akses cepat</span>
-            </div>
-            <div className="grid grid-cols-4 gap-x-1 gap-y-4 sm:grid-cols-4 lg:grid-cols-8">
-              {([
-                {label:'Jadwal',icon:Calendar,section:'section-schedule',color:'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200'},
-                {label:'Lomba',icon:Trophy,section:'section-official-competitions',color:'bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-200'},
-                {label:'Scan QR',icon:QrCode,section:'section-qr-scanner',color:'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200'},
-                {label:'Informasi',icon:Bell,section:'section-announcements',color:'bg-red-50 text-[#C51F1F] dark:bg-red-500/20 dark:text-red-200'},
-                {label:'Ranking',icon:Medal,section:'section-leaderboard',color:'bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-200'},
-                {label:'Galeri',icon:ImageIcon,section:'section-photo-gallery',color:'bg-sky-100 text-sky-800 dark:bg-sky-500/20 dark:text-sky-200'},
-                {label:'Tamu',icon:Users,section:'section-visitor',color:'bg-purple-100 text-purple-800 dark:bg-purple-500/20 dark:text-purple-200'},
-                {label:'Verifikasi',icon:ShieldCheck,section:'section-verification',color:'bg-slate-200 text-slate-800 dark:bg-slate-500/20 dark:text-slate-200'},
-              ] as const).filter(item => {
-                const sections: Record<string, PortalSectionKey> = {'section-schedule':'schedule','section-qr-scanner':'qr_scanner','section-announcements':'announcements','section-leaderboard':'leaderboard','section-photo-gallery':'photo_gallery','section-visitor':'visitor','section-verification':'verification'};
-                const section = sections[item.section];
-                return !section || portalConfig.section_visibility[section];
-              }).map(item => {
-                const Icon = item.icon;
-                return <button key={item.label} type="button" onClick={() => item.label === 'Scan QR' && onOpenScanner ? onOpenScanner() : openPublicPage(item.section)} className="group flex min-h-[86px] flex-col items-center gap-2 rounded-2xl p-1 text-center hover:bg-red-50/60 dark:hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D71920]" aria-label={`Buka ${item.label}`}>
-                  <span className={`flex h-14 w-14 items-center justify-center rounded-[19px] shadow-sm transition-transform group-active:scale-95 ${item.color}`}><Icon className="h-6 w-6"/></span>
-                  <span className="text-[11px] font-semibold leading-tight text-slate-800 dark:text-slate-100 sm:text-xs">{item.label}</span>
-                </button>;
-              })}
-            </div>
-          </section>
           )}
           {/* Mata lomba resmi ditampilkan sebagai halaman tersendiri. */}
           {activePublicPage === 'competitions' && (
@@ -1559,11 +1586,50 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
           )}
           {/* Only render the selected public page. Do not stack all sections below the homepage. */}
           <div className="space-y-10">
-            {activePublicPage !== 'home' && activePublicPage !== 'competitions'
-              ? renderSectionByKey(activePublicPage as PortalSectionKey)
-              : null}
+            {activePublicPage === 'home'
+              ? renderSectionByKey('hero')
+              : activePublicPage !== 'competitions'
+                ? renderSectionByKey(activePublicPage as PortalSectionKey)
+                : null}
           </div>
         </div>
+
+        {/* Mobile public navigation — keeps the landing page app-like without changing routing. */}
+        <nav
+          aria-label="Navigasi utama publik"
+          className="fixed inset-x-3 bottom-3 z-40 mx-auto max-w-[430px] rounded-[24px] border border-slate-200/80 bg-white/95 p-1.5 shadow-[0_12px_35px_rgba(15,23,42,.16)] backdrop-blur-xl md:hidden"
+        >
+          <div className="grid grid-cols-5 gap-1">
+            {[
+              { label: 'Beranda', icon: Sparkles, action: () => openPublicPage('section-hero'), active: activePublicPage === 'home' },
+              { label: 'Jadwal', icon: Calendar, action: () => openPublicPage('section-schedule'), active: activePublicPage === 'schedule' },
+              { label: 'Scan QR', icon: QrCode, action: () => onOpenScanner?.(), active: false, primary: true },
+              { label: 'Info', icon: Bell, action: () => openPublicPage('section-announcements'), active: activePublicPage === 'announcements' },
+              { label: 'Masuk', icon: LogIn, action: () => onNavigateToLogin?.(), active: false },
+            ].map(item => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={item.action}
+                  disabled={item.label === 'Masuk' && !onNavigateToLogin}
+                  className={`flex min-h-[52px] flex-col items-center justify-center gap-0.5 rounded-[18px] text-[9px] font-bold transition active:scale-95 disabled:opacity-40 ${
+                    item.primary
+                      ? 'bg-[#E31B23] text-white shadow-md'
+                      : item.active
+                        ? 'bg-red-50 text-[#E31B23]'
+                        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                  }`}
+                  aria-label={item.label}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
 
         {/* Global Footer (Preserved reusable footer) */}
         <GlobalFooter />
@@ -1578,7 +1644,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
       {activeVideoModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in">
           <div className="w-full max-w-2xl bg-white dark:bg-[#121215] border border-black/10 dark:border-white/10 rounded-3xl overflow-hidden shadow-2xl space-y-3">
-            <div className="flex items-center justify-between p-4 border-b border-red-100 dark:border-white/10">
+            <div className="flex items-center justify-between p-4 border-b border-black/5 dark:border-white/10">
               <div className="min-w-0 pr-3">
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">
                   {activeVideoModal.title}
@@ -1607,7 +1673,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                 />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-white space-y-3">
-                  <Play className="w-12 h-12 text-[#D71920]" />
+                  <Play className="w-12 h-12 text-[#F47743]" />
                   <p className="text-xs text-slate-300">
                     Video eksternal disematkan dari tautan resmi.
                   </p>
