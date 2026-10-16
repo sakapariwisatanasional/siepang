@@ -123,7 +123,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
 
   // Emergency Offline Credential State (Section 1-5)
   const [credentials, setCredentials] = useState<OfflineCredential[]>(offlineCredentialService.getCredentials());
-  const [selectedCredUserId, setSelectedCredUserId] = useState<string>('usr_petugas_gerbang');
+  const [selectedCredUserId, setSelectedCredUserId] = useState<string>('');
   const [emergencyPinInput, setEmergencyPinInput] = useState('');
   const [pinResult, setPinResult] = useState<{ success: boolean; message: string } | null>(null);
   const [showProvisionModal, setShowProvisionModal] = useState(false);
@@ -369,14 +369,14 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
 
   // Emergency Offline Credential
   const handleVerifyEmergencyCredential = async () => {
-    if (!emergencyPinInput.trim()) return;
-    const deviceId = localStorage.getItem('siepang_device_id') || 'dev_master_field_01';
+    if (!emergencyPinInput.trim() || !selectedCredUserId || !currentWorkspace?.id || !currentEvent?.id || !localStorage.getItem('siepang_device_id')) { showNotification('Device, user, workspace, dan event nyata wajib tersedia untuk verifikasi offline.', 'error'); return; }
+    const deviceId = localStorage.getItem('siepang_device_id') || '';
     const result = await offlineCredentialService.verifyEmergencyOfflineCredential({
       userId: selectedCredUserId,
       rawPin: emergencyPinInput.trim(),
       deviceId,
-      workspaceId: currentWorkspace?.id || 'ws_banyuwangi',
-      eventId: currentEvent?.id || 'ev_jamcab_bwi_2026',
+      workspaceId: currentWorkspace?.id || '',
+      eventId: currentEvent?.id || '',
     });
 
     setPinResult({ success: result.success, message: result.message });
@@ -399,14 +399,14 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
   };
 
   const handleProvisionNewCredential = async () => {
-    if (!newCredName.trim() || !newCredPin.trim()) return;
-    const deviceId = localStorage.getItem('siepang_device_id') || 'dev_master_field_01';
+    if (!newCredName.trim() || !newCredPin.trim() || !selectedCredUserId || !currentWorkspace?.id || !currentEvent?.id || !localStorage.getItem('siepang_device_id')) { showNotification('Pilih user nyata dan pastikan device/workspace/event telah terikat.', 'error'); return; }
+    const deviceId = localStorage.getItem('siepang_device_id') || '';
     const res = await offlineCredentialService.provisionOfflineCredential({
-      userId: `usr_${newCredRole}_${Date.now().toString(36)}`,
+      userId: selectedCredUserId,
       userName: newCredName.trim(),
       role: newCredRole,
-      workspaceId: currentWorkspace?.id || 'ws_banyuwangi',
-      eventId: currentEvent?.id || 'ev_jamcab_bwi_2026',
+      workspaceId: currentWorkspace?.id || '',
+      eventId: currentEvent?.id || '',
       deviceId,
       rawPin: newCredPin.trim(),
     });
