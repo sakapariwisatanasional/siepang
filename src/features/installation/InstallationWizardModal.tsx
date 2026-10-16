@@ -343,7 +343,7 @@ export const InstallationWizardModal: React.FC<InstallationWizardModalProps> = (
                   </span>
                 </div>
                 <div className="text-sm font-black font-mono text-slate-900 dark:text-white select-all">
-                  scoutpreneur@gmail.com
+                  record.bootstrap_superadmin_email || "Belum ditetapkan"
                 </div>
                 <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                   <span>Peran: <strong className="text-purple-600 dark:text-purple-400">Superadmin</strong></span>
