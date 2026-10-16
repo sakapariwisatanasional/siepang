@@ -32,7 +32,7 @@ export interface CustomerGasBuildConfig {
  * to be pasted into the customer's standalone Apps Script project.
  */
 export function generateCustomerGasBackendSource(config: CustomerGasBuildConfig): string {
-  const bootstrapEmail = (config.bootstrapSuperAdminEmail || 'scoutpreneur@gmail.com').trim().toLowerCase();
+  const bootstrapEmail = (config.bootstrapSuperAdminEmail || '').trim().toLowerCase();
   const dbFolderId = config.databaseFolderId || '';
   const brandingFolderId = config.brandingFolderId || '';
   const documentsFolderId = config.documentsFolderId || '';
@@ -139,7 +139,7 @@ function checkInstallationStatus() {
 
   var isInstallationReady = props.getProperty('SIEPANG_INSTALLATION_READY') === 'true';
   var isConfigured = missing.length === 0 || isInstallationReady;
-  var bootSuperAdminEmail = props.getProperty('BOOTSTRAP_SUPERADMIN_EMAIL') || CONFIG.BOOTSTRAP_SUPERADMIN_EMAIL || 'scoutpreneur@gmail.com';
+  var bootSuperAdminEmail = props.getProperty('BOOTSTRAP_SUPERADMIN_EMAIL') || CONFIG.BOOTSTRAP_SUPERADMIN_EMAIL || '';
   var isSuperAdminBootstrapped = props.getProperty('SUPERADMIN_BOOTSTRAPPED') === 'true';
 
   return {
@@ -451,9 +451,9 @@ function getMailQuotaStatus() {
  * Helper: Ensures Initial SuperAdmin user and role idempotently
  */
 function ensureInitialSuperAdmin(db, props, overrideEmail) {
-  var targetEmail = (overrideEmail || props.getProperty('BOOTSTRAP_SUPERADMIN_EMAIL') || CONFIG.BOOTSTRAP_SUPERADMIN_EMAIL || 'scoutpreneur@gmail.com').trim().toLowerCase();
+  var targetEmail = (overrideEmail || props.getProperty('BOOTSTRAP_SUPERADMIN_EMAIL') || CONFIG.BOOTSTRAP_SUPERADMIN_EMAIL || '').trim().toLowerCase();
   if (!targetEmail) {
-    targetEmail = 'scoutpreneur@gmail.com';
+    throw new Error('BOOTSTRAP_SUPERADMIN_EMAIL_REQUIRED: Tetapkan email administrator bootstrap pada Script Properties.');
   }
 
   var usersSheet = db.getSheetByName('Users');
@@ -625,8 +625,11 @@ function executeFirstBootstrap(props, payload) {
       Logger.log('Drive folder init notice during bootstrap: ' + driveErr.toString());
     }
 
-    // Ensure Initial Superadmin: scoutpreneur@gmail.com
-    var targetSuperAdminEmail = 'scoutpreneur@gmail.com';
+    // Ensure Initial Superadmin from Script Properties
+    var targetSuperAdminEmail = String(props.getProperty('BOOTSTRAP_SUPERADMIN_EMAIL') || CONFIG.BOOTSTRAP_SUPERADMIN_EMAIL || '').trim().toLowerCase();
+    if (!targetSuperAdminEmail) {
+      return { ok: false, error: 'BOOTSTRAP_SUPERADMIN_EMAIL_REQUIRED', message: 'Tetapkan email administrator bootstrap pada Script Properties.' };
+    }
     if (db) {
       var saRes = ensureInitialSuperAdmin(db, props, targetSuperAdminEmail);
       if (!saRes.ok) {
@@ -2024,6 +2027,21 @@ function dispatchAction(action, payload, req, reqId) {
     return envelopeSuccess(reqId, { user_id: updUid, success: true });
   }
 
+  // Action: database.inspect
+  if (action === 'database.inspect') {
+    var dbInspectAuth = authenticateAndAuthorizeCaller(req);
+    if (!dbInspectAuth.ok) return envelopeError(reqId, dbInspectAuth.error.code, dbInspectAuth.error.message, 401);
+    var dbCanInspect = dbInspectAuth.isSuperAdmin ||
+      dbInspectAuth.roles.indexOf('workspace_admin') !== -1 ||
+      dbInspectAuth.roles.indexOf('event_admin') !== -1;
+    if (!dbCanInspect) return envelopeError(reqId, 'PERMISSION_DENIED', 'Hanya Administrator yang dapat memeriksa Spreadsheet.', 403);
+    try {
+      return envelopeSuccess(reqId, inspectSpreadsheetById_(payload && payload.spreadsheet_id));
+    } catch (dbInspectErr) {
+      return envelopeError(reqId, 'DATABASE_INSPECT_FAILED', String(dbInspectErr && dbInspectErr.message || dbInspectErr), 400);
+    }
+  }
+
   // Action: database.provision_schema_v19
   if (action === 'database.provision_schema_v19' || action === '/api/database/provision_schema_v16') {
     var prov = provisionCanonicalSchemaV19();
@@ -2061,6 +2079,38 @@ function envelopeError(reqId, code, message, statusCode) {
  * PROVISI SKEMA KANONIKAL v1.9 (45 Lembar Kerja Termasuk Auth, RBAC & Keamanan)
  * ============================================================================
  */
+function inspectSpreadsheetById_(spreadsheetId) {
+  var id = String(spreadsheetId || '').trim();
+  if (!id) throw new Error('SPREADSHEET_ID_REQUIRED: ID Spreadsheet wajib diisi.');
+  if (!/^[a-zA-Z0-9_-]{20,}$/.test(id)) throw new Error('INVALID_SPREADSHEET_ID: Format ID Spreadsheet tidak valid.');
+
+  var ss;
+  try {
+    ss = SpreadsheetApp.openById(id);
+  } catch (e) {
+    throw new Error('DATABASE_OPEN_FAILED: Spreadsheet tidak dapat dibuka. Pastikan akun GAS memiliki akses. Detail: ' + (e && e.message ? e.message : String(e)));
+  }
+
+  var sheets = ss.getSheets().map(function(sh) {
+    var values = sh.getDataRange().getValues();
+    var headers = values.length ? values[0].map(function(v) { return String(v || '').trim(); }) : [];
+    return {
+      name: sh.getName(),
+      row_count: Math.max(0, values.length - 1),
+      column_count: headers.length,
+      headers: headers
+    };
+  });
+
+  return {
+    spreadsheet_id: ss.getId(),
+    spreadsheet_name: ss.getName(),
+    spreadsheet_url: ss.getUrl(),
+    sheet_names: sheets.map(function(s) { return s.name; }),
+    sheets: sheets
+  };
+}
+
 function provisionCanonicalSchemaV19() {
   var db = getCustomerDatabase();
   var tables = [
