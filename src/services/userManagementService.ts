@@ -360,66 +360,24 @@ export class UserManagementService {
 
   /**
    * Idempotent Initial SuperAdmin Seeding (Requirements 32, 33, 36, 37)
-   * Ensures scoutpreneur@gmail.com is registered as superadmin with status active.
+   * Verifies the configured bootstrap administrator from authoritative GAS data.
    * Prevents duplicates, normalizes email, and ties to authoritative workspace.
    */
-  public ensureBootstrapSuperadmin(workspaceId?: string): ManagedUser {
-    const canonicalEmail = 'scoutpreneur@gmail.com';
-    const existingIndex = this.users.findIndex(
-      u => u.email && u.email.toLowerCase().trim() === canonicalEmail
+  /**
+   * Verify the bootstrap administrator from the authoritative GAS Users/roles data.
+   * This method never creates or injects a browser-local superadmin.
+   */
+  public async ensureBootstrapSuperadmin(workspaceId?: string): Promise<ManagedUser> {
+    const users = await this.refreshUsers();
+    const active = users.find(user =>
+      user.status === 'active' &&
+      user.role === 'superadmin' &&
+      (!workspaceId || user.workspaceId === workspaceId)
     );
-
-    if (existingIndex !== -1) {
-      const existing = this.users[existingIndex];
-      let mutated = false;
-      if (existing.role !== 'superadmin') {
-        existing.role = 'superadmin';
-        mutated = true;
-      }
-      if (existing.status !== 'active') {
-        existing.status = 'active';
-        mutated = true;
-      }
-      if (workspaceId && existing.workspaceId !== workspaceId) {
-        existing.workspaceId = workspaceId;
-        mutated = true;
-      }
-      if (mutated) {
-        this.notify();
-      }
-      return existing;
+    if (!active) {
+      throw new Error('BOOTSTRAP_SUPERADMIN_NOT_FOUND: Administrator awal belum aktif pada data GAS.');
     }
-
-    const resolvedWsId = workspaceId || 'ws_alpha_2026';
-    const superadminUser: ManagedUser = {
-      id: 'usr_super_scoutpreneur',
-      name: 'Super Admin SiEpang',
-      email: canonicalEmail,
-      role: 'superadmin',
-      workspaceId: resolvedWsId,
-      avatar: '',
-      organizationName: 'Kwartir Gerakan Pramuka',
-      status: 'active',
-      lastLogin: 'Belum pernah login',
-      createdAt: new Date().toISOString().split('T')[0],
-    };
-
-    this.users.unshift(superadminUser);
-    this.notify();
-
-    // Sync to backend asynchronously to prevent circular dependency TDZ errors during import
-    setTimeout(() => {
-      try {
-        if (typeof apiTransport !== 'undefined' && apiTransport?.send) {
-          apiTransport.send('auth.bootstrapSuperAdmin', {
-            email: canonicalEmail,
-            workspace_id: resolvedWsId,
-          }).catch(() => {});
-        }
-      } catch {}
-    }, 0);
-
-    return superadminUser;
+    return active;
   }
 
   public getUsers(): ManagedUser[] {
