@@ -61,7 +61,7 @@ class AttendanceService {
 
   public async recordAttendance(
     codeOrId: string,
-    sessionId = 'sch_today',
+    sessionId = '',
     sessionName = 'Kegiatan Lapangan & Apel'
   ): Promise<{ record: AttendanceRecord; offline: boolean; destination: 'device' | 'server_buper' | 'cloud' }> {
     // QR contains the existing unique participant code used across modules.
