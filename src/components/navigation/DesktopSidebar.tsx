@@ -20,7 +20,6 @@ import {
   Boxes,
   QrCode,
   Sliders,
-  FolderTree,
   UserCheck,
   UserRound,
   Globe,
@@ -79,7 +78,131 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     return () => unsub();
   }, []);
 
-  const navGroups: NavGroup[] = [
+  // Sidebar is intentionally split into two user experiences:
+  // 1) Peserta: only features needed to participate in the event.
+  // 2) Kepanitiaan: operational/administrative features according to the
+  //    existing role + feature permissions.
+  //
+  // IMPORTANT: existing NavTab IDs and feature keys are preserved. This is
+  // navigation/UI only; it does not change GAS/API contracts.
+  const committeeRoles = [
+    'workspace_admin',
+    'event_admin',
+    'kontingen_admin',
+    'registration_officer',
+    'attendance_officer',
+    'committee',
+    'judge',
+    'health_officer',
+    'logistic_officer',
+    'publication_officer',
+    'documentation_officer',
+    'superadmin',
+  ];
+
+  const isCommittee = committeeRoles.includes(role);
+
+  const participantGroups: NavGroup[] = [
+    {
+      id: 'utama',
+      label: 'Utama',
+      items: [
+        {
+          id: 'home',
+          label: 'Beranda',
+          icon: LayoutDashboard,
+          roles: ['all'],
+        },
+        {
+          id: 'public_home',
+          label: 'Portal Publik',
+          icon: Globe,
+          roles: ['all'],
+          featureKey: 'PUBLIC_EVENT_PAGE',
+        },
+      ],
+    },
+    {
+      id: 'kegiatan',
+      label: 'Kegiatan',
+      items: [
+        {
+          id: 'schedule',
+          label: 'Jadwal Kegiatan',
+          icon: Calendar,
+          roles: ['all'],
+          featureKey: 'SCHEDULE',
+        },
+        {
+          id: 'attendance',
+          label: 'Presensi',
+          icon: QrCode,
+          roles: ['all'],
+          featureKey: 'ATTENDANCE',
+        },
+      ],
+    },
+    {
+      id: 'unjuk_karya',
+      label: 'Unjuk Karya',
+      items: [
+        {
+          id: 'competitions',
+          label: 'Unjuk Karya',
+          icon: Trophy,
+          roles: ['all'],
+          featureKey: 'COMPETITION',
+        },
+        {
+          id: 'leaderboard',
+          label: 'Peringkat & XP',
+          icon: Zap,
+          roles: ['all'],
+          featureKey: 'POINTS_XP',
+        },
+      ],
+    },
+    {
+      id: 'publikasi',
+      label: 'Publikasi',
+      items: [
+        {
+          id: 'public_gallery',
+          label: 'Photo & Video',
+          icon: ImageIcon,
+          roles: ['all'],
+          featureKey: 'PUBLIC_DOCUMENTATION',
+        },
+      ],
+    },
+    {
+      id: 'dokumen',
+      label: 'Dokumen',
+      items: [
+        {
+          id: 'templates',
+          label: 'ID Card & Sertifikat',
+          icon: CreditCard,
+          roles: ['all'],
+          featureKey: 'ID_CARD',
+        },
+      ],
+    },
+    {
+      id: 'akun',
+      label: 'Akun',
+      items: [
+        {
+          id: 'profile',
+          label: 'Profil Saya',
+          icon: UserRound,
+          roles: ['all'],
+        },
+      ],
+    },
+  ];
+
+  const committeeGroups: NavGroup[] = [
     {
       id: 'utama',
       label: 'Utama',
@@ -112,7 +235,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         },
         {
           id: 'schedule',
-          label: 'Jadwal Giat',
+          label: 'Jadwal Kegiatan',
           icon: Calendar,
           roles: ['all'],
           featureKey: 'SCHEDULE',
@@ -127,12 +250,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       ],
     },
     {
-      id: 'lomba',
-      label: 'Lomba & Prestasi',
+      id: 'unjuk_karya',
+      label: 'Unjuk Karya & Prestasi',
       items: [
         {
           id: 'competitions',
-          label: 'Cabang Lomba',
+          label: 'Unjuk Karya',
           icon: Trophy,
           roles: ['all'],
           featureKey: 'COMPETITION',
@@ -185,14 +308,14 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       items: [
         {
           id: 'public_gallery',
-          label: 'Galeri Liputan',
+          label: 'Photo & Video',
           icon: ImageIcon,
           roles: ['all'],
           featureKey: 'PUBLIC_DOCUMENTATION',
         },
         {
           id: 'gallery_admin' as NavTab,
-          label: 'Manajemen Galeri',
+          label: 'Kelola Photo & Video',
           icon: ImageIcon,
           roles: ['superadmin', 'workspace_admin', 'event_admin', 'publication_officer', 'documentation_officer'],
           featureKey: 'PUBLIC_DOCUMENTATION',
@@ -213,15 +336,21 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       ],
     },
     {
-      id: 'sistem',
-      label: 'Sistem',
+      id: 'akun',
+      label: 'Akun',
       items: [
         {
           id: 'profile',
-          label: 'Profil Saya / Edit Biodata',
+          label: 'Profil Saya',
           icon: UserRound,
           roles: ['all'],
         },
+      ],
+    },
+    {
+      id: 'sistem',
+      label: 'Sistem',
+      items: [
         {
           id: 'demo_center' as NavTab,
           label: 'Pusat Demonstrasi',
@@ -256,6 +385,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     },
   ];
 
+  const navGroups = isCommittee ? committeeGroups : participantGroups;
+
   // Filter groups: keep only items where role matches AND feature is enabled
   const filteredGroups = navGroups
     .map(grp => ({
@@ -287,7 +418,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       <div className="h-16 flex items-center justify-between px-4 border-b border-[#ECECEF] dark:border-white/10">
         {!collapsed ? (
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#208C60] to-[#F47743] text-white flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#B91C1C] to-[#EF4444] text-white flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
               <Tent className="w-4 h-4 text-white" />
             </div>
             <div className="min-w-0">
@@ -300,7 +431,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             </div>
           </div>
         ) : (
-          <div className="mx-auto w-8 h-8 rounded-xl bg-gradient-to-tr from-[#208C60] to-[#F47743] text-white flex items-center justify-center text-sm font-bold shadow-xs">
+          <div className="mx-auto w-8 h-8 rounded-xl bg-gradient-to-tr from-[#B91C1C] to-[#EF4444] text-white flex items-center justify-center text-sm font-bold shadow-xs">
             <Tent className="w-4 h-4 text-white" />
           </div>
         )}
@@ -323,7 +454,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             return (
               <button key={item.id} type="button" onClick={() => onTabChange(item.id)}
                 aria-current={active ? 'page' : undefined}
-                className={`rounded-2xl border px-2 py-3 flex flex-col items-center gap-1.5 transition-colors text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 ${active ? 'border-emerald-500/40 bg-emerald-50 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300' : 'border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5'}`}>
+                className={`rounded-2xl border px-2 py-3 flex flex-col items-center gap-1.5 transition-colors text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 ${active ? 'border-red-500/30 bg-red-50 text-red-800 dark:bg-red-900/20 dark:text-red-300' : 'border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5'}`}>
                 <Icon className="w-5 h-5" aria-hidden="true" />
                 {item.label}
               </button>
@@ -336,7 +467,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       <div className="p-3">
         <button
           onClick={onOpenScanner}
-          className={`w-full flex items-center gap-2.5 p-2.5 rounded-xl bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white font-bold text-xs shadow-xs active:scale-95 transition-all cursor-pointer ${
+          className={`w-full flex items-center gap-2.5 p-2.5 rounded-xl bg-gradient-to-r from-[#B91C1C] via-[#DC2626] to-[#EF4444] hover:opacity-95 text-white font-bold text-xs shadow-xs active:scale-95 transition-all cursor-pointer ${
             collapsed ? 'justify-center' : ''
           }`}
           title="Pindai QR"
@@ -349,7 +480,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       {!collapsed && (
         <div className="px-3 pb-2">
           <label htmlFor="siepang-sidebar-search" className="sr-only">Cari menu</label>
-          <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 px-2.5 focus-within:ring-2 focus-within:ring-emerald-500/40">
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 px-2.5 focus-within:ring-2 focus-within:ring-red-500/40">
             <Search className="w-4 h-4 text-slate-400 shrink-0" aria-hidden="true" />
             <input id="siepang-sidebar-search" type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari fitur..." autoComplete="off"
               className="min-w-0 w-full py-2 bg-transparent outline-none text-xs text-slate-800 dark:text-white placeholder:text-slate-400" />
@@ -379,16 +510,16 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                   type="button"
                   onClick={() => onTabChange(item.id)}
                   aria-current={isActive ? 'page' : undefined}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer group relative focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 ${
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer group relative focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 ${
                     isActive
-                      ? 'bg-emerald-50 dark:bg-emerald-900/25 text-emerald-800 dark:text-emerald-300 font-bold ring-1 ring-emerald-200 dark:ring-emerald-800/50'
+                      ? 'bg-emerald-50 dark:bg-emerald-900/25 text-emerald-800 dark:text-emerald-300 font-bold ring-1 ring-red-200 dark:ring-red-800/50'
                       : 'text-slate-600 dark:text-slate-300 hover:text-[#171717] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5'
                   } ${collapsed ? 'justify-center' : ''}`}
                   title={collapsed ? item.label : undefined}
                 >
                   <Icon
                     className={`w-4 h-4 shrink-0 transition-colors ${
-                      isActive ? 'text-[#208C60] dark:text-[#F47743]' : 'text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'
+                      isActive ? 'text-[#B91C1C] dark:text-[#EF4444]' : 'text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'
                     }`}
                   />
                   {!collapsed && <span className="truncate">{item.label}</span>}
