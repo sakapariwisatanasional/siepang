@@ -72,10 +72,25 @@ export const ScheduleActivityEditor: React.FC = () => {
   const [eventVersion, setEventVersion] = useState(0);
   useEffect(() => eventStudioService.subscribe(() => setEventVersion(version => version + 1)), []);
   const activeEvent = eventStudioService.getEvent();
+  const activeEventId = String(activeEvent.id || '').trim();
   const eventDays = eventDayOptions(activeEvent.startDate, activeEvent.endDate);
   const eventLoadStatus = eventStudioService.getEventLoadStatus();
   const [reloadingEvent, setReloadingEvent] = useState(false);
+
   const [dateLoadError, setDateLoadError] = useState<string | null>(null);
+  // Once the authoritative event ID is available, force a fresh schedule read
+  // from GAS/Spreadsheet. This fixes startup races where schedules.list ran
+  // before the event context was hydrated.
+  useEffect(() => {
+    if (!activeEventId) return;
+    let cancelled = false;
+    eventStudioService.refreshSchedules().catch((error: unknown) => {
+      if (!cancelled) {
+        setDateLoadError(error instanceof Error ? error.message : 'Tidak dapat membaca jadwal dari GAS.');
+      }
+    });
+    return () => { cancelled = true; };
+  }, [activeEventId]);
   // If the global initial sync did not return an event, retry ONLY events.get.
   // This never writes to GAS, and never supplies sample dates.
   useEffect(() => {
@@ -112,6 +127,20 @@ export const ScheduleActivityEditor: React.FC = () => {
   const [activityList, setActivityList] = useState<CampActivity[]>(eventStudioService.getActivities());
   const [activityTypes, setActivityTypes] = useState<ActivityType[]>(eventStudioService.listActivityTypes());
   const [conflicts, setConflicts] = useState<ScheduleConflict[]>([]);
+
+  // Event Studio keeps its authoritative online/offline cache inside the service.
+  // Every service notification must hydrate the component state as well; otherwise
+  // async GAS responses arrive but the page remains stuck on the initial empty arrays.
+  useEffect(() => {
+    const hydrateFromService = () => {
+      setScheduleList([...eventStudioService.getSchedule()]);
+      setActivityList([...eventStudioService.getActivities()]);
+      setActivityTypes([...eventStudioService.listActivityTypes()]);
+    };
+
+    hydrateFromService();
+    return eventStudioService.subscribe(hydrateFromService);
+  }, []);
 
   // Activity QR Management state (Requirements 1-7)
   const [selectedQrActivity, setSelectedQrActivity] = useState<{
