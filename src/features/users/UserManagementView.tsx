@@ -49,6 +49,7 @@ import { organizationService } from '../../services/organizationService';
 import { onlineSessionService } from '../../services/onlineSessionService';
 import { profilePhotoService } from '../../services/profilePhotoService';
 import { eventCommitteeService, type CommitteeMember } from '../../services/eventCommitteeService';
+import { getCommitteePosition } from '../../services/committeePositionCatalog';
 import { ProfilePhotoUploader } from '../../components/media/ProfilePhotoUploader';
 
 /**
@@ -147,28 +148,6 @@ const ROLE_LABELS: Record<UserRole, { label: string; badge: string; desc: string
   },
 };
 
-// Jabatan organisasi tidak sama dengan role GAS. Rekomendasi di bawah tidak otomatis
-// memberikan izin, agar akun yang ada tidak berubah tanpa tindakan admin.
-const COMMITTEE_ROLE_GUIDANCE: ReadonlyArray<{ title: string; roles: UserRole[] }> = [
-  { title: 'Pelindung', roles: ['viewer'] },
-  { title: 'Penasehat', roles: ['viewer'] },
-  { title: 'Ketua pelaksana', roles: ['event_admin'] },
-  { title: 'Sekretaris', roles: ['committee'] },
-  { title: 'Bendahara', roles: ['committee'] },
-  { title: 'Koordinator lapangan', roles: ['committee'] },
-  { title: 'Bid. Kesekretariatan, kerjasama dan pameran', roles: ['committee'] },
-  { title: 'Bid. Kegiatan', roles: ['committee', 'judge', 'attendance_officer'] },
-  { title: 'Bid. Perkemahan', roles: ['committee'] },
-  { title: 'Bid. Keagamaan', roles: ['committee'] },
-  { title: 'Bid. Sarana, prasarana dan keamanan', roles: ['logistic_officer'] },
-  { title: 'Bid. Kesehatan', roles: ['health_officer'] },
-  { title: 'Bid. Pengawasan dan Evaluasi', roles: ['viewer'] },
-  { title: 'Bid. Konsumsi', roles: ['logistic_officer'] },
-  { title: 'Bid. Humas', roles: ['publication_officer'] },
-  { title: 'Bid. Dokumentasi dan publikasi', roles: ['documentation_officer', 'publication_officer'] },
-  { title: 'Sangga kerja', roles: ['committee'] },
-];
-const normalizeCommitteeTitle = (value: string) => value.toLocaleLowerCase('id-ID').trim().replace(/\s+/g, ' ');
 
 export const UserManagementView: React.FC = () => {
   const [users, setUsers] = useState<ManagedUser[]>(userManagementService.getUsers());
@@ -186,6 +165,9 @@ export const UserManagementView: React.FC = () => {
   const [editingUser, setEditingUser] = useState<Partial<ManagedUser> | null>(null);
   const [committeeMembers, setCommitteeMembers] = useState<CommitteeMember[]>([]);
   const [committeeError, setCommitteeError] = useState('');
+  const [selectedAdditionalRoles, setSelectedAdditionalRoles] = useState<UserRole[]>([]);
+  const [activeAssignedRoles, setActiveAssignedRoles] = useState<UserRole[]>([]);
+  const [rolesLoadError, setRolesLoadError] = useState('');
 
   // User Detail Modal State (Requirement 15)
   const [detailUser, setDetailUser] = useState<ManagedUser | null>(null);
@@ -329,17 +311,31 @@ export const UserManagementView: React.FC = () => {
     ? committeeMembers.filter(member => member.userId === editingUser.id).map(member => member.position)
     : [];
   const linkedRoleRecommendations = Array.from(new Set(linkedCommitteePositions.flatMap(position =>
-    COMMITTEE_ROLE_GUIDANCE.find(entry => normalizeCommitteeTitle(entry.title) === normalizeCommitteeTitle(position))?.roles || []
+    getCommitteePosition(position)?.roles || []
   )));
 
   const handleSelectRegisteredUser = (user: ManagedUser) => {
     setEditingUser({ ...user });
+    setSelectedAdditionalRoles([]);
   };
 
   const handleOpenEdit = (user: ManagedUser) => {
     setEditingUser({ ...user });
+    setSelectedAdditionalRoles([]);
     setIsModalOpen(true);
   };
+
+  useEffect(() => {
+    if (!isModalOpen || !editingUser?.id) { setActiveAssignedRoles([]); setRolesLoadError(''); return; }
+    let active = true;
+    setRolesLoadError('');
+    userManagementService.listActiveRoleAssignments(editingUser.id).then(assignments => {
+      if (active) setActiveAssignedRoles(Array.from(new Set(assignments.map(a => a.role))));
+    }).catch(error => {
+      if (active) setRolesLoadError(error instanceof Error ? error.message : 'Tidak dapat memeriksa role aktif.');
+    });
+    return () => { active = false; };
+  }, [isModalOpen, editingUser?.id]);
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -358,14 +354,15 @@ export const UserManagementView: React.FC = () => {
       alert('Form Ubah Peran hanya menyimpan role. Nama, email, foto, instansi dan status akun jangan diubah di sini; perubahan profil belum mempunyai endpoint tersendiri.');
       return;
     }
-    if (!editingUser.role) { alert('Pilih role yang valid.'); return; }
+    if (!selectedAdditionalRoles.length) { alert('Pilih minimal satu role tambahan yang akan diberikan.'); return; }
+    if (rolesLoadError) { alert('Role aktif belum dapat diverifikasi: ' + rolesLoadError); return; }
     setIsSavingUser(true);
     try {
-      const saved = await userManagementService.updateUserRole(previous.id, editingUser.role);
-      if (saved.role !== editingUser.role) throw new Error('Role hasil refresh berbeda dari yang dipilih.');
+      await userManagementService.grantAdditionalRoles(previous.id, selectedAdditionalRoles, 'EVENT');
       setIsModalOpen(false);
       setEditingUser(null);
-      alert('Role berhasil disimpan di GAS dan dikonfirmasi setelah pembacaan ulang.');
+      setSelectedAdditionalRoles([]);
+      alert('Role tambahan berhasil disimpan dan dikonfirmasi dari GAS. Role sebelumnya tidak dicabut.');
     } catch (error: any) {
       alert('Gagal menyimpan role ke GAS: ' + (error?.message || String(error)));
     } finally {
@@ -875,19 +872,25 @@ export const UserManagementView: React.FC = () => {
                   )}
                   {linkedRoleRecommendations.length > 0 && <div className="mt-3 space-y-2">
                     <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Rekomendasi role teknis (tidak otomatis disimpan):</p>
-                    <div className="flex flex-wrap gap-2">{linkedRoleRecommendations.map(role => <button key={role} type="button" onClick={() => setEditingUser(old => old ? { ...old, role } : old)} className="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-900 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-100">{ROLE_LABELS[role]?.label || role}</button>)}</div>
-                    {linkedRoleRecommendations.length > 1 && <p className="text-xs text-amber-800 dark:text-amber-300">Form GAS saat ini hanya menyimpan satu role tiap tindakan. Role tambahan tidak boleh diasumsikan aktif; diperlukan pengamanan multi-role di backend.</p>}
+                    <div className="flex flex-wrap gap-2">{linkedRoleRecommendations.map(role => <button key={role} type="button" onClick={() => setSelectedAdditionalRoles(current => current.includes(role) ? current.filter(item => item !== role) : [...current, role])} disabled={activeAssignedRoles.includes(role)} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${selectedAdditionalRoles.includes(role) ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-emerald-300 bg-white text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100'} disabled:opacity-50`}>{ROLE_LABELS[role]?.label || role}{activeAssignedRoles.includes(role) ? ' · Sudah aktif' : selectedAdditionalRoles.includes(role) ? ' ✓' : ' +'}</button>)}</div>
+                    {linkedRoleRecommendations.length > 1 && <p className="text-xs text-emerald-900 dark:text-emerald-300">Pilih beberapa rekomendasi jika perlu. Hanya role yang ditandai yang ditambahkan; role lama tetap aktif.</p>}
                   </div>}
                 </div>
-                <label className="block text-sm font-semibold text-slate-900 dark:text-white">Peran Akses
-                  <select required value={editingUser.role || 'viewer'} onChange={e => setEditingUser({ ...editingUser, role: e.target.value as UserRole })} className="block w-full mt-2 rounded-xl px-3 py-2.5 bg-white dark:bg-[#1A1A1E] border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white">
-                    {Object.entries(ROLE_LABELS).filter(([role]) => role !== 'superadmin').map(([role, detail]) => <option key={role} value={role}>{detail.label}</option>)}
-                  </select>
-                </label>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Jabatan panitia dibaca dari struktur event, bukan dari daftar role ini. Tombol Simpan hanya mengirim satu role ke GAS dan tidak mengubah jabatan. Perubahan multi-role belum diaktifkan hingga otorisasi backend diperbaiki.</p>
+                <div className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-white/10">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">Tambahkan role teknis (scope event aktif)</p>
+                  {rolesLoadError && <p role="alert" className="text-xs text-red-600">{rolesLoadError}</p>}
+                  <p className="text-xs text-slate-600 dark:text-slate-300">Role yang sudah aktif: {activeAssignedRoles.map(role => ROLE_LABELS[role]?.label || role).join(', ') || 'Belum terbaca / belum ada'}</p>
+                  <div className="grid gap-2 sm:grid-cols-2">{Object.entries(ROLE_LABELS).filter(([role]) => !['superadmin','workspace_admin'].includes(role)).map(([role, detail]) => (
+                    <label key={role} className="flex items-center gap-2 rounded-lg border border-slate-200 p-2 text-xs dark:border-white/10 dark:text-white">
+                      <input type="checkbox" disabled={activeAssignedRoles.includes(role as UserRole) || !!rolesLoadError} checked={selectedAdditionalRoles.includes(role as UserRole) || activeAssignedRoles.includes(role as UserRole)} onChange={event => setSelectedAdditionalRoles(current => event.target.checked ? [...new Set([...current, role as UserRole])] : current.filter(item => item !== role))}/>
+                      {detail.label} {activeAssignedRoles.includes(role as UserRole) ? '(aktif)' : ''}
+                    </label>
+                  ))}</div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Jabatan dan role disimpan terpisah di GAS. Penyimpanan ini hanya menambah role terpilih, tidak mencabut role yang ada.</p>
+                </div>
                 <div className="flex justify-end gap-2">
                   <button type="button" onClick={() => { setEditingUser(null); setCandidateSearch(''); }} className="px-4 py-2 rounded-xl border border-slate-300 dark:border-white/20 text-slate-700 dark:text-slate-200">Kembali</button>
-                  <button disabled={isSavingUser} type="submit" className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-semibold disabled:opacity-50">{isSavingUser ? 'Menyimpan ke GAS…' : 'Simpan Peran ke GAS'}</button>
+                  <button disabled={isSavingUser} type="submit" className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-semibold disabled:opacity-50">{isSavingUser ? 'Menyimpan ke GAS…' : 'Tambahkan Role ke GAS'}</button>
                 </div>
               </form>
             )}
