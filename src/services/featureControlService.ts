@@ -511,7 +511,7 @@ class FeatureControlService {
     CANONICAL_FEATURE_DEFINITIONS.forEach(def => {
       this.systemStates.set(def.key, {
         enabled: def.defaultEnabled,
-        updatedAt: '2026-10-01 00:00',
+        updatedAt: '',
       });
     });
   }
@@ -524,8 +524,8 @@ class FeatureControlService {
    */
   public isFeatureEnabled(
     key: SystemFeatureKey,
-    eventId = 'ev_jamcab_bwi_2026',
-    workspaceId = 'ws_kwarcab_bwi'
+    eventId = eventService.getCurrentEvent().id,
+    workspaceId = workspaceService.getCurrentWorkspace().id
   ): boolean {
     const detail = this.resolveFeatureDetail(key, eventId, workspaceId);
     return detail.effectiveEnabled;
@@ -533,8 +533,8 @@ class FeatureControlService {
 
   public resolveFeatureDetail(
     key: SystemFeatureKey,
-    eventId = 'ev_jamcab_bwi_2026',
-    workspaceId = 'ws_kwarcab_bwi'
+    eventId = eventService.getCurrentEvent().id,
+    workspaceId = workspaceService.getCurrentWorkspace().id
   ): {
     key: SystemFeatureKey;
     definition: FeatureDefinition;
