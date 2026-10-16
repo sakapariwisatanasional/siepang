@@ -142,7 +142,7 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
 
   const currentConfig = activityQrService.getConfigByActivityId(activityId);
   const analytics = currentConfig ? activityQrService.getActivityAnalytics(activityId) : null;
-  const qrDisplayToken = currentConfig?.qrToken || `SIEPANG:QR:v1:ACT_${activityId}_preview`;
+  const qrDisplayToken = currentConfig?.qrToken || '';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
