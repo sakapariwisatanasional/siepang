@@ -719,23 +719,23 @@ export class SiepangBackendApi {
         // ==================== LOCAL CAMP SERVER (SERVER BUPER) ====================
         case '/api/local/health': {
           const data = {
-            connected: true,
-            status: 'online',
-            uptimeSeconds: 14250,
-            edgeNodeId: 'EDGE-BWI-BUPER-01',
+            connected: false,
+            status: 'offline',
+            uptimeSeconds: 0,
+            edgeNodeId: payload?.edgeNodeId || '',
             databaseType: 'SQLite Local Datastore',
-            connectedDevicesCount: 28,
-            localPendingUpstreamCount: 0,
-            lastHeartbeat: new Date().toISOString(),
+            connectedDevicesCount: 0,
+            localPendingUpstreamCount: Array.isArray(payload?.pendingTransactions) ? payload.pendingTransactions.length : 0,
+            lastHeartbeat: '',
           };
-          return this.success(data as unknown as T, 'Server Buper (SQLite Local Datastore) berjalan optimal.');
+          return this.success(data as unknown as T, 'Status Server Buper lokal belum dikonfigurasi.');
         }
 
         case '/api/local/edge/upstream-sync': {
           this.guard(context, 'event.update');
           const data = eventStudioBusinessService.processBatchTransactions(
             context,
-            payload?.edgeNodeId || 'EDGE-BWI-BUPER-01',
+            payload?.edgeNodeId || '',
             payload?.transactions || []
           );
           return this.success(data as unknown as T, 'Sinkronisasi Upstream Server Buper ke Cloud selesai.');
