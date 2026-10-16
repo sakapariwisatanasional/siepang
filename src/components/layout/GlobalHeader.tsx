@@ -28,6 +28,10 @@ import {
   LogOut,
   Laptop,
   ShieldCheck,
+  Cloud,
+  Monitor,
+  Zap,
+  ArrowRight,
 } from 'lucide-react';
 import { TrustedDevicesModal } from './TrustedDevicesModal';
 import { authService, AuthState } from '../../services/authService';
@@ -256,9 +260,15 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
             }`}
             title="Mode Operasional SiEpang (Klik untuk ganti atau konfigurasi Server Buper)"
           >
-            <Server className="w-3.5 h-3.5" />
+            {operationalMode === 'cloud' ? (
+              <Cloud className="w-3.5 h-3.5" />
+            ) : operationalMode === 'local' ? (
+              <Monitor className="w-3.5 h-3.5" />
+            ) : (
+              <Zap className="w-3.5 h-3.5" />
+            )}
             <span className="capitalize">
-              {operationalMode === 'cloud' ? '☁️ Cloud' : operationalMode === 'local' ? '💻 Buper LAN' : '⚡ Hybrid'}
+              {operationalMode === 'cloud' ? 'Cloud' : operationalMode === 'local' ? 'Buper LAN' : 'Hybrid'}
             </span>
           </button>
 
@@ -293,7 +303,7 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
             <button
               type="button"
               onClick={onNavigatePublic}
-              className="flex items-center justify-center w-11 h-11 md:w-auto md:px-3 md:py-1.5 rounded-xl md:rounded-full text-xs font-semibold bg-gradient-to-r from-[#208C60] to-[#F47743] text-white hover:opacity-90 shadow-xs transition-opacity shrink-0 min-w-[44px] min-h-[44px] cursor-pointer"
+              className="flex items-center justify-center w-11 h-11 md:w-auto md:px-3 md:py-1.5 rounded-xl md:rounded-full text-xs font-semibold bg-[#D71920] text-white hover:opacity-90 shadow-xs transition-opacity shrink-0 min-w-[44px] min-h-[44px] cursor-pointer"
               title="Portal Publik"
               aria-label="Portal Publik"
             >
@@ -438,9 +448,9 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
                       <button
                         type="button"
                         onClick={() => { setShowRoleMenu(false); onNavigateProfile(); }}
-                        className="w-full flex items-center gap-2 p-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors"
+                        className="w-full flex items-center gap-2 p-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
                       >
-                        <UserRoundPen className="w-4 h-4 text-emerald-600" />
+                        <UserRoundPen className="w-4 h-4 text-[#D71920]" />
                         <span>Profil Saya / Edit Biodata</span>
                       </button>
                     )}
