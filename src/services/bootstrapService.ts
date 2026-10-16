@@ -41,7 +41,6 @@ export interface BootstrapInitResult {
 }
 
 class BootstrapService {
-  private testToken: string | null = null;
   private isReady = false;
 
   constructor() {
@@ -97,17 +96,6 @@ class BootstrapService {
     } catch {
       // Browser storage is only a UI cache, never bootstrap authority.
     }
-  }
-
-  /**
-   * Strictly for automated Node/CLI tests.
-   */
-  public setTestBootstrapToken(token: string | null): void {
-    this.testToken = token;
-  }
-
-  public getTestBootstrapToken(): string | null {
-    return this.testToken;
   }
 
   private parseStatusResponse(raw: string): BootstrapStatus | null {
@@ -195,55 +183,6 @@ class BootstrapService {
 
     console.info('[bootstrap] initialize request start');
     console.info('[bootstrap] backend URL configured:', Boolean(backendUrl));
-
-    /**
-     * Automated test-only harness.
-     * Production always has the canonical backend URL.
-     */
-    if (!backendUrl && this.testToken) {
-      if (this.isReady) {
-        return {
-          success: false,
-          error: {
-            code: 'BOOTSTRAP_ALREADY_COMPLETED',
-            message:
-              'Inisialisasi awal sudah selesai. Endpoint bootstrap tidak dapat diakses lagi.',
-          },
-        };
-      }
-
-      if (token !== this.testToken) {
-        return {
-          success: false,
-          error: {
-            code: 'INVALID_BOOTSTRAP_TOKEN',
-            message: 'Token bootstrap tidak valid atau sudah kedaluwarsa.',
-          },
-        };
-      }
-
-      const record = customerInstallationService.getInstallationRecord();
-
-      const testData: BootstrapData = {
-        installation_ready: true,
-        installation_id: String(record?.installation_id || ''),
-        workspace_id: String(record?.workspace_id || ''),
-        event_id: String(record?.active_event_id || ''),
-        superadmin: {
-          email: 'scoutpreneur@gmail.com',
-          role: 'superadmin',
-          status: 'ACTIVE',
-        },
-        otp_ready: true,
-      };
-
-      this.completeBootstrapSuccess(testData);
-
-      return {
-        success: true,
-        data: testData,
-      };
-    }
 
     if (!backendUrl) {
       return {
@@ -368,7 +307,6 @@ class BootstrapService {
    */
   public resetForTest(): void {
     this.isReady = false;
-    this.testToken = null;
 
     try {
       localStorage.removeItem('siepang_bootstrap_ready');
