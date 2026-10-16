@@ -30,6 +30,12 @@ import {
   RefreshCw,
   ArrowLeft,
   ChevronRight,
+  BarChart3,
+  Target,
+  Megaphone,
+  ClipboardList,
+  SlidersHorizontal,
+  type LucideIcon,
 } from 'lucide-react';
 
 import { eventStudioService } from '../../services/eventStudioService';
@@ -73,23 +79,23 @@ interface EventManagementStudioProps {
 type MenuItem = {
   id: StudioSection;
   label: string;
-  icon: string;
+  icon: LucideIcon;
   description: string;
 };
 
 const MENU_ITEMS: MenuItem[] = [
-  { id: 'overview', label: 'Ikhtisar', icon: '📊', description: 'Ringkasan kondisi event' },
-  { id: 'readiness', label: 'Kesiapan', icon: '🎯', description: 'Cek kesiapan operasional' },
-  { id: 'schedule', label: 'Jadwal', icon: '📅', description: 'Agenda dan kegiatan' },
-  { id: 'campsite', label: 'Kavling Buper', icon: '⛺', description: 'Kavling dan tata ruang' },
-  { id: 'competitions', label: 'Lomba', icon: '🏆', description: 'Lomba, juri dan voting' },
-  { id: 'registration', label: 'Peserta', icon: '👥', description: 'Pendaftaran dan kontingen' },
-  { id: 'points_badges', label: 'Poin XP', icon: '⚡', description: 'Poin, lencana dan QR' },
-  { id: 'publication_media', label: 'Publikasi', icon: '📢', description: 'Media dan publikasi resmi' },
-  { id: 'visitors', label: 'Buku Tamu', icon: '📋', description: 'Kunjungan dan tamu' },
-  { id: 'general', label: 'Pengaturan', icon: '⚙️', description: 'Informasi dasar event' },
-  { id: 'features', label: 'Sakelar Fitur', icon: '🎛️', description: 'Aktivasi modul' },
-  { id: 'pages_contacts', label: 'Bantuan', icon: '📄', description: 'Panduan dan kontak posko' },
+  { id: 'overview', label: 'Ikhtisar', icon: BarChart3, description: 'Ringkasan kondisi event' },
+  { id: 'readiness', label: 'Kesiapan', icon: Target, description: 'Cek kesiapan operasional' },
+  { id: 'schedule', label: 'Jadwal', icon: Calendar, description: 'Agenda dan kegiatan' },
+  { id: 'campsite', label: 'Kavling Buper', icon: Tent, description: 'Kavling dan tata ruang' },
+  { id: 'competitions', label: 'Lomba', icon: Trophy, description: 'Lomba, juri dan voting' },
+  { id: 'registration', label: 'Peserta', icon: Users, description: 'Pendaftaran dan kontingen' },
+  { id: 'points_badges', label: 'Poin XP', icon: Zap, description: 'Poin, lencana dan QR' },
+  { id: 'publication_media', label: 'Publikasi', icon: Megaphone, description: 'Media dan publikasi resmi' },
+  { id: 'visitors', label: 'Buku Tamu', icon: ClipboardList, description: 'Kunjungan dan tamu' },
+  { id: 'general', label: 'Pengaturan', icon: Settings, description: 'Informasi dasar event' },
+  { id: 'features', label: 'Sakelar Fitur', icon: SlidersHorizontal, description: 'Aktivasi modul' },
+  { id: 'pages_contacts', label: 'Bantuan', icon: FileText, description: 'Panduan dan kontak posko' },
 ];
 
 export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
@@ -276,8 +282,8 @@ export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
                   <button key={item.id} type="button" onClick={() => openSection(item.id)}
                     className="group min-h-[126px] rounded-[22px] border border-slate-200 bg-white p-3.5 text-left shadow-[0_3px_12px_rgba(0,0,0,0.035)] transition-all hover:-translate-y-0.5 hover:border-red-200 hover:shadow-[0_8px_22px_rgba(180,20,20,0.10)] active:scale-[0.985] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#D71920] sm:min-h-[138px] sm:p-4">
                     <div className="mb-4 flex items-start justify-between gap-2">
-                      <span className={`flex h-11 w-11 items-center justify-center rounded-[16px] border text-2xl ${accentClasses}`} aria-hidden="true">
-                        {item.icon}
+                      <span className={`flex h-11 w-11 items-center justify-center rounded-[16px] border ${accentClasses}`} aria-hidden="true">
+                        <item.icon className="h-5 w-5 stroke-[2.2]" aria-hidden="true" />
                       </span>
                       <ChevronRight className="mt-1 h-4 w-4 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-[#D71920]" />
                     </div>
@@ -337,8 +343,8 @@ export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
           <div className="overflow-hidden rounded-[28px] border border-red-100 bg-white shadow-[0_8px_28px_rgba(160,20,20,0.06)]">
             <div className="bg-[#D71920] px-4 py-5 text-white sm:px-7 sm:py-6">
               <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-2xl">
-                  {activeMenu.icon}
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15">
+                  <activeMenu.icon className="h-6 w-6 stroke-[2.2]" aria-hidden="true" />
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/70">Kelola Kegiatan</p>
