@@ -6,7 +6,7 @@
  * Standardized to Light-First, Instagram-inspired accent system, and 44px touch targets.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Trophy,
   Heart,
@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { competitionService } from '../../services/competitionService';
 import { votingService } from '../../services/votingService';
-import { participantService } from '../../services/participantService';
+import { authService } from '../../services/authService';
 import { Competition, DigitalWork } from '../../types';
 
 export const CompetitionList: React.FC = () => {
@@ -34,16 +34,33 @@ export const CompetitionList: React.FC = () => {
   const [competitions, setCompetitions] = useState<Competition[]>(competitionService.getCompetitions());
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [voteToast, setVoteToast] = useState<string | null>(null);
+  const [loadingWorks, setLoadingWorks] = useState(true);
+  const [submittingWork, setSubmittingWork] = useState(false);
 
-  const currentParticipant = participantService.getParticipants()[0];
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingWorks(true);
+    Promise.all([
+      competitionService.refreshPublicDigitalWorks()
+    ])
+      .catch((error: any) => {
+        if (!cancelled) setVoteToast(`❌ Karya dari GAS belum dapat dimuat: ${error?.message || 'Terjadi kesalahan.'}`);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingWorks(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+
 
   // New submission state
   const [newWork, setNewWork] = useState({
     title: '',
     competitionId: competitions.find(c => c.type === 'digital')?.id || competitions[0]?.id || '',
     competitionTitle: competitions.find(c => c.type === 'digital')?.title || competitions[0]?.title || '',
-    creatorName: currentParticipant?.name || '',
-    contingentName: currentParticipant?.contingentName || '',
+    creatorName: '',
+    contingentName: '',
     mediaType: 'photo' as 'photo' | 'video' | 'poster',
     thumbnailUrl: '',
     originalUrl: '',
@@ -57,7 +74,7 @@ export const CompetitionList: React.FC = () => {
       setVoteToast(
         res.voted
           ? res.isProvisional
-            ? '🗳️ Vote tersimpan lokal — menunggu validasi'
+            ? '🗳️ Vote tersimpan dan sedang divalidasi oleh GAS.'
             : '❤️ Suara voting kamu berhasil dicatat!'
           : 'Suara voting dibatalkan.'
       );
@@ -69,13 +86,40 @@ export const CompetitionList: React.FC = () => {
 
   const handleSubmitWork = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newWork.title || !newWork.originalUrl) return;
+    if (submittingWork) return;
 
-    await competitionService.submitDigitalWork(newWork);
-    setDigitalWorks(competitionService.getDigitalWorks());
-    setShowSubmitModal(false);
-    setVoteToast('✅ Karya digital berhasil diunggah ke Galeri SiEpang!');
-    setTimeout(() => setVoteToast(null), 3000);
+    const user = authService.getCurrentUser();
+    if (!user) {
+      setVoteToast('❌ Silakan masuk menggunakan akun peserta terlebih dahulu.');
+      return;
+    }
+    if (!newWork.competitionId || !newWork.title.trim() || !newWork.originalUrl.trim()) {
+      setVoteToast('❌ Lengkapi cabang, judul karya, dan tautan karya.');
+      return;
+    }
+
+    setSubmittingWork(true);
+    try {
+      await competitionService.submitDigitalWork({
+        ...newWork,
+        thumbnailUrl: '',
+      });
+      await competitionService.refreshPublicDigitalWorks();
+      setDigitalWorks(competitionService.getDigitalWorks());
+      setShowSubmitModal(false);
+      setNewWork(prev => ({
+        ...prev,
+        title: '',
+        originalUrl: '',
+        description: '',
+        thumbnailUrl: '',
+      }));
+      setVoteToast('✅ Karya tersimpan di GAS dan menunggu publikasi panitia.');
+    } catch (err: any) {
+      setVoteToast(`❌ Gagal mengirim karya: ${err?.message || 'Terjadi kesalahan.'}`);
+    } finally {
+      setSubmittingWork(false);
+    }
   };
 
   return (
@@ -89,10 +133,10 @@ export const CompetitionList: React.FC = () => {
               <span>Ajang Prestasi & Kreativitas Kepramukaan</span>
             </div>
             <h1 className="text-xl font-bold text-[#171717] dark:text-white tracking-tight">
-              Lomba & Galeri Karya Digital
+              Unjuk Karya
             </h1>
             <p className="text-xs text-[#6B7280] dark:text-slate-400 mt-0.5">
-              Apresiasi dan dukung kreativitas pramuka melalui voting karya terfavorit.
+              Saksikan karya peserta dan berikan dukungan melalui voting.
             </p>
           </div>
 
@@ -100,11 +144,11 @@ export const CompetitionList: React.FC = () => {
             type="button"
             onClick={() => setShowSubmitModal(true)}
             className="flex items-center justify-center gap-1.5 p-2.5 sm:px-4 sm:py-2.5 bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-pink-500/20 shrink-0 min-w-[44px] min-h-[44px] cursor-pointer"
-            title="Kirim Karya Baru"
-            aria-label="Kirim Karya Baru"
+            title="Kirim Unjuk Karya"
+            aria-label="Kirim Unjuk Karya"
           >
             <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span className="hidden sm:inline">Kirim Karya Baru</span>
+            <span className="hidden sm:inline">Kirim Unjuk Karya</span>
           </button>
         </div>
 
@@ -119,7 +163,7 @@ export const CompetitionList: React.FC = () => {
                 : 'text-[#6B7280] dark:text-slate-400 hover:text-[#171717] dark:hover:text-white'
             }`}
           >
-            📸 Galeri Digital & Voting ({digitalWorks.length})
+            📸 Photo dan Video ({digitalWorks.length})
           </button>
           <button
             type="button"
@@ -130,7 +174,7 @@ export const CompetitionList: React.FC = () => {
                 : 'text-[#6B7280] dark:text-slate-400 hover:text-[#171717] dark:hover:text-white'
             }`}
           >
-            🏆 Cabang Lomba & Bobot Nilai ({competitions.length})
+            🏆 Unjuk Karya & Penilaian ({competitions.length})
           </button>
         </div>
       </div>
@@ -147,9 +191,9 @@ export const CompetitionList: React.FC = () => {
         (digitalWorks.length === 0 ? (
           <div className="p-12 text-center rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-2 shadow-xs">
             <Trophy className="w-8 h-8 text-amber-500 mx-auto" />
-            <h4 className="text-sm font-bold text-[#171717] dark:text-white">Belum ada karya kompetisi</h4>
+            <h4 className="text-sm font-bold text-[#171717] dark:text-white">Belum ada karya yang dipublikasikan</h4>
             <p className="text-xs text-[#6B7280] dark:text-slate-400">
-              Karya peserta untuk perlombaan digital belum diunggah.
+              Karya peserta akan muncul di sini setelah dipublikasikan oleh panitia.
             </p>
           </div>
         ) : (
@@ -163,11 +207,29 @@ export const CompetitionList: React.FC = () => {
                 >
                   {/* Media Thumbnail with Aspect Ratio */}
                   <div className="relative aspect-[4/3] bg-slate-900 overflow-hidden">
-                    <img
-                      src={work.thumbnailUrl}
-                      alt={work.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
+                    {work.thumbnailUrl ? (
+                      <img
+                        src={work.thumbnailUrl}
+                        alt={work.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          const fallback = e.currentTarget.parentElement?.querySelector('[data-thumbnail-fallback]');
+                          if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                        }}
+                      />
+                    ) : null}
+                    <div
+                      data-thumbnail-fallback
+                      className={`${work.thumbnailUrl ? 'hidden' : 'flex'} absolute inset-0 items-center justify-center bg-gradient-to-br from-[#B51218] to-[#D71920] text-white`}
+                    >
+                      <div className="text-center px-6">
+                        <ExternalLink className="w-9 h-9 mx-auto mb-2 opacity-80" />
+                        <p className="text-xs font-semibold">Preview tidak tersedia</p>
+                        <p className="text-[10px] opacity-75 mt-1">Buka karya untuk melihat posting asli</p>
+                      </div>
+                    </div>
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20" />
 
                     {/* Media Type Badge */}
@@ -235,7 +297,7 @@ export const CompetitionList: React.FC = () => {
           <div className="p-12 text-center rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-2 shadow-xs">
             <Trophy className="w-8 h-8 text-amber-500 mx-auto" />
             <h4 className="text-sm font-bold text-[#171717] dark:text-white">Belum ada kompetisi</h4>
-            <p className="text-xs text-[#6B7280] dark:text-slate-400">Jadwal cabang perlombaan belum diumumkan.</p>
+            <p className="text-xs text-[#6B7280] dark:text-slate-400">Cabang Unjuk Karya belum diumumkan.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -307,7 +369,7 @@ export const CompetitionList: React.FC = () => {
             className="w-full max-w-md bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-6 shadow-2xl space-y-4"
           >
             <div className="flex items-center justify-between pb-3 border-b border-[#ECECEF] dark:border-white/10">
-              <div className="text-sm font-bold text-[#171717] dark:text-white">Unggah Karya Lomba Digital</div>
+              <div className="text-sm font-bold text-[#171717] dark:text-white">Kirim Unjuk Karya</div>
               <button
                 type="button"
                 onClick={() => setShowSubmitModal(false)}
@@ -319,7 +381,7 @@ export const CompetitionList: React.FC = () => {
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="text-[#171717] dark:text-slate-300 font-semibold block mb-1">Kategori Lomba</label>
+                <label className="text-[#171717] dark:text-slate-300 font-semibold block mb-1">Kategori Unjuk Karya</label>
                 <select
                   value={newWork.competitionId}
                   onChange={e => {
@@ -355,7 +417,7 @@ export const CompetitionList: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-[#171717] dark:text-slate-300 font-semibold block mb-1">Tautan Media (Instagram / TikTok / YouTube)</label>
+                <label className="text-[#171717] dark:text-slate-300 font-semibold block mb-1">Tautan Media (Instagram / TikTok / Facebook / YouTube)</label>
                 <input
                   type="url"
                   required
@@ -388,9 +450,10 @@ export const CompetitionList: React.FC = () => {
               </button>
               <button
                 type="submit"
+                disabled={submittingWork}
                 className="px-5 py-2.5 bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white text-xs font-bold rounded-xl shadow-md transition-all active:scale-95 min-h-[44px]"
               >
-                Kirim Karya & Dapatkan Vote
+                Kirim Karya
               </button>
             </div>
           </form>
