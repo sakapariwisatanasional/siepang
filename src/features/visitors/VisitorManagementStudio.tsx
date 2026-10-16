@@ -413,191 +413,142 @@ export const VisitorManagementStudio: React.FC = () => {
             </div>
           )}
 
-          {/* Search & Filter Bar */}
-          <div className="p-4 rounded-3xl bg-[#1c0c0f] border border-white/10 space-y-3">
-            <div className="flex flex-col sm:flex-row gap-2.5">
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Cari nama pengunjung, kode VIS-xxxx, peserta yang dikunjungi, atau telepon..."
-                  className="w-full pl-9 pr-4 py-2.5 bg-black/40 border border-white/10 rounded-2xl text-white text-xs placeholder:text-slate-500"
-                />
+          {/* Visitor directory: compact summary, filters, and responsive card grid */}
+          {(() => {
+            const directoryCategories = [
+              'Orang Tua / Wali', 'Keluarga', 'Tamu Undangan', 'Umum', 'Alumni', 'VIP',
+              'Panitia', 'Pembina / Pamong', 'Peserta', 'Vendor', 'Media',
+            ];
+            const statusLabel = (status: string) => ({
+              PENDING: 'Menunggu', APPROVED: 'Disetujui', CHECKED_IN: 'Di Dalam',
+              CHECKED_OUT: 'Sudah Keluar', REJECTED: 'Ditolak', REVOKED: 'Akses Dicabut',
+            } as Record<string, string>)[status] || status;
+            const statusClass = (status: string) => ({
+              CHECKED_IN: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+              APPROVED: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
+              PENDING: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+              CHECKED_OUT: 'bg-slate-500/15 text-slate-300 border-slate-500/30',
+              REJECTED: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
+              REVOKED: 'bg-red-900/40 text-red-200 border-red-500/30',
+            } as Record<string, string>)[status] || 'bg-white/10 text-slate-300 border-white/10';
+            const countByStatus = (status: string) => visitors.filter(v => v.status === status).length;
+            return <div className="space-y-4">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+                <div className="p-3.5 rounded-2xl bg-[#1c0c0f] border border-white/10">
+                  <div className="text-[10px] uppercase tracking-wide text-slate-400">Total Pengunjung</div>
+                  <div className="text-xl font-black text-white mt-1">{visitors.length}</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Semua pendaftaran</div>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-[#1c0c0f] border border-amber-500/20">
+                  <div className="text-[10px] uppercase tracking-wide text-amber-300">Menunggu</div>
+                  <div className="text-xl font-black text-amber-300 mt-1">{countByStatus('PENDING')}</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Perlu ditindaklanjuti</div>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-[#1c0c0f] border border-emerald-500/20">
+                  <div className="text-[10px] uppercase tracking-wide text-emerald-300">Check-in</div>
+                  <div className="text-xl font-black text-emerald-300 mt-1">{countByStatus('CHECKED_IN')}</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Sedang berada di buper</div>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-[#1c0c0f] border border-slate-500/20">
+                  <div className="text-[10px] uppercase tracking-wide text-slate-300">Check-out</div>
+                  <div className="text-xl font-black text-slate-200 mt-1">{countByStatus('CHECKED_OUT')}</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Kunjungan selesai</div>
+                </div>
               </div>
 
-              <select
-                value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value)}
-                className="px-3.5 py-2.5 bg-black/40 border border-white/10 rounded-2xl text-white text-xs font-semibold"
-              >
-                <option value="all">Semua Status</option>
-                <option value="PENDING">Menunggu Persetujuan</option>
-                <option value="APPROVED">Disetujui</option>
-                <option value="CHECKED_IN">Sedang di Dalam (Inside)</option>
-                <option value="CHECKED_OUT">Telah Keluar (Checkout)</option>
-                <option value="REJECTED">Ditolak</option>
-                <option value="REVOKED">Akses Dicabut (Revoked)</option>
-              </select>
-
-              <select
-                value={categoryFilter}
-                onChange={e => setCategoryFilter(e.target.value)}
-                className="px-3.5 py-2.5 bg-black/40 border border-white/10 rounded-2xl text-white text-xs font-semibold"
-              >
-                <option value="all">Semua Kategori</option>
-                <option value="Orang Tua / Wali">Orang Tua / Wali</option>
-                <option value="Keluarga">Keluarga</option>
-                <option value="Tamu Undangan">Tamu Undangan</option>
-                <option value="Umum">Umum</option>
-                <option value="Alumni">Alumni</option>
-                <option value="VIP">VIP</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Visitors Table / List */}
-          <div className="rounded-3xl bg-[#1c0c0f] border border-white/10 overflow-hidden shadow-lg">
-            <div className="divide-y divide-white/5">
-              {filteredVisitors.map(v => {
-                const isOverdue =
-                  v.status === 'CHECKED_IN' &&
-                  v.expectedDeparture &&
-                  new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':') >
-                    v.expectedDeparture;
-
-                return (
-                  <div
-                    key={v.id}
-                    className="p-4 hover:bg-white/[0.02] flex flex-col md:flex-row md:items-center justify-between gap-3 transition-colors"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-red-950/60 border border-red-500/30 text-red-300 flex items-center justify-center font-bold text-sm shrink-0 mt-0.5">
-                        {v.name.charAt(0)}
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-white text-sm">{v.name}</span>
-                          <span className="px-2 py-0.5 rounded-full bg-white/10 text-slate-300 font-mono font-bold text-[10px]">
-                            {v.registrationCode}
-                          </span>
-                          <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 font-semibold text-[10px]">
-                            {v.category}
-                          </span>
-                          {isOverdue && (
-                            <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white font-black text-[10px] animate-pulse">
-                              ⚠ OVERDUE
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="text-[11px] text-slate-300 flex flex-wrap items-center gap-2">
-                          <span>
-                            Mengunjungi:{' '}
-                            <strong className="text-white">{v.personVisited?.targetName || '-'}</strong>{' '}
-                            ({v.relationship})
-                          </span>
-                          <span>·</span>
-                          <span className="text-slate-400 font-mono">📞 {v.phone}</span>
-                          {v.vehicleInfo && (
-                            <>
-                              <span>·</span>
-                              <span className="text-slate-400">🚗 {v.vehicleInfo}</span>
-                            </>
-                          )}
-                        </div>
-
-                        <div className="text-[10px] text-slate-400">
-                          Jadwal:{' '}
-                          <strong className="text-slate-200">
-                            {v.visitDate} ({v.expectedArrival} - {v.expectedDeparture} WIB)
-                          </strong>{' '}
-                          · {v.accompanyingPersonsCount > 0 && `+${v.accompanyingPersonsCount} Pendamping · `}
-                          Tujuan: {v.purpose}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Status Badge & Actions */}
-                    <div className="flex items-center gap-2 justify-between md:justify-end">
-                      <div className="text-right">
-                        <span
-                          className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-black ${
-                            v.status === 'CHECKED_IN'
-                              ? 'bg-red-600 text-white shadow'
-                              : v.status === 'APPROVED'
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : v.status === 'PENDING'
-                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                              : v.status === 'CHECKED_OUT'
-                              ? 'bg-slate-700 text-slate-300'
-                              : v.status === 'REVOKED'
-                              ? 'bg-rose-900 text-rose-200'
-                              : 'bg-white/10 text-slate-400'
-                          }`}
-                        >
-                          {v.status === 'CHECKED_IN'
-                            ? `Di Dalam (Gate: ${v.currentVisitSession?.gateName?.split(' ')[0] || 'Pos'})`
-                            : v.status}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        {v.status === 'PENDING' && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handleApprove(v)}
-                              className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-[11px] shadow"
-                              title="Setujui Kunjungan"
-                            >
-                              Setujui
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setRejectModalVisitor(v)}
-                              className="px-2 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-xl font-medium text-[11px]"
-                              title="Tolak Pendaftaran"
-                            >
-                              Tolak
-                            </button>
-                          </>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => setInspectedVisitor(v)}
-                          className="px-2.5 py-1.5 bg-white/10 hover:bg-white/15 text-white rounded-xl font-semibold text-[11px] flex items-center gap-1"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>Pass QR</span>
-                        </button>
-
-                        {v.status !== 'REVOKED' && (
-                          <button
-                            type="button"
-                            onClick={() => setRevokeModalVisitor(v)}
-                            className="p-1.5 text-slate-500 hover:text-rose-400 rounded-xl"
-                            title="Cabut Akses (Revoke)"
-                          >
-                            <AlertOctagon className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
+              <div className="p-3.5 sm:p-4 rounded-3xl bg-[#1c0c0f] border border-white/10 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Direktori Pengunjung</h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Cari data, saring kategori, lalu buka Pass QR untuk melihat detail.</p>
                   </div>
-                );
-              })}
-
-              {filteredVisitors.length === 0 && (
-                <div className="p-8 text-center text-slate-500">
-                  Tidak ada data pengunjung yang cocok dengan filter.
+                  <span className="text-[10px] text-slate-400">{filteredVisitors.length} dari {visitors.length} data</span>
                 </div>
-              )}
-            </div>
-          </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_190px_190px] gap-2.5">
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                      placeholder="Cari nama, kode VIS, peserta, atau telepon..."
+                      className="w-full pl-9 pr-3 py-2.5 bg-black/30 border border-white/10 rounded-xl text-white text-xs placeholder:text-slate-500 focus:outline-none focus:border-red-500/50" />
+                  </div>
+                  <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} aria-label="Filter status pengunjung"
+                    className="px-3 py-2.5 bg-black/30 border border-white/10 rounded-xl text-white text-xs font-semibold">
+                    <option value="all">Semua Status</option>
+                    <option value="PENDING">Menunggu Persetujuan</option>
+                    <option value="APPROVED">Disetujui</option>
+                    <option value="CHECKED_IN">Sedang di Dalam</option>
+                    <option value="CHECKED_OUT">Telah Check-out</option>
+                    <option value="REJECTED">Ditolak</option>
+                    <option value="REVOKED">Akses Dicabut</option>
+                  </select>
+                  <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} aria-label="Filter kategori pengunjung"
+                    className="px-3 py-2.5 bg-black/30 border border-white/10 rounded-xl text-white text-xs font-semibold">
+                    <option value="all">Semua Kategori</option>
+                    {directoryCategories.map(category => <option key={category} value={category}>{category}</option>)}
+                    {Array.from(new Set(visitors.map(v => v.category))).filter(category => !directoryCategories.includes(category)).map(category =>
+                      <option key={category} value={category}>{category}</option>)}
+                  </select>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {directoryCategories.map(category => {
+                    const count = visitors.filter(v => v.category === category).length;
+                    return <button key={category} type="button" onClick={() => setCategoryFilter(categoryFilter === category ? 'all' : category)}
+                      className={`px-2.5 py-1.5 rounded-lg border text-[10px] font-semibold transition-colors ${categoryFilter === category ? 'bg-red-600/20 border-red-500/50 text-red-200' : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white hover:border-white/20'}`}>
+                      {category} <span className="ml-1 opacity-70">{count}</span>
+                    </button>;
+                  })}
+                </div>
+                {(searchQuery || statusFilter !== 'all' || categoryFilter !== 'all') && <div className="flex justify-end">
+                  <button type="button" onClick={() => { setSearchQuery(''); setStatusFilter('all'); setCategoryFilter('all'); }}
+                    className="text-[10px] text-slate-400 hover:text-white underline underline-offset-2">Reset filter</button>
+                </div>}
+              </div>
+
+              {filteredVisitors.length > 0 ? <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {filteredVisitors.map(v => {
+                  const isOverdue = v.status === 'CHECKED_IN' && !!v.expectedDeparture &&
+                    new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace('.', ':') > v.expectedDeparture;
+                  return <article key={v.id} className="min-w-0 rounded-2xl bg-[#1c0c0f] border border-white/10 hover:border-red-500/30 transition-colors overflow-hidden flex flex-col">
+                    <div className="p-3.5 space-y-2.5 flex-1">
+                      <div className="flex items-start gap-2.5">
+                        <div className="w-10 h-10 rounded-xl bg-red-950/60 border border-red-500/30 text-red-200 flex items-center justify-center font-black text-sm shrink-0">{v.name?.charAt(0)?.toUpperCase() || '?'}</div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-white text-sm break-words">{v.name}</div>
+                          <div className="text-[10px] text-slate-400 font-mono mt-0.5 break-all">{v.registrationCode}</div>
+                        </div>
+                        {isOverdue && <span className="shrink-0 px-1.5 py-1 rounded-md bg-rose-600 text-white font-black text-[9px]">OVERDUE</span>}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="px-2 py-1 rounded-lg bg-red-500/10 border border-red-500/20 text-red-200 text-[10px] font-semibold">{v.category}</span>
+                        <span className={`px-2 py-1 rounded-lg border text-[10px] font-bold ${statusClass(v.status)}`}>{statusLabel(v.status)}</span>
+                      </div>
+                      <div className="space-y-1.5 text-[11px]">
+                        <div className="flex gap-2"><UserCheck className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" /><div className="min-w-0"><span className="text-slate-500">Mengunjungi</span><div className="text-slate-200 break-words">{v.personVisited?.targetName || '-'} <span className="text-slate-500">({v.relationship || '-'})</span></div></div></div>
+                        <div className="flex gap-2"><Phone className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" /><span className="text-slate-300 break-all">{v.phone || '-'}</span></div>
+                        <div className="flex gap-2"><Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" /><div className="text-slate-300">{v.visitDate}<div className="text-slate-500">{v.expectedArrival}–{v.expectedDeparture} WIB</div></div></div>
+                        {v.vehicleInfo && <div className="flex gap-2"><Car className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" /><span className="text-slate-300 break-words">{v.vehicleInfo}</span></div>}
+                        <div className="text-slate-500 pt-0.5">Tujuan: <span className="text-slate-300">{v.purpose || '-'}</span>{v.accompanyingPersonsCount > 0 ? ` · +${v.accompanyingPersonsCount} pendamping` : ''}</div>
+                      </div>
+                    </div>
+                    <div className="p-3 border-t border-white/5 flex flex-wrap items-center gap-1.5">
+                      {v.status === 'PENDING' && <>
+                        <button type="button" onClick={() => handleApprove(v)} className="flex-1 min-w-[78px] px-2.5 py-2 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg font-bold text-[10px]">Setujui</button>
+                        <button type="button" onClick={() => setRejectModalVisitor(v)} className="flex-1 min-w-[60px] px-2.5 py-2 bg-white/5 hover:bg-white/10 text-slate-200 rounded-lg font-semibold text-[10px]">Tolak</button>
+                      </>}
+                      <button type="button" onClick={() => setInspectedVisitor(v)} className="flex-1 min-w-[95px] px-2.5 py-2 bg-white/10 hover:bg-white/15 text-white rounded-lg font-bold text-[10px] flex items-center justify-center gap-1.5"><Eye className="w-3.5 h-3.5" /> Detail / Pass QR</button>
+                      {v.status !== 'REVOKED' && <button type="button" onClick={() => setRevokeModalVisitor(v)} className="px-2.5 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 rounded-lg text-[10px] font-semibold" title="Cabut akses">Cabut akses</button>}
+                    </div>
+                  </article>;
+                })}
+              </div> : <div className="p-10 rounded-2xl bg-[#1c0c0f] border border-dashed border-white/10 text-center">
+                <Users className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                <div className="text-sm font-semibold text-slate-300">Tidak ada pengunjung yang cocok</div>
+                <p className="text-[11px] text-slate-500 mt-1">Coba ubah kata kunci atau reset filter untuk melihat data lainnya.</p>
+                <button type="button" onClick={() => { setSearchQuery(''); setStatusFilter('all'); setCategoryFilter('all'); }} className="mt-3 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-[10px] font-semibold">Reset filter</button>
+              </div>}
+            </div>;
+          })()}
+
         </div>
       )}
 
