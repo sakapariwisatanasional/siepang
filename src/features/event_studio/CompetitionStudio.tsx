@@ -44,7 +44,7 @@ export const CompetitionStudio: React.FC = () => {
   const [competitionTypes, setCompetitionTypes] = useState<CompetitionType[]>(eventStudioService.listCompetitionTypes());
 
   // Winner Management State (Requirements 29 & 30)
-  const [selectedWinnerCompId, setSelectedWinnerCompId] = useState<string>(competitions[0]?.id || 'cmp_01');
+  const [selectedWinnerCompId, setSelectedWinnerCompId] = useState<string>(competitions[0]?.id || '');
   const [winnerSelections, setWinnerSelections] = useState<{
     winner1Id: string;
     winner2Id: string;
@@ -78,10 +78,10 @@ export const CompetitionStudio: React.FC = () => {
   // New competition form
   const [compForm, setCompForm] = useState<Omit<Competition, 'id' | 'registeredEntries'>>({
     title: '',
-    category: competitionTypes[0]?.name || 'Pioneering',
+    category: competitionTypes[0]?.name || '',
     type: 'field',
-    scheduleTime: 'Hari 2, 08:00 WIB',
-    location: 'Lapangan Utama Selogiri',
+    scheduleTime: '',
+    location: '',
     maxEntriesPerContingent: 1,
     votingEnabled: false,
     juryWeight: 100,
@@ -94,8 +94,8 @@ export const CompetitionStudio: React.FC = () => {
     name: '',
     email: '',
     phone: '',
-    assignedCompetitions: ['cmp_01'],
-    categories: ['Pioneering'],
+    assignedCompetitions: [],
+    categories: [],
     isLocked: false,
   });
 
@@ -109,7 +109,13 @@ export const CompetitionStudio: React.FC = () => {
     eventStudioService.refreshCompetitionManagement()
       .then(() => {
         if (cancelled) return;
-        setCompetitions([...eventStudioService.getCompetitions()]);
+        const refreshedCompetitions = [...eventStudioService.getCompetitions()];
+        setCompetitions(refreshedCompetitions);
+        setSelectedWinnerCompId(current => (
+          refreshedCompetitions.some(c => c.id === current)
+            ? current
+            : (refreshedCompetitions[0]?.id || '')
+        ));
         setJudges([...eventStudioService.getJudges()]);
       })
       .catch(error => { if (!cancelled) showToast(`❌ Data GAS belum dimuat: ${error.message}`); })
@@ -154,7 +160,13 @@ export const CompetitionStudio: React.FC = () => {
 
   const refreshLists = async () => {
     await eventStudioService.refreshCompetitionManagement();
-    setCompetitions([...eventStudioService.getCompetitions()]);
+    const refreshedCompetitions = [...eventStudioService.getCompetitions()];
+    setCompetitions(refreshedCompetitions);
+    setSelectedWinnerCompId(current => (
+      refreshedCompetitions.some(c => c.id === current)
+        ? current
+        : (refreshedCompetitions[0]?.id || '')
+    ));
     setJudges([...eventStudioService.getJudges()]);
   };
 
