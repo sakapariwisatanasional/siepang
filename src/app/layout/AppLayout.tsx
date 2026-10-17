@@ -139,9 +139,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                               key={id}
                               type="button"
                               onClick={() => onTabChange(id)}
-                              className="group flex min-h-[96px] items-center gap-3 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#191b23] p-4 text-left shadow-sm hover:border-red-300 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C62828] transition-all"
+                              className="group flex min-h-[92px] items-center gap-3 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#191b23] p-4 text-left shadow-sm hover:border-red-300 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C62828] transition-all"
                             >
-                              <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-red-50 dark:bg-red-950/40 text-[#B91C1C] dark:text-red-300 ring-1 ring-red-100 dark:ring-red-900/40">
+                              <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-red-50 dark:bg-red-950/40 text-[#B91C1C] dark:text-red-300 ring-1 ring-red-100 dark:ring-red-900/40">
                                 <Icon className="h-5 w-5" aria-hidden="true" />
                               </span>
                               <span className="min-w-0 flex-1">
