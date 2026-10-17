@@ -825,7 +825,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               >
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-mono text-xs font-bold text-[#F47743] flex items-center gap-1">
+                    <span className="font-mono text-xs font-bold text-[#A61B1B] flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5" />
                       <span>{sch.time || `${sch.startTime || ''} - ${sch.endTime || ''}`}</span>
                     </span>
@@ -847,7 +847,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                     Hari ke-{sch.dayNumber || 1}
                   </span>
                   {sch.xpReward > 0 && (
-                    <span className="font-bold text-[#F47743]">+{sch.xpReward} XP</span>
+                    <span className="font-bold text-[#A61B1B]">+{sch.xpReward} XP</span>
                   )}
                 </div>
               </div>
@@ -917,7 +917,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                   </span>
                 </div>
 
-                <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-tr from-[#208C60] to-[#F47743] p-[1.5px] mt-2">
+                <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-tr from-[#C62828] to-[#A61B1B] p-[1.5px] mt-2">
                   <div className="w-full h-full rounded-full bg-slate-100 dark:bg-black overflow-hidden flex items-center justify-center font-bold text-xs text-slate-600 dark:text-slate-300">
                     {entry.avatar ? (
                       <img
@@ -940,7 +940,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                   </p>
                 </div>
 
-                <div className="w-full pt-1.5 border-t border-black/5 dark:border-white/5 flex items-center justify-center gap-1 text-xs font-black text-[#F47743]">
+                <div className="w-full pt-1.5 border-t border-black/5 dark:border-white/5 flex items-center justify-center gap-1 text-xs font-black text-[#A61B1B]">
                   <Zap className="w-3.5 h-3.5 fill-current" />
                   <span>{entry.xp} XP</span>
                 </div>
@@ -992,7 +992,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               <div
                 key={photo.media_id}
                 onClick={() => onNavigateToGallery?.('photos')}
-                className="group relative cursor-pointer overflow-hidden rounded-2xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 hover:border-[#208C60]/50 transition-all duration-300 flex flex-col shadow-xs"
+                className="group relative cursor-pointer overflow-hidden rounded-2xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 hover:border-[#C62828]/50 transition-all duration-300 flex flex-col shadow-xs"
               >
                 <div className="aspect-square w-full overflow-hidden bg-slate-100 dark:bg-black/40">
                   <img
@@ -1004,7 +1004,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                   />
                 </div>
                 <div className="p-2.5">
-                  <h3 className="text-[11px] font-bold text-slate-900 dark:text-white line-clamp-1 group-hover:text-[#208C60] dark:group-hover:text-[#F47743] transition-colors">
+                  <h3 className="text-[11px] font-bold text-slate-900 dark:text-white line-clamp-1 group-hover:text-[#C62828] dark:group-hover:text-[#A61B1B] transition-colors">
                     {photo.title}
                   </h3>
                   <div className="text-[9px] text-slate-400 font-mono mt-0.5">
@@ -1024,7 +1024,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
       <section id="section-video-gallery" className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Film className="w-5 h-5 text-[#F47743]" />
+            <Film className="w-5 h-5 text-[#A61B1B]" />
             <div>
               <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
                 Galeri Video & Siaran Resmi
@@ -1059,7 +1059,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               <div
                 key={video.media_id}
                 onClick={() => setActiveVideoModal(video)}
-                className="group relative cursor-pointer overflow-hidden rounded-[24px] bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 hover:border-[#F47743]/50 transition-all shadow-xs flex flex-col"
+                className="group relative cursor-pointer overflow-hidden rounded-[24px] bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 hover:border-[#A61B1B]/50 transition-all shadow-xs flex flex-col"
               >
                 <div className="aspect-video w-full overflow-hidden bg-black/80 relative">
                   <img
@@ -1070,7 +1070,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                   <div className="absolute inset-0 bg-black/30 group-hover:bg-black/15 transition-colors flex items-center justify-center">
-                    <div className="w-12 h-12 rounded-full p-[2px] bg-gradient-to-tr from-[#208C60] via-[#F47743] to-[#FFD36A] shadow-2xl group-hover:scale-110 transition-transform">
+                    <div className="w-12 h-12 rounded-full p-[2px] bg-gradient-to-tr from-[#C62828] via-[#A61B1B] to-[#FFD36A] shadow-2xl group-hover:scale-110 transition-transform">
                       <div className="w-full h-full rounded-full bg-black/75 backdrop-blur-xs flex items-center justify-center text-white">
                         <Play className="w-5 h-5 fill-white ml-0.5" />
                       </div>
@@ -1084,7 +1084,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                 </div>
 
                 <div className="p-3.5 space-y-1">
-                  <h3 className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-[#F47743] transition-colors line-clamp-1">
+                  <h3 className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-[#A61B1B] transition-colors line-clamp-1">
                     {video.title}
                   </h3>
                   {video.caption && (
@@ -1104,13 +1104,13 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
   const renderQrScannerSection = () => {
     return (
       <section id="section-qr-scanner">
-        <div className="rounded-[32px] bg-gradient-to-br from-[#208C60]/10 via-[#F47743]/10 to-amber-500/10 dark:from-[#208C60]/20 dark:via-[#141418] dark:to-black border border-black/5 dark:border-white/10 p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
+        <div className="rounded-[32px] bg-gradient-to-br from-[#C62828]/10 via-[#A61B1B]/10 to-amber-500/10 dark:from-[#C62828]/20 dark:via-[#141418] dark:to-black border border-black/5 dark:border-white/10 p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
           <div className="flex items-start gap-4 max-w-xl">
-            <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-[#208C60] via-[#F47743] to-[#FFD36A] text-white flex items-center justify-center shrink-0 shadow-lg text-2xl">
+            <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-[#C62828] via-[#A61B1B] to-[#FFD36A] text-white flex items-center justify-center shrink-0 shadow-lg text-2xl">
               <QrCode className="w-8 h-8" />
             </div>
             <div className="space-y-1.5">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/80 dark:bg-black/60 border border-black/5 dark:border-white/10 text-[10px] font-bold text-[#F47743]">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/80 dark:bg-black/60 border border-black/5 dark:border-white/10 text-[10px] font-bold text-[#A61B1B]">
                 <span>FITUR UTAMA PERKEMAHAN</span>
               </div>
               <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
@@ -1126,7 +1126,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
             <button
               type="button"
               onClick={() => onOpenScanner?.()}
-              className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white font-bold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+              className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#C62828] via-[#A61B1B] to-[#E34848] hover:opacity-95 text-white font-bold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
             >
               <QrCode className="w-5 h-5" />
               <span>Buka Scanner QR</span>
@@ -1189,7 +1189,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               <button
                 type="button"
                 onClick={() => setShowVisitorModal(true)}
-                className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white font-bold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#C62828] via-[#A61B1B] to-[#E34848] hover:opacity-95 text-white font-bold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
               >
                 <Users className="w-4 h-4" />
                 <span>Daftar Visitor Pass</span>
@@ -1227,7 +1227,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                 value={certQuery}
                 onChange={e => setCertQuery(e.target.value)}
                 placeholder="Masukkan Nomor Seri Piagam (contoh: PGM/JAMRAN/2026/001)..."
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-black/40 border border-black/10 dark:border-white/10 rounded-2xl text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:border-[#F47743]"
+                className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-black/40 border border-black/10 dark:border-white/10 rounded-2xl text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:border-[#A61B1B]"
               />
             </div>
             <button
@@ -1343,7 +1343,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-black text-slate-900 dark:text-slate-100 flex flex-col justify-between selection:bg-[#F47743] selection:text-white transition-colors">
+    <div className="min-h-screen bg-slate-50 dark:bg-black text-slate-900 dark:text-slate-100 flex flex-col justify-between selection:bg-[#A61B1B] selection:text-white transition-colors">
       {/* 1. Header Bar with Status & Quick Navigation */}
       <div className="bg-white/95 dark:bg-[#121215]/95 backdrop-blur-md border-b border-black/5 dark:border-white/10 px-3.5 sm:px-6 py-2 flex items-center justify-between text-xs z-40 sticky top-0 transition-colors">
         <div className="flex items-center gap-2">
@@ -1372,7 +1372,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               onClick={() => setDeviceViewport('desktop')}
               className={`p-1 rounded-md transition-colors ${
                 deviceViewport === 'desktop'
-                  ? 'bg-white dark:bg-black/50 text-[#F47743] shadow-xs'
+                  ? 'bg-white dark:bg-black/50 text-[#A61B1B] shadow-xs'
                   : 'text-slate-400 hover:text-slate-600'
               }`}
               title="Desktop 100%"
@@ -1384,7 +1384,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               onClick={() => setDeviceViewport('tablet')}
               className={`p-1 rounded-md transition-colors ${
                 deviceViewport === 'tablet'
-                  ? 'bg-white dark:bg-black/50 text-[#F47743] shadow-xs'
+                  ? 'bg-white dark:bg-black/50 text-[#A61B1B] shadow-xs'
                   : 'text-slate-400 hover:text-slate-600'
               }`}
               title="Tablet 768px"
@@ -1396,7 +1396,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               onClick={() => setDeviceViewport('mobile')}
               className={`p-1 rounded-md transition-colors ${
                 deviceViewport === 'mobile'
-                  ? 'bg-white dark:bg-black/50 text-[#F47743] shadow-xs'
+                  ? 'bg-white dark:bg-black/50 text-[#A61B1B] shadow-xs'
                   : 'text-slate-400 hover:text-slate-600'
               }`}
               title="Mobile 390px"
@@ -1409,7 +1409,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
             <button
               type="button"
               onClick={() => onNavigateToLogin()}
-              className="relative z-50 px-3 py-2.5 sm:px-3 sm:py-1.5 rounded-xl bg-[#208C60]/10 hover:bg-[#208C60]/20 active:bg-[#208C60]/25 text-[#208C60] dark:text-[#F47743] border border-[#208C60]/30 font-bold transition-colors text-xs flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-[38px] cursor-pointer touch-manipulation shrink-0"
+              className="relative z-50 px-3 py-2.5 sm:px-3 sm:py-1.5 rounded-xl bg-[#C62828]/10 hover:bg-[#C62828]/20 active:bg-[#C62828]/25 text-[#C62828] dark:text-[#A61B1B] border border-[#C62828]/30 font-bold transition-colors text-xs flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-[38px] cursor-pointer touch-manipulation shrink-0"
               title="Masuk ke SiEpang"
               aria-label="Masuk ke SiEpang"
             >
@@ -1426,7 +1426,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
         <nav className="bg-white/90 dark:bg-[#121215]/90 backdrop-blur-md border-b border-black/5 dark:border-white/10 px-4 sm:px-8 py-3.5 sticky top-10 z-30 transition-colors">
           <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#208C60] via-[#F47743] to-[#FFD36A] p-[1.5px] shadow-sm flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#C62828] via-[#A61B1B] to-[#FFD36A] p-[1.5px] shadow-sm flex items-center justify-center shrink-0">
                 <div className="w-full h-full rounded-[14px] bg-white dark:bg-[#121215] flex items-center justify-center font-black text-lg">
                   ⚜️
                 </div>
@@ -1448,49 +1448,49 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               <button
                 type="button"
                 onClick={() => openPublicPage('section-hero')}
-                className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg hover:text-[#A61B1B] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Beranda
               </button>
               <button
                 type="button"
                 onClick={() => openPublicPage('section-schedule')}
-                className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg hover:text-[#A61B1B] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Jadwal
               </button>
               <button
                 type="button"
                 onClick={() => openPublicPage('section-leaderboard')}
-                className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg hover:text-[#A61B1B] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Ranking
               </button>
               <button
                 type="button"
                 onClick={() => openPublicPage('section-photo-gallery')}
-                className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg hover:text-[#A61B1B] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Galeri
               </button>
               <button
                 type="button"
                 onClick={() => openPublicPage('section-qr-scanner')}
-                className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg hover:text-[#A61B1B] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Scan QR
               </button>
               <button
                 type="button"
                 onClick={() => openPublicPage('section-visitor')}
-                className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg hover:text-[#A61B1B] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Visitor
               </button>
               <button
                 type="button"
                 onClick={() => openPublicPage('section-verification')}
-                className="px-2.5 py-1.5 rounded-lg hover:text-[#F47743] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg hover:text-[#A61B1B] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 Verifikasi
               </button>
@@ -1501,7 +1501,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               <button
                 type="button"
                 onClick={() => onOpenScanner?.()}
-                className="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 min-w-[38px] min-h-[38px] cursor-pointer"
+                className="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-gradient-to-r from-[#C62828] via-[#A61B1B] to-[#E34848] hover:opacity-95 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 min-w-[38px] min-h-[38px] cursor-pointer"
                 title="Buka Scanner QR"
               >
                 <QrCode className="w-4 h-4" />
@@ -1529,7 +1529,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                     setMobileMenuOpen(false);
                     onNavigateToLogin();
                   }}
-                  className="w-full min-h-[48px] text-left px-4 py-3 mb-2 rounded-xl bg-[#208C60]/10 text-[#208C60] dark:text-[#F47743] border border-[#208C60]/25 font-bold flex items-center gap-2 touch-manipulation active:bg-[#208C60]/20"
+                  className="w-full min-h-[48px] text-left px-4 py-3 mb-2 rounded-xl bg-[#C62828]/10 text-[#C62828] dark:text-[#A61B1B] border border-[#C62828]/25 font-bold flex items-center gap-2 touch-manipulation active:bg-[#C62828]/20"
                 >
                   <LogIn className="w-5 h-5" />
                   Masuk ke SiEpang
@@ -1751,7 +1751,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                 />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-white space-y-3">
-                  <Play className="w-12 h-12 text-[#F47743]" />
+                  <Play className="w-12 h-12 text-[#A61B1B]" />
                   <p className="text-xs text-slate-300">
                     Video eksternal disematkan dari tautan resmi.
                   </p>
@@ -1759,7 +1759,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                     href={activeVideoModal.source_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#208C60] to-[#F47743] text-white text-xs font-bold flex items-center gap-1.5"
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#C62828] to-[#A61B1B] text-white text-xs font-bold flex items-center gap-1.5"
                   >
                     <span>Buka Video di Tab Baru</span>
                     <ExternalLink className="w-3.5 h-3.5" />
