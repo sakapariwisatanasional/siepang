@@ -183,7 +183,9 @@ export class ProfilePhotoService {
       file_size_bytes: params.file_size_bytes || Math.round(data_url.length * .75),
     }, { timeoutMs: 60000 });
     if (!response.ok) throw new Error(response.error?.message || 'Upload ke Google Drive gagal.');
-    const remote = response.data?.record;
+    // GAS can return the photo record directly in `data`, or wrap it as `data.record`.
+    // Accept both response shapes so a successful upload is not rejected by the frontend.
+    const remote = response.data?.record ?? response.data;
     const url = String(remote?.public_render_url || remote?.profile_photo_url || '');
     const fileId = String(remote?.drive_file_id || remote?.profile_photo_file_id || '');
     if (!url.startsWith('https://') || !fileId) {
