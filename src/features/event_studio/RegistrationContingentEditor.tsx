@@ -205,7 +205,7 @@ export const RegistrationContingentEditor: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-[#171717] dark:text-white tracking-tight flex items-center gap-2">
-              <Users className="w-4 h-4 text-emerald-500" />
+              <Users className="w-4 h-4 text-[#C62828]" />
               <span>Pendaftaran, Formulir Dinamis & Kontingen</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -217,7 +217,7 @@ export const RegistrationContingentEditor: React.FC = () => {
             {activeTab === 'fields' && (
               <button
                 onClick={() => setShowAddFieldModal(true)}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                className="px-4 py-2 bg-[#C62828] hover:bg-[#A61B1B] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
               >
                 <Plus className="w-4 h-4 stroke-[3]" />
                 <span>+ Tambah Kolom Isian</span>
@@ -226,7 +226,7 @@ export const RegistrationContingentEditor: React.FC = () => {
             {activeTab === 'contingents' && (
               <button
                 onClick={() => setShowAddContingentModal(true)}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                className="px-4 py-2 bg-[#C62828] hover:bg-[#A61B1B] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
               >
                 <Plus className="w-4 h-4 stroke-[3]" />
                 <span>+ Buat Kontingen Baru</span>
@@ -248,7 +248,7 @@ export const RegistrationContingentEditor: React.FC = () => {
           <button
             onClick={() => setActiveTab('fields')}
             className={`py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
-              activeTab === 'fields' ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              activeTab === 'fields' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             📝 Formulir Dinamis ({fields.length})
@@ -256,7 +256,7 @@ export const RegistrationContingentEditor: React.FC = () => {
           <button
             onClick={() => setActiveTab('contingents')}
             className={`py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
-              activeTab === 'contingents' ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              activeTab === 'contingents' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             🚩 Kelola Kontingen ({contingents.length})
@@ -272,7 +272,7 @@ export const RegistrationContingentEditor: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-[#171717] dark:text-white tracking-tight flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-emerald-500" />
+                  <Clock className="w-4 h-4 text-[#C62828]" />
                   <span>Status Pendaftaran Terbuka (Registration Lifecycle)</span>
                 </h3>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
@@ -311,7 +311,7 @@ export const RegistrationContingentEditor: React.FC = () => {
           {/* Quotas & Hierarchy Configuration */}
           <div className="p-5 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-4 shadow-xs">
             <h3 className="text-sm font-bold text-[#171717] dark:text-white tracking-tight flex items-center gap-2">
-              <Layers className="w-4 h-4 text-emerald-500" />
+              <Layers className="w-4 h-4 text-[#C62828]" />
               <span>Kapasitas & Kuota Kontingen</span>
             </h3>
 
@@ -445,7 +445,7 @@ export const RegistrationContingentEditor: React.FC = () => {
             <button
               type="submit"
               disabled={isSavingSettings}
-              className="px-6 py-2.5 bg-gradient-to-r from-[#A61B1B] to-[#C62828] hover:from-[#8F1717] hover:to-[#A61B1B] text-white rounded-2xl font-bold text-xs shadow-md transition-all disabled:opacity-50"
+              className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white rounded-2xl font-bold text-xs shadow-md transition-all disabled:opacity-50"
             >
               {isSavingSettings ? 'Menyimpan...' : 'Simpan Semua Konfigurasi Pendaftaran'}
             </button>
@@ -458,7 +458,7 @@ export const RegistrationContingentEditor: React.FC = () => {
         <div className="p-5 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-4 shadow-xs">
           <div>
             <h3 className="text-sm font-bold text-[#171717] dark:text-white tracking-tight flex items-center gap-2">
-              <FileText className="w-4 h-4 text-emerald-500" />
+              <FileText className="w-4 h-4 text-[#C62828]" />
               <span>Kolom Formulir Pendaftaran Dinamis</span>
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -755,7 +755,7 @@ export const RegistrationContingentEditor: React.FC = () => {
 
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setShowAddFieldModal(false)} className="px-4 py-2 bg-white/5 rounded-xl">Batal</button>
-                <button type="submit" className="px-5 py-2 bg-[#C62828] hover:bg-[#A61B1B] text-white rounded-xl font-bold">Simpan Kolom</button>
+                <button type="submit" className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold">Simpan Kolom</button>
               </div>
             </form>
           </div>
@@ -834,7 +834,7 @@ export const RegistrationContingentEditor: React.FC = () => {
 
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setShowAddContingentModal(false)} className="px-4 py-2 bg-white/5 rounded-xl">Batal</button>
-                <button type="submit" className="px-5 py-2 bg-[#C62828] hover:bg-[#A61B1B] text-white rounded-xl font-bold">Daftarkan Kontingen</button>
+                <button type="submit" className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold">Daftarkan Kontingen</button>
               </div>
             </form>
           </div>
