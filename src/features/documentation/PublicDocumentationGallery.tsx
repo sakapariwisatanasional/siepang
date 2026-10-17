@@ -55,12 +55,47 @@ function resolveVideo(item: MediaItem): { kind: 'iframe' | 'file' | 'link'; url:
     const id = url.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1] || url.searchParams.get('id') || '';
     if (/^[a-zA-Z0-9_-]{10,}$/.test(id)) return {
       kind: 'iframe', url: `https://drive.google.com/file/d/${id}/preview`,
-      thumbnail: item.thumbnail_url,
+      thumbnail: item.thumbnail_url || `https://drive.google.com/thumbnail?id=${id}&sz=w1280`,
     };
   }
   if (/\.(mp4|webm|ogg)$/i.test(url.pathname)) return { kind: 'file', url: source, thumbnail: item.thumbnail_url };
   return { kind: 'link', url: source, thumbnail: item.thumbnail_url };
 }
+
+
+/** Resolve a direct thumbnail URL where the provider supports one. Social post URLs
+ * are not assumed to be image URLs; those require thumbnail_url from the GAS record. */
+function resolvePhotoThumbnail(item: MediaItem): string {
+  if (item.thumbnail_url) return item.thumbnail_url;
+  const source = item.source_url || '';
+  try {
+    const url = new URL(source);
+    const host = url.hostname.toLowerCase();
+    let youtubeId = '';
+    if (host === 'youtu.be' || host === 'www.youtu.be') youtubeId = url.pathname.split('/')[1] || '';
+    else if (['youtube.com', 'www.youtube.com', 'm.youtube.com'].includes(host)) {
+      youtubeId = url.pathname.startsWith('/shorts/') ? url.pathname.split('/')[2] || '' : url.searchParams.get('v') || '';
+    }
+    if (/^[A-Za-z0-9_-]{11}$/.test(youtubeId)) return `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`;
+    if (host === 'drive.google.com') {
+      const driveId = url.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1] || url.searchParams.get('id') || '';
+      if (/^[A-Za-z0-9_-]{10,}$/.test(driveId)) return `https://drive.google.com/thumbnail?id=${driveId}&sz=w1280`;
+    }
+    return source;
+  } catch { return source; }
+}
+
+const Thumbnail: React.FC<{ src?: string; alt: string; kind: 'photo' | 'video' }> = ({ src, alt, kind }) => {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  if (!src || failed) return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-slate-100 to-slate-200 text-slate-500 dark:from-slate-800 dark:to-slate-900 dark:text-slate-300" role="img" aria-label={`Thumbnail ${kind === 'photo' ? 'foto' : 'video'} belum tersedia`}>
+      {kind === 'photo' ? <ImageIcon className="h-8 w-8" /> : <Film className="h-8 w-8" />}
+      <span className="px-3 text-center text-[10px] font-medium">Thumbnail belum tersedia</span>
+    </div>
+  );
+  return <img src={src} alt={alt} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />;
+};
 
 interface PublicDocumentationGalleryProps {
   onBackToHome?: () => void;
@@ -71,7 +106,7 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
   onBackToHome,
   initialTab = 'photos',
 }) => {
-  const [activeTab, setActiveTab] = useState<'photos' | 'videos'>(initialTab);
+  const [activeTab] = useState<'photos' | 'videos'>(initialTab);
   const [selectedAlbumId, setSelectedAlbumId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [visiblePhotoCount, setVisiblePhotoCount] = useState<number>(12);
@@ -285,46 +320,15 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
             <button type="button" onClick={() => setReloadKey(v => v + 1)} className="mt-3 rounded-xl bg-[#208C60] text-white px-4 py-2 font-semibold">Coba Lagi</button>
           </div>
         )}
-        {/* Tab Switcher & Search Bar */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          {/* Photos vs Videos Tabs */}
-          <div className="flex p-1 rounded-2xl bg-slate-200/70 dark:bg-white/5 border border-black/5 dark:border-white/10 shrink-0">
-            <button
-              type="button"
-              onClick={() => setActiveTab('photos')}
-              className={`px-5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                activeTab === 'photos'
-                  ? 'bg-gradient-to-r from-[#208C60] to-[#F47743] text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <ImageIcon className="w-4 h-4" />
-              <span>Foto Kegiatan ({photos.length})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('videos')}
-              className={`px-5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                activeTab === 'videos'
-                  ? 'bg-gradient-to-r from-[#208C60] to-[#F47743] text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <Film className="w-4 h-4" />
-              <span>Video Resmi ({videos.length})</span>
-            </button>
+        {/* Search across both media grids */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2 text-sm font-bold text-slate-800 dark:text-white">
+            <span className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"><ImageIcon className="h-4 w-4" /> Foto ({photos.length})</span>
+            <span className="inline-flex items-center gap-2 rounded-xl bg-orange-50 px-3 py-2 text-orange-800 dark:bg-orange-950/40 dark:text-orange-300"><Film className="h-4 w-4" /> Video ({videos.length})</span>
           </div>
-
-          {/* Search Box */}
-          <div className="relative flex-1 max-w-sm">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder={activeTab === 'photos' ? 'Cari judul foto atau kegiatan...' : 'Cari video kegiatan...'}
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-white dark:bg-[#121215] border border-black/10 dark:border-white/10 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-[#208C60] transition-colors"
-            />
+          <div className="relative w-full sm:max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input type="text" placeholder="Cari foto atau video kegiatan..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full rounded-xl border border-black/10 bg-white py-2.5 pl-9 pr-4 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-[#208C60] focus:outline-none dark:border-white/10 dark:bg-[#121215] dark:text-white" />
           </div>
         </div>
 
@@ -367,9 +371,10 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
           </div>
         )}
 
-        {/* TAB 1: PHOTOS GRID */}
-        {!loading && !loadError && activeTab === 'photos' && (
-          <div>
+        {/* PHOTO GRID */}
+        {!loading && !loadError && (
+          <section className="space-y-3">
+            <div className="flex items-end justify-between gap-3"><div><h2 className="text-lg font-black text-slate-900 dark:text-white">Foto Kegiatan</h2><p className="text-xs text-slate-500 dark:text-slate-400">Dokumentasi foto resmi yang telah dipublikasikan.</p></div><span className="text-xs font-semibold text-slate-500">{filteredPhotos.length} foto</span></div>
             {filteredPhotos.length === 0 ? (
               <div className="text-center py-16 px-4 rounded-3xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/5 space-y-3">
                 <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-white/5 flex items-center justify-center mx-auto text-2xl">
@@ -391,13 +396,7 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
                     >
                       {/* Image Thumbnail with lazy loading */}
                       <div className="aspect-[4/3] w-full overflow-hidden bg-slate-100 dark:bg-black/40 relative">
-                        <img
-                          src={photo.thumbnail_url || photo.source_url}
-                          alt={photo.title}
-                          loading="lazy"
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        />
+                        <Thumbnail src={resolvePhotoThumbnail(photo)} alt={photo.title} kind="photo" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2.5">
                           <span className="text-[10px] text-white flex items-center gap-1">
                             <Eye className="w-3 h-3" />
@@ -444,12 +443,13 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
                 )}
               </div>
             )}
-          </div>
+          </section>
         )}
 
-        {/* TAB 2: VIDEOS GRID */}
-        {!loading && !loadError && activeTab === 'videos' && (
-          <div>
+        {/* VIDEO GRID */}
+        {!loading && !loadError && (
+          <section className="space-y-3">
+            <div className="flex items-end justify-between gap-3"><div><h2 className="text-lg font-black text-slate-900 dark:text-white">Video Resmi</h2><p className="text-xs text-slate-500 dark:text-slate-400">Putar dokumentasi video tanpa meninggalkan halaman.</p></div><span className="text-xs font-semibold text-slate-500">{filteredVideos.length} video</span></div>
             {filteredVideos.length === 0 ? (
               <div className="text-center py-16 px-4 rounded-3xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/5 space-y-3">
                 <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-white/5 flex items-center justify-center mx-auto text-2xl">
@@ -461,7 +461,7 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
                 {filteredVideos.map(video => (
                   <div
                     key={video.media_id}
@@ -470,13 +470,7 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
                   >
                     {/* Video Thumbnail with centered play icon */}
                     <div className="aspect-video w-full overflow-hidden bg-black/60 relative">
-                      <img
-                        src={resolveVideo(video).thumbnail || undefined}
-                        alt={video.title}
-                        loading="lazy"
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
+                      <Thumbnail src={resolveVideo(video).thumbnail || undefined} alt={video.title} kind="video" />
                       {/* Centered Play Button with subtle gradient ring */}
                       <div className="absolute inset-0 bg-black/30 group-hover:bg-black/15 transition-colors flex items-center justify-center">
                         <div className="w-12 h-12 rounded-full p-[1.5px] bg-gradient-to-tr from-[#208C60] via-[#F47743] to-[#FFD36A] shadow-lg group-hover:scale-110 transition-transform">
@@ -500,9 +494,9 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
                     </div>
 
                     {/* Video Info */}
-                    <div className="p-3.5 space-y-1.5 flex-1 flex flex-col justify-between">
+                    <div className="p-2.5 sm:p-3.5 space-y-1.5 flex-1 flex flex-col justify-between">
                       <div>
-                        <h4 className="text-sm font-bold text-slate-900 dark:text-white line-clamp-2 group-hover:text-[#F47743] transition-colors">
+                        <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white line-clamp-2 group-hover:text-[#F47743] transition-colors">
                           {video.title}
                         </h4>
                         {video.caption && (
@@ -521,7 +515,7 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
                 ))}
               </div>
             )}
-          </div>
+          </section>
         )}
       </main>
 
