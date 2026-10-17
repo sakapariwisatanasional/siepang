@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { eventStudioService } from '../../services/eventStudioService';
 import { gudepRegistrationService, GudepRecord, GudepDetail } from '../../services/gudepRegistrationService';
+import { authService } from '../../services/authService';
 import {
   RegistrationFieldConfig,
   OrganizationLevel,
@@ -44,6 +45,8 @@ import {
 export const RegistrationContingentEditor: React.FC = () => {
   const event = eventStudioService.getEvent();
   const [activeTab, setActiveTab] = useState<'config' | 'fields' | 'contingents'>('config');
+  const currentRole = authService.getCurrentUser()?.role || 'viewer';
+  const canVerifyAdministratively = ['superadmin','workspace_admin','event_admin','registration_officer'].includes(currentRole);
 
   // Registration Configuration state
   const [settings, setSettings] = useState<RegistrationSettings>(eventStudioService.getRegistrationSettings());
@@ -118,6 +121,44 @@ export const RegistrationContingentEditor: React.FC = () => {
   useEffect(() => {
     if (activeTab === 'contingents') void loadGudepRecords();
   }, [activeTab]);
+
+  const handleContingentDecision = async (g: GudepRecord, decision: 'VERIFIED' | 'REVISION' | 'REJECTED') => {
+    if (!canVerifyAdministratively) { showToast('Keputusan verifikasi hanya dapat dilakukan panitia/admin.'); return; }
+    const notes = decision === 'VERIFIED' ? '' : (window.prompt(decision === 'REVISION' ? 'Catatan revisi kontingen:' : 'Alasan penolakan kontingen:') || '').trim();
+    if (decision !== 'VERIFIED' && !notes) return;
+    const label = decision === 'VERIFIED' ? 'menyetujui' : decision === 'REVISION' ? 'meminta revisi' : 'menolak';
+    if (!window.confirm(`Yakin ${label} administrasi kontingen ${g.gudep_name}? Status Gudep tidak akan berubah.`)) return;
+    try {
+      await gudepRegistrationService.verifyContingent(g.gudep_id, decision, notes);
+      await loadGudepRecords();
+      showToast(`Verifikasi kontingen tersimpan: ${decision}. Status Gudep tetap terpisah.`);
+    } catch (err: any) { showToast(`Gagal memverifikasi kontingen: ${err?.message || 'Kesalahan GAS'}`); }
+  };
+
+  const handleGudepDecision = async (g: GudepRecord, decision: 'VERIFIED' | 'REVISION' | 'REJECTED') => {
+    if (!canVerifyAdministratively) { showToast('Keputusan verifikasi hanya dapat dilakukan panitia/admin.'); return; }
+    const notes = decision === 'VERIFIED' ? '' : (window.prompt(decision === 'REVISION' ? 'Catatan revisi Gudep:' : 'Alasan penolakan Gudep:') || '').trim();
+    if (decision !== 'VERIFIED' && !notes) return;
+    if (!window.confirm(`Yakin memproses verifikasi Gudep ${g.gudep_name}? Status kontingen dan regu tidak akan berubah.`)) return;
+    try {
+      await gudepRegistrationService.verify(g.gudep_id, decision, notes);
+      await loadGudepRecords();
+      showToast(`Verifikasi Gudep tersimpan: ${decision}. Status kontingen dan regu tetap terpisah.`);
+    } catch (err: any) { showToast(`Gagal memverifikasi Gudep: ${err?.message || 'Kesalahan GAS'}`); }
+  };
+
+  const handleReguDecision = async (g: GudepRecord, reguId: string, reguName: string, decision: 'VERIFIED' | 'REVISION' | 'REJECTED') => {
+    if (!canVerifyAdministratively) { showToast('Keputusan verifikasi hanya dapat dilakukan panitia/admin.'); return; }
+    const notes = decision === 'VERIFIED' ? '' : (window.prompt(decision === 'REVISION' ? `Catatan revisi regu ${reguName}:` : `Alasan penolakan regu ${reguName}:`) || '').trim();
+    if (decision !== 'VERIFIED' && !notes) return;
+    if (!window.confirm(`Yakin memproses verifikasi regu ${reguName}? Status Gudep dan kontingen tidak akan berubah.`)) return;
+    try {
+      await gudepRegistrationService.verifyRegu(g.gudep_id, reguId, decision, notes);
+      const fresh = await gudepRegistrationService.detail(g.gudep_id);
+      setGudepDetail(fresh);
+      showToast(`Verifikasi regu tersimpan: ${decision}. Keputusan entitas lain tidak berubah.`);
+    } catch (err: any) { showToast(`Gagal memverifikasi regu: ${err?.message || 'Kesalahan GAS'}`); }
+  };
 
   const handleSyncAllContingents = async () => {
     setIsSyncingContingents(true);
@@ -578,8 +619,8 @@ export const RegistrationContingentEditor: React.FC = () => {
           </div>
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
             <div className="p-3 rounded-2xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10"><div className="text-[10px] text-slate-500">Gudep/Kontingen</div><div className="text-xl font-black text-slate-900 dark:text-white">{gudepRecords.length}</div></div>
-            <div className="p-3 rounded-2xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10"><div className="text-[10px] text-slate-500">Terverifikasi</div><div className="text-xl font-black text-emerald-600">{gudepRecords.filter(g => g.verification_status === 'VERIFIED').length}</div></div>
-            <div className="p-3 rounded-2xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10"><div className="text-[10px] text-slate-500">Menunggu verifikasi</div><div className="text-xl font-black text-amber-600">{gudepRecords.filter(g => g.verification_status !== 'VERIFIED').length}</div></div>
+            <div className="p-3 rounded-2xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10"><div className="text-[10px] text-slate-500">Kontingen terverifikasi</div><div className="text-xl font-black text-emerald-600">{gudepRecords.filter(g => g.contingent_verification_status === 'VERIFIED').length}</div></div>
+            <div className="p-3 rounded-2xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10"><div className="text-[10px] text-slate-500">Kontingen menunggu</div><div className="text-xl font-black text-amber-600">{gudepRecords.filter(g => g.contingent_verification_status !== 'VERIFIED').length}</div></div>
             <div className="p-3 rounded-2xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10"><div className="text-[10px] text-slate-500">Status data</div><div className="text-sm font-bold text-slate-900 dark:text-white">{gudepLoading ? 'Memuat…' : 'Terhubung GAS'}</div></div>
           </div>
           {gudepLoading && gudepRecords.length === 0 ? (
@@ -604,7 +645,16 @@ export const RegistrationContingentEditor: React.FC = () => {
                     <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center shrink-0"><Tent className="w-5 h-5 text-emerald-700 dark:text-emerald-300" /></div>
                     <div className="min-w-0 flex-1"><div className="text-[10px] font-mono text-emerald-700 dark:text-emerald-300">{g.gudep_number || 'Nomor Gudep belum diisi'}</div><h4 className="text-sm font-bold text-slate-900 dark:text-white break-words">{g.gudep_name}</h4><p className="text-xs text-slate-500 break-words">{g.institution_name || 'Pangkalan belum dicantumkan'}</p></div>
                   </div>
-                  <div className="flex flex-wrap gap-1.5 text-[10px]"><span className="px-2 py-1 rounded-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300">{g.registration_status || 'DRAFT'}</span><span className={`px-2 py-1 rounded-full ${g.verification_status === 'VERIFIED' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'}`}>{g.verification_status || 'PENDING'}</span></div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px]">
+                    <div className="rounded-xl bg-slate-50 dark:bg-white/5 p-2 space-y-1"><div className="font-bold text-slate-500">Administrasi Kontingen</div><span className={`inline-block px-2 py-1 rounded-full ${g.contingent_verification_status === 'VERIFIED' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'}`}>{g.contingent_verification_status || 'PENDING'}</span></div>
+                    <div className="rounded-xl bg-slate-50 dark:bg-white/5 p-2 space-y-1"><div className="font-bold text-slate-500">Administrasi Gudep</div><span className="inline-block px-2 py-1 rounded-full bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-200">{g.registration_status || 'DRAFT'} · {g.verification_status || 'PENDING'}</span></div>
+                  </div>
+                  {canVerifyAdministratively && <div className="space-y-2 rounded-xl border border-slate-200 dark:border-white/10 p-3">
+                    <div className="text-[10px] font-bold text-slate-600 dark:text-slate-300">Keputusan Kontingen (independen)</div>
+                    <div className="flex flex-wrap gap-1.5"><button type="button" onClick={() => void handleContingentDecision(g,'VERIFIED')} className="rounded-lg bg-emerald-600 px-2 py-1.5 text-[10px] font-bold text-white">Setujui kontingen</button><button type="button" onClick={() => void handleContingentDecision(g,'REVISION')} className="rounded-lg bg-amber-500 px-2 py-1.5 text-[10px] font-bold text-slate-950">Revisi kontingen</button><button type="button" onClick={() => void handleContingentDecision(g,'REJECTED')} className="rounded-lg bg-rose-600 px-2 py-1.5 text-[10px] font-bold text-white">Tolak kontingen</button></div>
+                    <div className="text-[10px] font-bold text-slate-600 dark:text-slate-300">Keputusan Gudep (independen)</div>
+                    {g.registration_status === 'SUBMITTED' ? <div className="flex flex-wrap gap-1.5"><button type="button" onClick={() => void handleGudepDecision(g,'VERIFIED')} className="rounded-lg bg-emerald-600 px-2 py-1.5 text-[10px] font-bold text-white">Setujui Gudep</button><button type="button" onClick={() => void handleGudepDecision(g,'REVISION')} className="rounded-lg bg-amber-500 px-2 py-1.5 text-[10px] font-bold text-slate-950">Revisi Gudep</button><button type="button" onClick={() => void handleGudepDecision(g,'REJECTED')} className="rounded-lg bg-rose-600 px-2 py-1.5 text-[10px] font-bold text-white">Tolak Gudep</button></div> : <p className="text-[10px] text-slate-500">Gudep harus diajukan terlebih dahulu (status SUBMITTED).</p>}
+                  </div>}
                   <button type="button" onClick={() => void openGudepDetail(g)} className="w-full px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-2"><Eye className="w-4 h-4" /> Detail Regu, Peserta & Pembina</button>
                 </article>
               ))}
@@ -627,7 +677,7 @@ export const RegistrationContingentEditor: React.FC = () => {
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/5"><div className="text-[10px] text-slate-500">Peserta terhubung</div><div className="text-xl font-black text-slate-900 dark:text-white">{gudepDetail.participantLinks?.filter(x => x.status === 'ACTIVE').length || 0}</div></div>
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/5"><div className="text-[10px] text-slate-500">Pembina</div><div className="text-xl font-black text-slate-900 dark:text-white">{gudepDetail.advisors?.length || 0}</div></div>
               </div>
-              <section className="space-y-2"><h4 className="font-bold text-sm text-slate-900 dark:text-white">Regu</h4>{(gudepDetail.regu || []).length ? gudepDetail.regu.map(r => <div key={r.regu_id} className="p-3 rounded-xl border border-slate-200 dark:border-white/10 flex items-center justify-between gap-3"><div><div className="font-semibold text-sm text-slate-900 dark:text-white">{r.regu_name}</div><div className="text-xs text-slate-500">{r.gender} · Kuota {r.quota}</div></div><span className="text-[10px] rounded-full px-2 py-1 bg-slate-100 dark:bg-white/5">{r.verification_status || 'PENDING'}</span></div>) : <p className="text-xs text-slate-500 p-3 rounded-xl bg-slate-50 dark:bg-white/5">Belum ada regu.</p>}</section>
+              <section className="space-y-2"><h4 className="font-bold text-sm text-slate-900 dark:text-white">Regu — verifikasi independen</h4>{(gudepDetail.regu || []).length ? gudepDetail.regu.map(r => <div key={r.regu_id} className="p-3 rounded-xl border border-slate-200 dark:border-white/10 space-y-2"><div className="flex items-center justify-between gap-3"><div><div className="font-semibold text-sm text-slate-900 dark:text-white">{r.regu_name}</div><div className="text-xs text-slate-500">{r.gender} · Kuota {r.quota} · {r.registration_status || 'DRAFT'}</div></div><span className="text-[10px] rounded-full px-2 py-1 bg-slate-100 dark:bg-white/5">{r.verification_status || 'PENDING'}</span></div>{canVerifyAdministratively && r.registration_status === 'SUBMITTED' && <div className="flex flex-wrap gap-1.5"><button type="button" onClick={() => void handleReguDecision(selectedGudep!, r.regu_id, r.regu_name, 'VERIFIED')} className="rounded-lg bg-emerald-600 px-2 py-1.5 text-[10px] font-bold text-white">Setujui regu</button><button type="button" onClick={() => void handleReguDecision(selectedGudep!, r.regu_id, r.regu_name, 'REVISION')} className="rounded-lg bg-amber-500 px-2 py-1.5 text-[10px] font-bold text-slate-950">Revisi</button><button type="button" onClick={() => void handleReguDecision(selectedGudep!, r.regu_id, r.regu_name, 'REJECTED')} className="rounded-lg bg-rose-600 px-2 py-1.5 text-[10px] font-bold text-white">Tolak</button></div>}</div>) : <p className="text-xs text-slate-500 p-3 rounded-xl bg-slate-50 dark:bg-white/5">Belum ada regu.</p>}</section>
               <section className="space-y-2"><h4 className="font-bold text-sm text-slate-900 dark:text-white">Pembina Pendamping</h4>{(gudepDetail.advisors || []).length ? gudepDetail.advisors.map(a => <div key={a.advisor_id} className="p-3 rounded-xl border border-slate-200 dark:border-white/10"><div className="font-semibold text-sm text-slate-900 dark:text-white">{a.full_name}</div><div className="text-xs text-slate-500">{a.phone || 'Nomor telepon belum diisi'} · {a.email || 'Email belum diisi'}</div></div>) : <p className="text-xs text-slate-500 p-3 rounded-xl bg-slate-50 dark:bg-white/5">Belum ada pembina.</p>}</section>
               <section className="space-y-2"><h4 className="font-bold text-sm text-slate-900 dark:text-white">Status hubungan peserta</h4><p className="text-xs text-slate-500">Peserta aktif terhubung melalui GudepParticipantLinks. Detail nama peserta tetap bersumber dari data Participants; tidak dibuat duplikat pada halaman ini.</p><div className="text-xs font-mono text-slate-600 dark:text-slate-300">{gudepDetail.participantLinks?.filter(x => x.status === 'ACTIVE').length || 0} link aktif · {(gudepDetail.participantLinks || []).filter(x => x.status !== 'ACTIVE').length} riwayat nonaktif</div></section>
             </>}
