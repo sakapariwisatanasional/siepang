@@ -39,15 +39,15 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const allRoles = ['superadmin', 'workspace_admin', 'event_admin'];
   const registrationRoles = [...allRoles, 'registration_officer', 'kontingen_admin'];
   const actions = [
-    { id: 'profile' as NavTab, label: 'Profil Saya', description: 'Biodata & foto', icon: UserRound, roles: null, feature: null },
-    { id: 'schedule' as NavTab, label: 'Jadwal Kegiatan', description: 'Agenda perkemahan', icon: CalendarDays, roles: null, feature: 'SCHEDULE' as const },
-    { id: 'competitions' as NavTab, label: 'Lomba', description: 'Cabang & informasi', icon: Trophy, roles: null, feature: 'COMPETITION' as const },
-    { id: 'public_home' as NavTab, label: 'Portal Kegiatan', description: 'Informasi publik', icon: Globe2, roles: null, feature: 'PUBLIC_EVENT_PAGE' as const },
-    { id: 'public_gallery' as NavTab, label: 'Galeri', description: 'Dokumentasi acara', icon: Images, roles: null, feature: 'PUBLIC_DOCUMENTATION' as const },
-    { id: 'participants' as NavTab, label: 'Data Peserta', description: 'Registrasi & verifikasi', icon: UsersRound, roles: registrationRoles, feature: 'PARTICIPANT_MANAGEMENT' as const },
-    { id: 'attendance' as NavTab, label: 'Presensi', description: 'Kehadiran peserta', icon: ClipboardList, roles: [...allRoles, 'committee', 'attendance_officer'], feature: 'ATTENDANCE' as const },
-    { id: 'event_studio' as NavTab, label: 'Kelola Event', description: 'Denah, kavling & fasilitas', icon: Map, roles: allRoles, feature: null },
-    { id: 'users' as NavTab, label: 'Akses Panitia', description: 'Peran & izin akses', icon: ShieldCheck, roles: ['superadmin', 'workspace_admin'], feature: null },
+    { id: 'profile' as NavTab, group: 'Akun & akses', label: 'Profil Saya', description: 'Biodata & foto', icon: UserRound, roles: null, feature: null },
+    { id: 'schedule' as NavTab, group: 'Kegiatan & informasi', label: 'Jadwal Kegiatan', description: 'Agenda perkemahan', icon: CalendarDays, roles: null, feature: 'SCHEDULE' as const },
+    { id: 'competitions' as NavTab, group: 'Kegiatan & informasi', label: 'Lomba', description: 'Cabang & informasi', icon: Trophy, roles: null, feature: 'COMPETITION' as const },
+    { id: 'public_home' as NavTab, group: 'Kegiatan & informasi', label: 'Portal Kegiatan', description: 'Informasi publik', icon: Globe2, roles: null, feature: 'PUBLIC_EVENT_PAGE' as const },
+    { id: 'public_gallery' as NavTab, group: 'Kegiatan & informasi', label: 'Galeri', description: 'Dokumentasi acara', icon: Images, roles: null, feature: 'PUBLIC_DOCUMENTATION' as const },
+    { id: 'participants' as NavTab, group: 'Operasional perkemahan', label: 'Data Peserta', description: 'Registrasi & verifikasi', icon: UsersRound, roles: registrationRoles, feature: 'PARTICIPANT_MANAGEMENT' as const },
+    { id: 'attendance' as NavTab, group: 'Operasional perkemahan', label: 'Presensi', description: 'Kehadiran peserta', icon: ClipboardList, roles: [...allRoles, 'committee', 'attendance_officer'], feature: 'ATTENDANCE' as const },
+    { id: 'event_studio' as NavTab, group: 'Operasional perkemahan', label: 'Kelola Event', description: 'Denah, kavling & fasilitas', icon: Map, roles: allRoles, feature: null },
+    { id: 'users' as NavTab, group: 'Akun & akses', label: 'Akses Panitia', description: 'Peran & izin akses', icon: ShieldCheck, roles: ['superadmin', 'workspace_admin'], feature: null },
   ].filter(action => (!action.roles || action.roles.includes(role)) && (!action.feature || featureControlService.isFeatureEnabled(action.feature)));
 
   if (isPublicView) {
@@ -122,24 +122,39 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                     <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Pilih salah satu kartu. Menu yang tersedia menyesuaikan peran dan akses Anda.</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-                  {actions.map(({ id, label, description, icon: Icon }) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => onTabChange(id)}
-                      className="group text-left min-h-[136px] rounded-2xl border border-red-100 dark:border-white/10 bg-white dark:bg-[#191b23] p-4 sm:p-5 shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-red-300 dark:hover:border-red-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#D71920] transition-all"
-                    >
-                      <div className="flex items-start justify-between gap-2 mb-3">
-                        <span className="inline-flex items-center justify-center w-11 h-11 rounded-2xl bg-gradient-to-br from-[#FFF1F1] to-[#FFE0E0] dark:from-red-900/40 dark:to-red-800/20 text-[#B91C1C] dark:text-red-300 ring-1 ring-red-100 dark:ring-red-900/40">
-                          <Icon className="w-5 h-5" aria-hidden="true" />
-                        </span>
-                        <ArrowUpRight className="w-4 h-4 text-[#C62828] opacity-45 group-hover:opacity-100 transition-opacity" aria-hidden="true" />
-                      </div>
-                      <span className="block font-bold text-sm text-slate-900 dark:text-white leading-snug">{label}</span>
-                      <span className="block mt-1 text-xs text-slate-500 dark:text-slate-400 leading-snug">{description}</span>
-                    </button>
-                  ))}
+                <div className="space-y-6">
+                  {(['Operasional perkemahan', 'Kegiatan & informasi', 'Akun & akses'] as const).map((group) => {
+                    const groupActions = actions.filter((action) => action.group === group);
+                    if (groupActions.length === 0) return null;
+                    return (
+                      <section key={group} aria-label={group} className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-sm font-extrabold text-slate-800 dark:text-slate-100">{group}</h3>
+                          <span className="h-px flex-1 bg-red-100 dark:bg-white/10" />
+                          <span className="text-[11px] font-semibold text-slate-400">{groupActions.length} menu</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                          {groupActions.map(({ id, label, description, icon: Icon }) => (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() => onTabChange(id)}
+                              className="group flex min-h-[96px] items-center gap-3 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#191b23] p-4 text-left shadow-sm hover:border-red-300 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C62828] transition-all"
+                            >
+                              <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-red-50 dark:bg-red-950/40 text-[#B91C1C] dark:text-red-300 ring-1 ring-red-100 dark:ring-red-900/40">
+                                <Icon className="h-5 w-5" aria-hidden="true" />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block font-bold text-sm text-slate-900 dark:text-white leading-snug">{label}</span>
+                                <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400 leading-snug">{description}</span>
+                              </span>
+                              <ArrowUpRight className="h-4 w-4 shrink-0 text-[#C62828] opacity-45 group-hover:opacity-100 transition-opacity" aria-hidden="true" />
+                            </button>
+                          ))}
+                        </div>
+                      </section>
+                    );
+                  })}
                 </div>
               </section>
             )}
