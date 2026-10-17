@@ -116,11 +116,11 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="w-full max-w-xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto text-[#171717] dark:text-slate-100">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/70 backdrop-blur-sm p-2 sm:p-4 overflow-y-auto animate-in fade-in">
+      <div className="w-full max-w-xl bg-white dark:bg-[#141418] border border-red-100 dark:border-white/10 rounded-2xl sm:rounded-[28px] p-4 sm:p-6 shadow-2xl space-y-4 max-h-[calc(100dvh-1rem)] sm:max-h-[92vh] overflow-y-auto text-[#171717] dark:text-slate-100">
         <div className="flex items-center justify-between border-b border-[#ECECEF] dark:border-white/10 pb-3">
           <div className="flex items-center gap-3">
-            <span className="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-950/40 text-[#C62828] dark:text-red-300 font-bold flex items-center justify-center text-lg">
+            <span className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-800 dark:text-slate-200 font-bold flex items-center justify-center text-lg">
               ⚜️
             </span>
             <div>
@@ -178,7 +178,7 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
                     value={name}
                     onChange={e => setName(e.target.value)}
                     placeholder="Nama Lengkap"
-                    className="w-full px-3 py-2 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none focus:border-[#C62828] focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/40"
+                    className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none focus:border-[#C62828] focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/40"
                   />
                 </div>
 
@@ -190,7 +190,7 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
                     value={phone}
                     onChange={e => setPhone(e.target.value)}
                     placeholder="08xxxxxxxxxx"
-                    className="w-full px-3 py-2 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono outline-none focus:border-[#C62828] focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/40"
+                    className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono outline-none focus:border-[#C62828] focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/40"
                   />
                 </div>
               </div>
@@ -201,20 +201,14 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
                   <select
                     value={category}
                     onChange={e => setCategory(e.target.value as VisitorCategory)}
-                    className="w-full px-3 py-2 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-semibold outline-none"
+                    className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-semibold outline-none"
                   >
                     <option value="Orang Tua / Wali">Orang Tua / Wali</option>
                     <option value="Keluarga">Keluarga</option>
                     <option value="Tamu Undangan">Tamu Undangan</option>
                     <option value="Umum">Masyarakat Umum</option>
                     <option value="Alumni">Purna / Alumni</option>
-                    <option value="Mabiran">Mabiran</option>
-                    <option value="Mabigus">Mabigus</option>
                     <option value="Mitra">Mitra / Sponsor</option>
-                    <option value="Media">Media</option>
-                    <option value="VIP">VIP</option>
-                    <option value="VVIP">VVIP</option>
-                    <option value="Lainnya">Lainnya</option>
                   </select>
                 </div>
 
@@ -225,7 +219,7 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
                     value={organization}
                     onChange={e => setOrganization(e.target.value)}
                     placeholder="Nama Instansi / Kwartir / Sekolah"
-                    className="w-full px-3 py-2 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none focus:border-[#C62828] focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/40"
+                    className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none focus:border-[#C62828] focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/40"
                   />
                 </div>
               </div>
@@ -292,7 +286,7 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
                     value={relationship}
                     onChange={e => setRelationship(e.target.value)}
                     placeholder="Contoh: Orang Tua, Pembina, Kerabat..."
-                    className="w-full px-3 py-2 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none focus:border-[#C62828] focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/40"
+                    className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none focus:border-[#C62828] focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/40"
                   />
                 </div>
               </div>
@@ -343,7 +337,7 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
                     max="10"
                     value={accompanyingCount}
                     onChange={e => setAccompanyingCount(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono outline-none"
+                    className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono outline-none"
                   />
                 </div>
                 <div>
@@ -353,7 +347,7 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
                     value={vehicleInfo}
                     onChange={e => setVehicleInfo(e.target.value)}
                     placeholder="Mobil / Motor / Nopol..."
-                    className="w-full px-3 py-2 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none"
+                    className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none"
                   />
                 </div>
               </div>
@@ -365,7 +359,7 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
                   value={purpose}
                   onChange={e => setPurpose(e.target.value)}
                   placeholder="Keperluan kunjungan..."
-                  className="w-full px-3 py-2 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none"
+                  className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none"
                 />
               </div>
             </div>
