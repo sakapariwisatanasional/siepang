@@ -77,100 +77,23 @@ class ApiClient {
     const currentEvent = eventService.getCurrentEvent();
 
     const securityContext = {
-      userId: currentUser?.id || localSession?.userId || '',
-      userRole: currentUser?.role || localSession?.role || 'viewer',
+      userId: currentUser?.id || '',
+      userRole: currentUser?.role || 'viewer',
       workspaceId: currentWorkspace?.id || null,
       eventId: currentEvent?.id || null,
-      authToken: localSession ? `LocalEdge_${localSession.token}` : (authService.getAuthState().sessionToken || ''),
+      authToken: authService.getAuthState().sessionToken || '',
     };
 
-    // 1. Fully Offline: Enqueue to device offline queue
+    // Strict production policy: all application data requests go directly through GAS.
+    // No offline queue, local edge server, browser cache, or hybrid response may be reported as authoritative.
     if (isOffline) {
-      syncQueue.addAction('update_event', {
-        endpoint,
-        data: options?.data,
-      });
-
       return {
-        data: options?.data as T,
-        success: true,
-        source: 'offline_queue',
-        message: 'Tersimpan di Perangkat (Offline). Perubahan masuk antrean sinkronisasi lokal.',
-        meta: {
-          requestId: `req_offline_${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          operationalMode: 'local',
-        },
-      };
-    }
-
-    // 2. LOCAL MODE: Transmit exclusively across Camp LAN to Local Camp Server
-    if (operationalMode === 'local') {
-      const backendRes = await siepangBackendApi.handleRequest<T>({
-        endpoint,
-        payload: options?.data,
-        context: securityContext,
-      });
-
-      if (!backendRes.success) {
-        const errorMsg = typeof backendRes.error === 'object' && backendRes.error?.message
-          ? backendRes.error.message
-          : (backendRes.error as string) || 'Operasi gagal di Server Buper.';
-
-        return {
-          data: undefined,
-          success: false,
-          error: backendRes.error || { code: 'LOCAL_SERVER_ERROR', message: errorMsg },
-          message: errorMsg,
-          statusCode: backendRes.statusCode,
-          source: 'local_server',
-          meta: {
-            ...backendRes.meta,
-            requestId: `req_lan_${Date.now()}`,
-            timestamp: new Date().toISOString(),
-            edgeNodeId: serverConfig.edgeNodeId,
-            operationalMode: 'local',
-          },
-        };
-      }
-
-      return {
-        data: backendRes.data as T,
-        success: true,
-        message: backendRes.message || 'Diproses cepat oleh Server Buper (Wi-Fi LAN).',
-        statusCode: backendRes.statusCode,
-        source: 'local_server',
-        meta: {
-          ...backendRes.meta,
-          requestId: `req_lan_${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          edgeNodeId: serverConfig.edgeNodeId,
-          operationalMode: 'local',
-        },
-      };
-    }
-
-    // 3. HYBRID MODE: Fast LAN edge response + asynchronous cloud upstream sync
-    if (operationalMode === 'hybrid') {
-      const backendRes = await siepangBackendApi.handleRequest<T>({
-        endpoint,
-        payload: options?.data,
-        context: securityContext,
-      });
-
-      return {
-        data: backendRes.data as T,
-        success: backendRes.success,
-        message: backendRes.message || 'Tersimpan di Server Buper (Sinkronisasi Cloud berjalan di latar).',
-        statusCode: backendRes.statusCode,
-        source: 'local_server',
-        meta: {
-          ...backendRes.meta,
-          requestId: `req_hybrid_${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          edgeNodeId: serverConfig.edgeNodeId,
-          operationalMode: 'hybrid',
-        },
+        success: false,
+        error: { code: 'GAS_UNAVAILABLE_OFFLINE', message: 'Koneksi internet/GAS tidak tersedia. Data belum dibaca atau disimpan; coba kembali saat online.' },
+        message: 'Operasi dibatalkan agar tidak menghasilkan status sukses dari penyimpanan lokal.',
+        statusCode: 503,
+        source: 'cloud',
+        meta: { requestId: `req_gas_offline_${Date.now()}`, timestamp: new Date().toISOString(), operationalMode: 'cloud' },
       };
     }
 
