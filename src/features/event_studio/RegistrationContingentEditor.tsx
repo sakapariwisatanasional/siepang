@@ -7,7 +7,7 @@
  * - Requirement 14 & 15: Contingent Creation, Management & Detail Inspector (identity, leadership, roster, verification, campsite, XP)
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Users,
   Shield,
@@ -34,19 +34,18 @@ import {
   Phone,
 } from 'lucide-react';
 import { eventStudioService } from '../../services/eventStudioService';
-import { gudepRegistrationService, GudepRecord, GudepDetail } from '../../services/gudepRegistrationService';
-import { authService } from '../../services/authService';
+import { participantService } from '../../services/participantService';
 import {
   RegistrationFieldConfig,
   OrganizationLevel,
   RegistrationSettings,
+  Contingent,
+  Participant,
 } from '../../types';
 
 export const RegistrationContingentEditor: React.FC = () => {
   const event = eventStudioService.getEvent();
   const [activeTab, setActiveTab] = useState<'config' | 'fields' | 'contingents'>('config');
-  const currentRole = authService.getCurrentUser()?.role || 'viewer';
-  const canVerifyAdministratively = ['superadmin','workspace_admin','event_admin','registration_officer'].includes(currentRole);
 
   // Registration Configuration state
   const [settings, setSettings] = useState<RegistrationSettings>(eventStudioService.getRegistrationSettings());
@@ -85,18 +84,19 @@ export const RegistrationContingentEditor: React.FC = () => {
     helpText: '',
   });
 
-  // Event-specific Gudep/contingent data is loaded from GAS, not local arrays.
-  const [gudepRecords, setGudepRecords] = useState<GudepRecord[]>([]);
-  const [gudepLoading, setGudepLoading] = useState(false);
-  const [gudepDetail, setGudepDetail] = useState<GudepDetail | null>(null);
-  const [selectedGudep, setSelectedGudep] = useState<GudepRecord | null>(null);
+  // Contingents state
+  const [contingents, setContingents] = useState<Contingent[]>(participantService.getContingents());
   const [contingentSearch, setContingentSearch] = useState('');
+  const [selectedContingentDetail, setSelectedContingentDetail] = useState<Contingent | null>(null);
   const [showAddContingentModal, setShowAddContingentModal] = useState(false);
-  const [isCreatingGudep, setIsCreatingGudep] = useState(false);
-  const [isSyncingContingents, setIsSyncingContingents] = useState(false);
-  const [newGudepForm, setNewGudepForm] = useState({
-    gudep_number: '', gudep_name: '', institution_name: '', address: '',
-    contact_name: '', contact_phone: '', contact_email: '',
+  const [newContingentForm, setNewContingentForm] = useState({
+    name: '',
+    leaderName: '',
+    leaderPhone: '',
+    quota: 32,
+    region: '',
+    campZone: 'Zona A (Putra)',
+    subCamp: 'Kavling A-01',
   });
 
   const [toast, setToast] = useState<string | null>(null);
@@ -104,88 +104,6 @@ export const RegistrationContingentEditor: React.FC = () => {
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
-  };
-
-  const loadGudepRecords = async () => {
-    setGudepLoading(true);
-    try {
-      const result = await gudepRegistrationService.list();
-      setGudepRecords(Array.isArray(result.gudep) ? result.gudep : []);
-    } catch (err: any) {
-      showToast(`❌ Gagal memuat data Gudep/Kontingen dari GAS: ${err?.message || 'Kesalahan tidak diketahui'}`);
-    } finally {
-      setGudepLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'contingents') void loadGudepRecords();
-  }, [activeTab]);
-
-  const handleContingentDecision = async (g: GudepRecord, decision: 'VERIFIED' | 'REVISION' | 'REJECTED') => {
-    if (!canVerifyAdministratively) { showToast('Keputusan verifikasi hanya dapat dilakukan panitia/admin.'); return; }
-    const notes = decision === 'VERIFIED' ? '' : (window.prompt(decision === 'REVISION' ? 'Catatan revisi kontingen:' : 'Alasan penolakan kontingen:') || '').trim();
-    if (decision !== 'VERIFIED' && !notes) return;
-    const label = decision === 'VERIFIED' ? 'menyetujui' : decision === 'REVISION' ? 'meminta revisi' : 'menolak';
-    if (!window.confirm(`Yakin ${label} administrasi kontingen ${g.gudep_name}? Status Gudep tidak akan berubah.`)) return;
-    try {
-      await gudepRegistrationService.verifyContingent(g.gudep_id, decision, notes);
-      await loadGudepRecords();
-      showToast(`Verifikasi kontingen tersimpan: ${decision}. Status Gudep tetap terpisah.`);
-    } catch (err: any) { showToast(`Gagal memverifikasi kontingen: ${err?.message || 'Kesalahan GAS'}`); }
-  };
-
-  const handleGudepDecision = async (g: GudepRecord, decision: 'VERIFIED' | 'REVISION' | 'REJECTED') => {
-    if (!canVerifyAdministratively) { showToast('Keputusan verifikasi hanya dapat dilakukan panitia/admin.'); return; }
-    const notes = decision === 'VERIFIED' ? '' : (window.prompt(decision === 'REVISION' ? 'Catatan revisi Gudep:' : 'Alasan penolakan Gudep:') || '').trim();
-    if (decision !== 'VERIFIED' && !notes) return;
-    if (!window.confirm(`Yakin memproses verifikasi Gudep ${g.gudep_name}? Status kontingen dan regu tidak akan berubah.`)) return;
-    try {
-      await gudepRegistrationService.verify(g.gudep_id, decision, notes);
-      await loadGudepRecords();
-      showToast(`Verifikasi Gudep tersimpan: ${decision}. Status kontingen dan regu tetap terpisah.`);
-    } catch (err: any) { showToast(`Gagal memverifikasi Gudep: ${err?.message || 'Kesalahan GAS'}`); }
-  };
-
-  const handleReguDecision = async (g: GudepRecord, reguId: string, reguName: string, decision: 'VERIFIED' | 'REVISION' | 'REJECTED') => {
-    if (!canVerifyAdministratively) { showToast('Keputusan verifikasi hanya dapat dilakukan panitia/admin.'); return; }
-    const notes = decision === 'VERIFIED' ? '' : (window.prompt(decision === 'REVISION' ? `Catatan revisi regu ${reguName}:` : `Alasan penolakan regu ${reguName}:`) || '').trim();
-    if (decision !== 'VERIFIED' && !notes) return;
-    if (!window.confirm(`Yakin memproses verifikasi regu ${reguName}? Status Gudep dan kontingen tidak akan berubah.`)) return;
-    try {
-      await gudepRegistrationService.verifyRegu(g.gudep_id, reguId, decision, notes);
-      const fresh = await gudepRegistrationService.detail(g.gudep_id);
-      setGudepDetail(fresh);
-      showToast(`Verifikasi regu tersimpan: ${decision}. Keputusan entitas lain tidak berubah.`);
-    } catch (err: any) { showToast(`Gagal memverifikasi regu: ${err?.message || 'Kesalahan GAS'}`); }
-  };
-
-  const handleSyncAllContingents = async () => {
-    setIsSyncingContingents(true);
-    let synced = 0;
-    try {
-      for (const record of gudepRecords) {
-        await gudepRegistrationService.syncContingent(record.gudep_id);
-        synced += 1;
-      }
-      await loadGudepRecords();
-      showToast(`Sinkronisasi selesai: ${synced} Gudep/Kontingen diproses. Data peserta dan regu tidak dihapus.`);
-    } catch (err: any) {
-      showToast(`❌ Sinkronisasi berhenti setelah ${synced} data: ${err?.message || 'Kesalahan tidak diketahui'}. Tidak ada penghapusan data.`);
-    } finally {
-      setIsSyncingContingents(false);
-    }
-  };
-
-  const openGudepDetail = async (record: GudepRecord) => {
-    setSelectedGudep(record);
-    setGudepDetail(null);
-    try {
-      const detail = await gudepRegistrationService.detail(record.gudep_id);
-      setGudepDetail(detail);
-    } catch (err: any) {
-      showToast(`❌ Gagal memuat detail Gudep: ${err?.message || 'Kesalahan tidak diketahui'}`);
-    }
   };
 
   // Default suggested representation level based on event level
@@ -242,24 +160,34 @@ export const RegistrationContingentEditor: React.FC = () => {
     }
   };
 
-  const handleCreateContingent = async (e: React.FormEvent) => {
+  const handleCreateContingent = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newGudepForm.gudep_number.trim() || !newGudepForm.gudep_name.trim()) {
-      showToast('Nomor dan nama Gudep wajib diisi.');
-      return;
-    }
-    setIsCreatingGudep(true);
+    if (!newContingentForm.name) return;
     try {
-      const requestKey = `gudep-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-      const result = await gudepRegistrationService.create({ request_key: requestKey, ...newGudepForm });
-      await loadGudepRecords();
+      const created = participantService.createContingent({
+        name: newContingentForm.name,
+        leaderName: newContingentForm.leaderName,
+        leaderPhone: newContingentForm.leaderPhone,
+        quota: newContingentForm.quota,
+        region: newContingentForm.region,
+        campZone: newContingentForm.campZone,
+        subCamp: newContingentForm.subCamp,
+        campsite_assignment: newContingentForm.subCamp,
+      });
+      setContingents([...participantService.getContingents()]);
       setShowAddContingentModal(false);
-      setNewGudepForm({ gudep_number: '', gudep_name: '', institution_name: '', address: '', contact_name: '', contact_phone: '', contact_email: '' });
-      showToast(result.alreadyExists ? 'Gudep sudah terdaftar; data dimuat ulang.' : 'Gudep/Kontingen berhasil dibuat dan disimpan melalui GAS.');
+      setNewContingentForm({
+        name: '',
+        leaderName: '',
+        leaderPhone: '',
+        quota: 32,
+        region: '',
+        campZone: 'Zona A (Putra)',
+        subCamp: 'Kavling A-01',
+      });
+      showToast(`✅ Kontingen '${created.name}' berhasil didaftarkan!`);
     } catch (err: any) {
-      showToast(`❌ Gagal membuat Gudep/Kontingen: ${err?.message || 'Kesalahan tidak diketahui'}`);
-    } finally {
-      setIsCreatingGudep(false);
+      showToast(`❌ Gagal: ${err.message}`);
     }
   };
 
@@ -281,7 +209,7 @@ export const RegistrationContingentEditor: React.FC = () => {
               <span>Pendaftaran, Formulir Dinamis & Kontingen</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Kelola registrasi event dan kontingen yang terhubung dengan identitas Gudep, regu, pembina, dan peserta.
+              Kelola status registrasi online, kolom formulir dinamis, berkas wajib, dan entitas kontingen kwartir.
             </p>
           </div>
 
@@ -301,7 +229,7 @@ export const RegistrationContingentEditor: React.FC = () => {
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
               >
                 <Plus className="w-4 h-4 stroke-[3]" />
-                <span>+ Tambah Gudep / Kontingen</span>
+                <span>+ Buat Kontingen Baru</span>
               </button>
             )}
           </div>
@@ -312,7 +240,7 @@ export const RegistrationContingentEditor: React.FC = () => {
           <button
             onClick={() => setActiveTab('config')}
             className={`py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
-              activeTab === 'config' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              activeTab === 'config' ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             ⚙️ Konfigurasi & Kuota
@@ -320,7 +248,7 @@ export const RegistrationContingentEditor: React.FC = () => {
           <button
             onClick={() => setActiveTab('fields')}
             className={`py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
-              activeTab === 'fields' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              activeTab === 'fields' ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             📝 Formulir Dinamis ({fields.length})
@@ -328,10 +256,10 @@ export const RegistrationContingentEditor: React.FC = () => {
           <button
             onClick={() => setActiveTab('contingents')}
             className={`py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
-              activeTab === 'contingents' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              activeTab === 'contingents' ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            🚩 Kelola Kontingen ({gudepRecords.length})
+            🚩 Kelola Kontingen ({contingents.length})
           </button>
         </div>
       </div>
@@ -517,7 +445,7 @@ export const RegistrationContingentEditor: React.FC = () => {
             <button
               type="submit"
               disabled={isSavingSettings}
-              className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white rounded-2xl font-bold text-xs shadow-md transition-all disabled:opacity-50"
+              className="px-6 py-2.5 bg-gradient-to-r from-[#A61B1B] to-[#C62828] hover:from-[#8F1717] hover:to-[#A61B1B] text-white rounded-2xl font-bold text-xs shadow-md transition-all disabled:opacity-50"
             >
               {isSavingSettings ? 'Menyimpan...' : 'Simpan Semua Konfigurasi Pendaftaran'}
             </button>
@@ -598,90 +526,171 @@ export const RegistrationContingentEditor: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 3: EVENT CONTINGENTS FROM VERIFIED GAS GUDEP RECORDS */}
+      {/* TAB 3: CONTINGENTS MANAGEMENT & DETAIL (Requirement 14 & 15) */}
       {activeTab === 'contingents' && (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-emerald-200 dark:border-emerald-500/20 bg-emerald-50/70 dark:bg-emerald-500/5 p-3 text-xs text-emerald-900 dark:text-emerald-200 flex items-start gap-2">
-            <Building2 className="w-4 h-4 mt-0.5 shrink-0" />
-            <p>Kontingen pada event ini menggunakan identitas Gudep yang tersimpan di GAS. Regu, pembina, dan hubungan peserta ditampilkan dari data Gudep; tidak membuat kontingen lokal terpisah.</p>
+          {/* Search bar */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+            <input
+              type="text"
+              placeholder="Cari nama kontingen, pimpinan kontingen, atau kavling buper..."
+              value={contingentSearch}
+              onChange={e => setContingentSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-2xl text-xs text-[#171717] dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-emerald-500 shadow-xs"
+            />
           </div>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-              <input type="text" placeholder="Cari nomor/nama Gudep, pangkalan, atau pembina..." value={contingentSearch} onChange={e => setContingentSearch(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-2xl text-xs text-[#171717] dark:text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500" />
-            </div>
-            <button type="button" onClick={() => void loadGudepRecords()} disabled={gudepLoading} className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50">
-              <Calendar className={`w-4 h-4 ${gudepLoading ? 'animate-spin' : ''}`} /> Muat Ulang
-            </button>
-            <button type="button" onClick={() => void handleSyncAllContingents()} disabled={gudepLoading || isSyncingContingents || gudepRecords.length === 0} className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-white text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50">
-              <Layers className={`w-4 h-4 ${isSyncingContingents ? 'animate-pulse' : ''}`} /> {isSyncingContingents ? 'Sinkronisasi…' : 'Sinkronkan Kontingen'}
-            </button>
-          </div>
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-            <div className="p-3 rounded-2xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10"><div className="text-[10px] text-slate-500">Gudep/Kontingen</div><div className="text-xl font-black text-slate-900 dark:text-white">{gudepRecords.length}</div></div>
-            <div className="p-3 rounded-2xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10"><div className="text-[10px] text-slate-500">Kontingen terverifikasi</div><div className="text-xl font-black text-emerald-600">{gudepRecords.filter(g => g.contingent_verification_status === 'VERIFIED').length}</div></div>
-            <div className="p-3 rounded-2xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10"><div className="text-[10px] text-slate-500">Kontingen menunggu</div><div className="text-xl font-black text-amber-600">{gudepRecords.filter(g => g.contingent_verification_status !== 'VERIFIED').length}</div></div>
-            <div className="p-3 rounded-2xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10"><div className="text-[10px] text-slate-500">Status data</div><div className="text-sm font-bold text-slate-900 dark:text-white">{gudepLoading ? 'Memuat…' : 'Terhubung GAS'}</div></div>
-          </div>
-          {gudepLoading && gudepRecords.length === 0 ? (
-            <div className="p-10 text-center rounded-2xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 text-sm text-slate-500">Memuat data Gudep/Kontingen dari GAS…</div>
-          ) : gudepRecords.filter(g => {
-            const q = contingentSearch.trim().toLowerCase();
-            return !q || [g.gudep_number, g.gudep_name, g.institution_name].some(v => String(v || '').toLowerCase().includes(q));
-          }).length === 0 ? (
-            <div className="p-10 text-center rounded-2xl bg-white dark:bg-[#141418] border border-dashed border-slate-300 dark:border-white/10">
-              <Building2 className="w-8 h-8 mx-auto text-slate-400 mb-2" />
-              <p className="font-bold text-slate-800 dark:text-white">Belum ada Gudep/Kontingen untuk event ini</p>
-              <p className="text-xs text-slate-500 mt-1">Buat identitas Gudep melalui tombol di atas. Data akan disimpan oleh backend GAS.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {gudepRecords.filter(g => {
-                const q = contingentSearch.trim().toLowerCase();
-                return !q || [g.gudep_number, g.gudep_name, g.institution_name].some(v => String(v || '').toLowerCase().includes(q));
-              }).map(g => (
-                <article key={g.gudep_id} className="p-4 rounded-2xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 shadow-sm space-y-3">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center shrink-0"><Tent className="w-5 h-5 text-emerald-700 dark:text-emerald-300" /></div>
-                    <div className="min-w-0 flex-1"><div className="text-[10px] font-mono text-emerald-700 dark:text-emerald-300">{g.gudep_number || 'Nomor Gudep belum diisi'}</div><h4 className="text-sm font-bold text-slate-900 dark:text-white break-words">{g.gudep_name}</h4><p className="text-xs text-slate-500 break-words">{g.institution_name || 'Pangkalan belum dicantumkan'}</p></div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            {contingents
+              .filter(c =>
+                contingentSearch
+                  ? c.name.toLowerCase().includes(contingentSearch.toLowerCase()) ||
+                    (c.leaderName && c.leaderName.toLowerCase().includes(contingentSearch.toLowerCase()))
+                  : true
+              )
+              .map(ctg => (
+                <div
+                  key={ctg.id}
+                  className="p-4 rounded-[24px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/8 hover:border-emerald-500/40 transition-all space-y-3 shadow-xs"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-mono font-bold border border-emerald-200 dark:border-transparent">
+                        {ctg.id}
+                      </span>
+                      <h4 className="text-sm font-bold text-[#171717] dark:text-white mt-1">{ctg.name}</h4>
+                      <p className="text-xs text-slate-600 dark:text-slate-300">
+                        Pimpinan: <span className="text-slate-900 dark:text-white font-medium">{ctg.leaderName || 'Kak Pembina'}</span>
+                      </p>
+                    </div>
+
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30 text-[10px] font-bold">
+                      {ctg.verification_status || 'VERIFIED'}
+                    </span>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px]">
-                    <div className="rounded-xl bg-slate-50 dark:bg-white/5 p-2 space-y-1"><div className="font-bold text-slate-500">Administrasi Kontingen</div><span className={`inline-block px-2 py-1 rounded-full ${g.contingent_verification_status === 'VERIFIED' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'}`}>{g.contingent_verification_status || 'PENDING'}</span></div>
-                    <div className="rounded-xl bg-slate-50 dark:bg-white/5 p-2 space-y-1"><div className="font-bold text-slate-500">Administrasi Gudep</div><span className="inline-block px-2 py-1 rounded-full bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-200">{g.registration_status || 'DRAFT'} · {g.verification_status || 'PENDING'}</span></div>
+
+                  <div className="p-2.5 rounded-2xl bg-black/30 border border-white/5 text-xs grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-slate-400 text-[10px] block">Kuota & Peserta:</span>
+                      <span className="font-bold text-white font-mono">
+                        {ctg.participantCount} / {ctg.quota || 32} Orang
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px] block">Kavling Buper:</span>
+                      <span className="font-semibold text-emerald-300">
+                        {ctg.subCamp || ctg.campsite_assignment || 'Belum diatur'}
+                      </span>
+                    </div>
                   </div>
-                  {canVerifyAdministratively && <div className="space-y-2 rounded-xl border border-slate-200 dark:border-white/10 p-3">
-                    <div className="text-[10px] font-bold text-slate-600 dark:text-slate-300">Keputusan Kontingen (independen)</div>
-                    <div className="flex flex-wrap gap-1.5"><button type="button" onClick={() => void handleContingentDecision(g,'VERIFIED')} className="rounded-lg bg-emerald-600 px-2 py-1.5 text-[10px] font-bold text-white">Setujui kontingen</button><button type="button" onClick={() => void handleContingentDecision(g,'REVISION')} className="rounded-lg bg-amber-500 px-2 py-1.5 text-[10px] font-bold text-slate-950">Revisi kontingen</button><button type="button" onClick={() => void handleContingentDecision(g,'REJECTED')} className="rounded-lg bg-rose-600 px-2 py-1.5 text-[10px] font-bold text-white">Tolak kontingen</button></div>
-                    <div className="text-[10px] font-bold text-slate-600 dark:text-slate-300">Keputusan Gudep (independen)</div>
-                    {g.registration_status === 'SUBMITTED' ? <div className="flex flex-wrap gap-1.5"><button type="button" onClick={() => void handleGudepDecision(g,'VERIFIED')} className="rounded-lg bg-emerald-600 px-2 py-1.5 text-[10px] font-bold text-white">Setujui Gudep</button><button type="button" onClick={() => void handleGudepDecision(g,'REVISION')} className="rounded-lg bg-amber-500 px-2 py-1.5 text-[10px] font-bold text-slate-950">Revisi Gudep</button><button type="button" onClick={() => void handleGudepDecision(g,'REJECTED')} className="rounded-lg bg-rose-600 px-2 py-1.5 text-[10px] font-bold text-white">Tolak Gudep</button></div> : <p className="text-[10px] text-slate-500">Gudep harus diajukan terlebih dahulu (status SUBMITTED).</p>}
-                  </div>}
-                  <button type="button" onClick={() => void openGudepDetail(g)} className="w-full px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-2"><Eye className="w-4 h-4" /> Detail Regu, Peserta & Pembina</button>
-                </article>
+
+                  <div className="pt-2 border-t border-white/5 flex items-center justify-between">
+                    <span className="text-xs font-bold text-amber-400 font-mono">
+                      ⚡ {ctg.totalXp || 0} Total XP
+                    </span>
+
+                    <button
+                      onClick={() => setSelectedContingentDetail(ctg)}
+                      className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-emerald-600/30 text-emerald-300 hover:text-white border border-white/10 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Roster & Detail</span>
+                    </button>
+                  </div>
+                </div>
               ))}
-            </div>
-          )}
+          </div>
         </div>
       )}
 
-      {/* G U D E P / CONTINGENT DETAIL MODAL */}
-      {selectedGudep && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-xs">
-          <div className="w-full max-w-3xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-3xl p-4 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-start justify-between gap-3 border-b border-slate-200 dark:border-white/10 pb-3">
-              <div><span className="text-[10px] uppercase font-bold tracking-wide text-emerald-600">Detail Kontingen / Gudep</span><h3 className="text-lg font-black text-slate-900 dark:text-white">{selectedGudep.gudep_name}</h3><p className="text-xs text-slate-500">{selectedGudep.gudep_number} · {selectedGudep.institution_name || 'Pangkalan belum dicantumkan'}</p></div>
-              <button type="button" onClick={() => { setSelectedGudep(null); setGudepDetail(null); }} className="p-2 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-500"><X className="w-4 h-4" /></button>
-            </div>
-            {!gudepDetail ? <div className="py-10 text-center text-sm text-slate-500">Memuat detail dari GAS…</div> : <>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/5"><div className="text-[10px] text-slate-500">Regu</div><div className="text-xl font-black text-slate-900 dark:text-white">{gudepDetail.regu?.length || 0}</div></div>
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/5"><div className="text-[10px] text-slate-500">Peserta terhubung</div><div className="text-xl font-black text-slate-900 dark:text-white">{gudepDetail.participantLinks?.filter(x => x.status === 'ACTIVE').length || 0}</div></div>
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/5"><div className="text-[10px] text-slate-500">Pembina</div><div className="text-xl font-black text-slate-900 dark:text-white">{gudepDetail.advisors?.length || 0}</div></div>
+      {/* CONTINGENT DETAIL MODAL (Requirement 15) */}
+      {selectedContingentDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-2xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-[#ECECEF] dark:border-white/8">
+              <div>
+                <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-bold uppercase">
+                  Detail & Roster Kontingen
+                </span>
+                <h3 className="text-lg font-black text-[#171717] dark:text-white">{selectedContingentDetail.name}</h3>
               </div>
-              <section className="space-y-2"><h4 className="font-bold text-sm text-slate-900 dark:text-white">Regu — verifikasi independen</h4>{(gudepDetail.regu || []).length ? gudepDetail.regu.map(r => <div key={r.regu_id} className="p-3 rounded-xl border border-slate-200 dark:border-white/10 space-y-2"><div className="flex items-center justify-between gap-3"><div><div className="font-semibold text-sm text-slate-900 dark:text-white">{r.regu_name}</div><div className="text-xs text-slate-500">{r.gender} · Kuota {r.quota} · {r.registration_status || 'DRAFT'}</div></div><span className="text-[10px] rounded-full px-2 py-1 bg-slate-100 dark:bg-white/5">{r.verification_status || 'PENDING'}</span></div>{canVerifyAdministratively && r.registration_status === 'SUBMITTED' && <div className="flex flex-wrap gap-1.5"><button type="button" onClick={() => void handleReguDecision(selectedGudep!, r.regu_id, r.regu_name, 'VERIFIED')} className="rounded-lg bg-emerald-600 px-2 py-1.5 text-[10px] font-bold text-white">Setujui regu</button><button type="button" onClick={() => void handleReguDecision(selectedGudep!, r.regu_id, r.regu_name, 'REVISION')} className="rounded-lg bg-amber-500 px-2 py-1.5 text-[10px] font-bold text-slate-950">Revisi</button><button type="button" onClick={() => void handleReguDecision(selectedGudep!, r.regu_id, r.regu_name, 'REJECTED')} className="rounded-lg bg-rose-600 px-2 py-1.5 text-[10px] font-bold text-white">Tolak</button></div>}</div>) : <p className="text-xs text-slate-500 p-3 rounded-xl bg-slate-50 dark:bg-white/5">Belum ada regu.</p>}</section>
-              <section className="space-y-2"><h4 className="font-bold text-sm text-slate-900 dark:text-white">Pembina Pendamping</h4>{(gudepDetail.advisors || []).length ? gudepDetail.advisors.map(a => <div key={a.advisor_id} className="p-3 rounded-xl border border-slate-200 dark:border-white/10"><div className="font-semibold text-sm text-slate-900 dark:text-white">{a.full_name}</div><div className="text-xs text-slate-500">{a.phone || 'Nomor telepon belum diisi'} · {a.email || 'Email belum diisi'}</div></div>) : <p className="text-xs text-slate-500 p-3 rounded-xl bg-slate-50 dark:bg-white/5">Belum ada pembina.</p>}</section>
-              <section className="space-y-2"><h4 className="font-bold text-sm text-slate-900 dark:text-white">Status hubungan peserta</h4><p className="text-xs text-slate-500">Peserta aktif terhubung melalui GudepParticipantLinks. Detail nama peserta tetap bersumber dari data Participants; tidak dibuat duplikat pada halaman ini.</p><div className="text-xs font-mono text-slate-600 dark:text-slate-300">{gudepDetail.participantLinks?.filter(x => x.status === 'ACTIVE').length || 0} link aktif · {(gudepDetail.participantLinks || []).filter(x => x.status !== 'ACTIVE').length} riwayat nonaktif</div></section>
-            </>}
-            <div className="flex justify-end"><button type="button" onClick={() => { setSelectedGudep(null); setGudepDetail(null); }} className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-white/10 text-xs font-bold">Tutup</button></div>
+              <button
+                onClick={() => setSelectedContingentDetail(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Leadership & Info Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div className="p-3 rounded-2xl bg-[#FAFAFA] dark:bg-black/40 border border-[#ECECEF] dark:border-white/5">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Pimpinan Kontingen:</span>
+                <span className="font-bold text-[#171717] dark:text-white">{selectedContingentDetail.leaderName || '-'}</span>
+              </div>
+              <div className="p-3 rounded-2xl bg-[#FAFAFA] dark:bg-black/40 border border-[#ECECEF] dark:border-white/5">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Kontak Telepon:</span>
+                <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">{selectedContingentDetail.leaderPhone || '-'}</span>
+              </div>
+              <div className="p-3 rounded-2xl bg-[#FAFAFA] dark:bg-black/40 border border-[#ECECEF] dark:border-white/5">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Lokasi Kavling:</span>
+                <span className="font-bold text-amber-600 dark:text-amber-300">{selectedContingentDetail.subCamp || 'Kavling A-01'}</span>
+              </div>
+              <div className="p-3 rounded-2xl bg-[#FAFAFA] dark:bg-black/40 border border-[#ECECEF] dark:border-white/5">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Total XP Kontingen:</span>
+                <span className="font-mono font-bold text-amber-600 dark:text-amber-400">⚡ {selectedContingentDetail.totalXp || 0} XP</span>
+              </div>
+            </div>
+
+            {/* Participant Roster List */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+                <span>Daftar Anggota / Roster Peserta ({
+                  participantService.getParticipants({ contingentId: selectedContingentDetail.id }).length
+                } Orang)</span>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">Status Verifikasi Terpusat</span>
+              </div>
+
+              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                {participantService
+                  .getParticipants({ contingentId: selectedContingentDetail.id })
+                  .map(p => (
+                    <div
+                      key={p.id}
+                      className="p-2.5 rounded-xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/5 flex items-center justify-between text-xs"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <img src={p.photoUrl} alt={p.name} className="w-8 h-8 rounded-lg object-cover" />
+                        <div>
+                          <div className="font-bold text-[#171717] dark:text-white">{p.name}</div>
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">{p.code} · {p.role}</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          p.status === 'approved'
+                            ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30'
+                            : 'bg-amber-50 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30'
+                        }`}>
+                          {p.status.toUpperCase()}
+                        </span>
+                        <span className="text-[11px] font-mono text-amber-600 dark:text-amber-400 font-bold">⚡ {p.xp}</span>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-[#ECECEF] dark:border-white/8 flex justify-end">
+              <button
+                onClick={() => setSelectedContingentDetail(null)}
+                className="px-4 py-2 bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 text-slate-700 dark:text-white rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -746,29 +755,87 @@ export const RegistrationContingentEditor: React.FC = () => {
 
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setShowAddFieldModal(false)} className="px-4 py-2 bg-white/5 rounded-xl">Batal</button>
-                <button type="submit" className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold">Simpan Kolom</button>
+                <button type="submit" className="px-5 py-2 bg-[#C62828] hover:bg-[#A61B1B] text-white rounded-xl font-bold">Simpan Kolom</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* CREATE GUDEP / EVENT CONTINGENT MODAL */}
+      {/* CREATE CONTINGENT MODAL */}
       {showAddContingentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-3 sm:p-4">
-          <div className="w-full max-w-xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-start justify-between gap-3"><div><h3 className="text-base font-bold text-slate-900 dark:text-white">Tambah Gudep sebagai Kontingen Event</h3><p className="text-xs text-slate-500 mt-1">Data akan disimpan melalui GAS. Isi identitas Gudep dan pangkalan, bukan membuat roster terpisah.</p></div><button type="button" onClick={() => setShowAddContingentModal(false)} className="text-slate-400 p-2">✕</button></div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="w-full max-w-md bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-[#171717] dark:text-white">+ Buat Kontingen Baru</h3>
+              <button onClick={() => setShowAddContingentModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer">✕</button>
+            </div>
+
             <form onSubmit={handleCreateContingent} className="space-y-3 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label className="block"><span className="block mb-1 font-semibold text-slate-700 dark:text-slate-300">Nomor Gudep *</span><input required value={newGudepForm.gudep_number} onChange={e => setNewGudepForm({ ...newGudepForm, gudep_number: e.target.value })} placeholder="Contoh: 01.023" className="w-full px-3 py-2.5 bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white" /></label>
-                <label className="block"><span className="block mb-1 font-semibold text-slate-700 dark:text-slate-300">Nama Gudep *</span><input required value={newGudepForm.gudep_name} onChange={e => setNewGudepForm({ ...newGudepForm, gudep_name: e.target.value })} placeholder="Nama Gugus Depan" className="w-full px-3 py-2.5 bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white" /></label>
-                <label className="block sm:col-span-2"><span className="block mb-1 font-semibold text-slate-700 dark:text-slate-300">Pangkalan / Instansi</span><input value={newGudepForm.institution_name} onChange={e => setNewGudepForm({ ...newGudepForm, institution_name: e.target.value })} placeholder="Nama sekolah atau lembaga" className="w-full px-3 py-2.5 bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white" /></label>
-                <label className="block sm:col-span-2"><span className="block mb-1 font-semibold text-slate-700 dark:text-slate-300">Alamat</span><input value={newGudepForm.address} onChange={e => setNewGudepForm({ ...newGudepForm, address: e.target.value })} placeholder="Alamat pangkalan" className="w-full px-3 py-2.5 bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white" /></label>
-                <label className="block"><span className="block mb-1 font-semibold text-slate-700 dark:text-slate-300">Nama Kontak</span><input value={newGudepForm.contact_name} onChange={e => setNewGudepForm({ ...newGudepForm, contact_name: e.target.value })} placeholder="Pembina / kontak" className="w-full px-3 py-2.5 bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white" /></label>
-                <label className="block"><span className="block mb-1 font-semibold text-slate-700 dark:text-slate-300">Telepon</span><input value={newGudepForm.contact_phone} onChange={e => setNewGudepForm({ ...newGudepForm, contact_phone: e.target.value })} placeholder="Nomor WhatsApp" className="w-full px-3 py-2.5 bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white" /></label>
-                <label className="block sm:col-span-2"><span className="block mb-1 font-semibold text-slate-700 dark:text-slate-300">Email Kontak</span><input type="email" value={newGudepForm.contact_email} onChange={e => setNewGudepForm({ ...newGudepForm, contact_email: e.target.value })} placeholder="email@sekolah.sch.id" className="w-full px-3 py-2.5 bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white" /></label>
+              <div>
+                <label className="text-slate-300 font-semibold block mb-1">Nama Kontingen / Kwartir:</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Kwarran Rogojampi"
+                  value={newContingentForm.name}
+                  onChange={e => setNewContingentForm({ ...newContingentForm, name: e.target.value })}
+                  className="w-full px-3.5 py-2 bg-black/40 border border-white/10 rounded-xl text-white"
+                />
               </div>
-              <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-2"><button type="button" onClick={() => setShowAddContingentModal(false)} className="px-4 py-2.5 bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-white rounded-xl font-semibold">Batal</button><button type="submit" disabled={isCreatingGudep} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl font-bold">{isCreatingGudep ? 'Menyimpan…' : 'Simpan Gudep / Kontingen'}</button></div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-300 font-semibold block mb-1">Pimpinan Kontingen:</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Nama Pembina"
+                    value={newContingentForm.leaderName}
+                    onChange={e => setNewContingentForm({ ...newContingentForm, leaderName: e.target.value })}
+                    className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-xl text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-300 font-semibold block mb-1">No. HP / WhatsApp:</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="0812-3456-7890"
+                    value={newContingentForm.leaderPhone}
+                    onChange={e => setNewContingentForm({ ...newContingentForm, leaderPhone: e.target.value })}
+                    className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-xl text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-300 font-semibold block mb-1">Alokasi Kavling Tenda:</label>
+                  <input
+                    type="text"
+                    value={newContingentForm.subCamp}
+                    onChange={e => setNewContingentForm({ ...newContingentForm, subCamp: e.target.value })}
+                    className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-xl text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-300 font-semibold block mb-1">Kuota Peserta:</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="200"
+                    value={newContingentForm.quota}
+                    onChange={e => setNewContingentForm({ ...newContingentForm, quota: Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-xl text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setShowAddContingentModal(false)} className="px-4 py-2 bg-white/5 rounded-xl">Batal</button>
+                <button type="submit" className="px-5 py-2 bg-[#C62828] hover:bg-[#A61B1B] text-white rounded-xl font-bold">Daftarkan Kontingen</button>
+              </div>
             </form>
           </div>
         </div>
