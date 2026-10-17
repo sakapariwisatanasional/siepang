@@ -290,29 +290,53 @@ export const ParticipantList: React.FC = () => {
   };
 
   // Verification actions (Requirement 9)
-  const handleApprove = (p: Participant) => {
-    participantService.approveParticipant(p.id, currentActorName);
-    showToast(`✓ Peserta '${p.name}' disetujui (Approved).`);
+  const [verificationBusyId, setVerificationBusyId] = useState<string | null>(null);
+
+  const handleApprove = async (p: Participant) => {
+    if (verificationBusyId) return;
+    setVerificationBusyId(p.id);
+    try {
+      await participantService.approveParticipant(p.id, currentActorName);
+      showToast(`✓ Peserta '${p.name}' disetujui dan status dibaca ulang dari Spreadsheet.`);
+    } catch (err: any) {
+      showToast(`Gagal menyimpan persetujuan: ${err?.message || 'Kesalahan GAS'}`);
+    } finally { setVerificationBusyId(null); }
   };
 
-  const handleVerify = (p: Participant) => {
-    participantService.verifyParticipant(p.id, currentActorName);
-    showToast(`✓ Berkas '${p.name}' terverifikasi.`);
+  const handleVerify = async (p: Participant) => {
+    if (verificationBusyId) return;
+    setVerificationBusyId(p.id);
+    try {
+      await participantService.verifyParticipant(p.id, currentActorName);
+      showToast(`✓ Berkas '${p.name}' terverifikasi dan tersimpan di Spreadsheet.`);
+    } catch (err: any) {
+      showToast(`Gagal menyimpan verifikasi: ${err?.message || 'Kesalahan GAS'}`);
+    } finally { setVerificationBusyId(null); }
   };
 
-  const handleConfirmRevision = () => {
-    if (!revisionModalTarget) return;
-    participantService.requestRevision(revisionModalTarget.id, revisionReasonText, currentActorName);
-    showToast(`⚠️ Permintaan perbaikan berkas dikirimkan ke '${revisionModalTarget.name}'.`);
-    setRevisionModalTarget(null);
+  const handleConfirmRevision = async () => {
+    if (!revisionModalTarget || verificationBusyId) return;
+    const target = revisionModalTarget;
+    setVerificationBusyId(target.id);
+    try {
+      await participantService.requestRevision(target.id, revisionReasonText, currentActorName);
+      showToast(`⚠️ Permintaan revisi untuk '${target.name}' tersimpan di Spreadsheet.`);
+      setRevisionModalTarget(null);
+    } catch (err: any) {
+      showToast(`Gagal menyimpan revisi: ${err?.message || 'Kesalahan GAS'}`);
+    } finally { setVerificationBusyId(null); }
   };
 
-  const handleReject = (p: Participant) => {
+  const handleReject = async (p: Participant) => {
     const reason = prompt('Masukkan alasan penolakan berkas:', 'Data ganda atau syarat kepramukaan tidak terpenuhi');
-    if (reason) {
-      participantService.rejectParticipant(p.id, reason, currentActorName);
-      showToast(`Peserta '${p.name}' ditolak.`);
-    }
+    if (!reason?.trim() || verificationBusyId) return;
+    setVerificationBusyId(p.id);
+    try {
+      await participantService.rejectParticipant(p.id, reason, currentActorName);
+      showToast(`Peserta '${p.name}' ditolak dan status tersimpan di Spreadsheet.`);
+    } catch (err: any) {
+      showToast(`Gagal menyimpan penolakan: ${err?.message || 'Kesalahan GAS'}`);
+    } finally { setVerificationBusyId(null); }
   };
 
   // Admin participant mutations now use persistent GAS endpoints only.
@@ -966,7 +990,8 @@ export const ParticipantList: React.FC = () => {
                   {/* Actions: Approve / Request Revision / Reject */}
                   <div className="pt-2 border-t border-[#ECECEF] dark:border-white/5 flex items-center justify-between gap-2">
                     <button
-                      onClick={() => handleApprove(p)}
+                      onClick={() => void handleApprove(p)}
+                      disabled={verificationBusyId !== null}
                       className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer min-h-[40px]"
                     >
                       <Check className="w-3.5 h-3.5 stroke-[3]" />
@@ -975,6 +1000,7 @@ export const ParticipantList: React.FC = () => {
 
                     <button
                       onClick={() => {
+                        if (verificationBusyId) return;
                         setRevisionModalTarget(p);
                         setRevisionReasonText('Foto KTA atau dokumen izin orang tua kurang jelas, mohon unggah ulang.');
                       }}
@@ -984,7 +1010,8 @@ export const ParticipantList: React.FC = () => {
                     </button>
 
                     <button
-                      onClick={() => handleReject(p)}
+                      onClick={() => void handleReject(p)}
+                      disabled={verificationBusyId !== null}
                       className="py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 dark:bg-rose-500/20 dark:hover:bg-rose-500/30 dark:text-rose-300 dark:border-rose-500/30 rounded-xl text-xs font-bold transition-colors cursor-pointer min-h-[40px]"
                     >
                       Tolak
@@ -1030,7 +1057,7 @@ export const ParticipantList: React.FC = () => {
             <div className="pt-2 border-t border-[#ECECEF] dark:border-white/10 flex justify-end gap-2">
               <button onClick={() => setRevisionModalTarget(null)} className="px-4 py-2 text-xs text-[#6B7280] hover:text-[#171717] dark:text-slate-400 dark:hover:text-white cursor-pointer">Batal</button>
               <button
-                onClick={handleConfirmRevision}
+                onClick={() => void handleConfirmRevision()}
                 className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer"
               >
                 Kirim Permintaan Revisi
