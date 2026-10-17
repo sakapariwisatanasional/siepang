@@ -82,9 +82,9 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
         onClick={() => navigate(item.id)}
         aria-label={`Buka halaman ${item.label}`}
         aria-current={active ? 'page' : undefined}
-        className={`flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-600 ${active
-          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-          : 'text-slate-500 dark:text-slate-400 hover:text-emerald-700'}`}
+        className={`flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600 ${active
+          ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+          : 'text-slate-500 dark:text-slate-400 hover:text-red-700'}`}
       >
         <Icon className="h-5 w-5" />
         <span className="max-w-full truncate text-[10px] font-semibold">{item.label}</span>
@@ -96,7 +96,7 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
     <>
       <nav
         aria-label="Navigasi utama seluler"
-        className="md:hidden fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/80 bg-white/95 px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-2 shadow-[0_-8px_30px_rgba(15,23,42,0.07)] backdrop-blur-xl dark:border-white/10 dark:bg-[#121215]/95"
+        className="md:hidden fixed inset-x-0 bottom-0 z-40 border-t border-red-100 bg-white/95 px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-2 shadow-[0_-8px_30px_rgba(15,23,42,0.07)] backdrop-blur-xl dark:border-white/10 dark:bg-[#121215]/95"
       >
         <div className="mx-auto grid h-14 max-w-lg grid-cols-5 items-center gap-1">
           {navButton({ id: 'home', label: 'Beranda', icon: Home })}
@@ -105,7 +105,7 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
             type="button"
             onClick={() => { setMoreMenuOpen(false); onOpenScanner(); }}
             aria-label="Buka pemindai QR"
-            className="mx-auto flex h-12 w-12 -translate-y-2 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-lg shadow-emerald-700/20 transition-transform active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
+            className="mx-auto flex h-12 w-12 -translate-y-2 items-center justify-center rounded-2xl bg-[#C62828] text-white shadow-lg shadow-red-900/20 transition-transform active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
           >
             <QrCode className="h-6 w-6" />
           </button>
@@ -115,8 +115,8 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
             onClick={() => setMoreMenuOpen(true)}
             aria-label="Buka menu fitur lainnya"
             aria-expanded={isMoreMenuOpen}
-            className={`flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-600 ${isMoreMenuOpen
-              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+            className={`flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600 ${isMoreMenuOpen
+              ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
               : 'text-slate-500 dark:text-slate-400'}`}
           >
             <MoreHorizontal className="h-5 w-5" />
