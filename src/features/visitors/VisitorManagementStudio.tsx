@@ -417,7 +417,7 @@ export const VisitorManagementStudio: React.FC = () => {
           {(() => {
             const directoryCategories = [
               'Orang Tua / Wali', 'Keluarga', 'Tamu Undangan', 'Umum', 'Alumni', 'VIP',
-              'Panitia', 'Pembina / Pamong', 'Peserta', 'Vendor', 'Media',
+              'Panitia', 'Pembina / Pamong', 'Mabiran', 'Mabigus', 'Peserta', 'Vendor', 'Media',
             ];
             const statusLabel = (status: string) => ({
               PENDING: 'Menunggu', APPROVED: 'Disetujui', CHECKED_IN: 'Di Dalam',
