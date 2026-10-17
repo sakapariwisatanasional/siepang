@@ -33,6 +33,7 @@ import { eventStudioService } from '../../services/eventStudioService';
 import { competitionService, CompetitionWinnerResult } from '../../services/competitionService';
 import { participantService } from '../../services/participantService';
 import { pointService } from '../../services/pointService';
+import { userManagementService, type ManagedUser } from '../../services/userManagementService';
 import { Competition, JudgingCriterion, CompetitionJudge, VotingConfig, CompetitionType } from '../../types';
 
 export const CompetitionStudio: React.FC = () => {
@@ -40,6 +41,8 @@ export const CompetitionStudio: React.FC = () => {
   const [competitions, setCompetitions] = useState<Competition[]>(eventStudioService.getCompetitions());
   const [criteria, setCriteria] = useState<JudgingCriterion[]>(eventStudioService.getJudgingCriteria());
   const [judges, setJudges] = useState<CompetitionJudge[]>(eventStudioService.getJudges());
+  const [registeredUsers, setRegisteredUsers] = useState<ManagedUser[]>(userManagementService.getUsers().filter(u => u.status === 'active'));
+  const [savingCriteria, setSavingCriteria] = useState(false);
   const [votingConfig, setVotingConfig] = useState<VotingConfig>(eventStudioService.getVotingConfig());
   const [competitionTypes, setCompetitionTypes] = useState<CompetitionType[]>(eventStudioService.listCompetitionTypes());
 
@@ -90,13 +93,14 @@ export const CompetitionStudio: React.FC = () => {
   });
 
   // New judge form
-  const [judgeForm, setJudgeForm] = useState<Omit<CompetitionJudge, 'id'>>({
+  const [judgeForm, setJudgeForm] = useState<Omit<CompetitionJudge, 'id'> & { userId?: string }>({
     name: '',
     email: '',
     phone: '',
     assignedCompetitions: [],
     categories: [],
     isLocked: false,
+    userId: '',
   });
 
   const [editingCompetitionId, setEditingCompetitionId] = useState<string | null>(null);
@@ -106,9 +110,10 @@ export const CompetitionStudio: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    eventStudioService.refreshCompetitionManagement()
-      .then(() => {
+    Promise.all([eventStudioService.refreshCompetitionManagement(), userManagementService.refreshUsers()])
+      .then(([, users]) => {
         if (cancelled) return;
+        setRegisteredUsers(users.filter(u => u.status === 'active'));
         const refreshedCompetitions = [...eventStudioService.getCompetitions()];
         setCompetitions(refreshedCompetitions);
         setSelectedWinnerCompId(current => (
@@ -137,7 +142,21 @@ export const CompetitionStudio: React.FC = () => {
   const handleWeightChange = (id: string, newWeight: number) => {
     const updated = criteria.map(c => c.id === id ? { ...c, weight: newWeight } : c);
     setCriteria(updated);
-    eventStudioService.updateJudgingCriteria(updated);
+  };
+
+  const handleSaveCriteria = async () => {
+    if (savingCriteria) return;
+    if (!criteria.length) { showToast('Tambahkan minimal satu kriteria penilaian.'); return; }
+    if (criteria.some(c => !String(c.name || '').trim())) { showToast('Nama setiap kriteria wajib diisi.'); return; }
+    if (totalWeight !== 100) { showToast(`Total bobot harus 100%. Saat ini ${totalWeight}%.`); return; }
+    setSavingCriteria(true);
+    try {
+      const result = await eventStudioService.configureCriteria(criteria);
+      if (!result.valid) throw new Error(`Total bobot ${result.totalWeight}%, harus tepat 100%.`);
+      setCriteria([...eventStudioService.getJudgingCriteria()]);
+      showToast('Rubrik penilaian berhasil disimpan ke GAS.');
+    } catch (err: any) { showToast(`Gagal menyimpan rubrik: ${err?.message || 'Kesalahan tidak diketahui'}`); }
+    finally { setSavingCriteria(false); }
   };
 
   const handleAddCriterion = () => {
@@ -145,17 +164,15 @@ export const CompetitionStudio: React.FC = () => {
       id: `crit_${Date.now()}`,
       name: 'Kriteria Penilaian Baru',
       weight: 10,
-      maxScore: 100,
-    };
+      maxScore: 5,
+      description: '',
+    } as JudgingCriterion;
     const updated = [...criteria, newCrit];
     setCriteria(updated);
-    eventStudioService.updateJudgingCriteria(updated);
   };
 
-  const handleDeleteCriterion = async (id: string) => {
-    const updated = criteria.filter(c => c.id !== id);
-    setCriteria(updated);
-    await eventStudioService.configureCriteria(updated);
+  const handleDeleteCriterion = (id: string) => {
+    setCriteria(current => current.filter(c => c.id !== id));
   };
 
   const refreshLists = async () => {
@@ -187,11 +204,16 @@ export const CompetitionStudio: React.FC = () => {
 
   const handleSaveJudge = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!judgeForm.userId) { showToast('Pilih akun pengguna SiEpang yang akan ditugaskan sebagai juri.'); return; }
     if (!judgeForm.name.trim() || savingRecord) return;
+    if (!(judgeForm.assignedCompetitions || []).length) { showToast('Pilih minimal satu cabang lomba untuk juri ini.'); return; }
     setSavingRecord(true);
     try {
-      if (editingJudgeId) await eventStudioService.updateJudge(editingJudgeId, judgeForm);
-      else await eventStudioService.assignJudges(judgeForm);
+      const selectedUser = registeredUsers.find(u => u.id === judgeForm.userId);
+      if (!selectedUser) throw new Error('Akun terpilih tidak ditemukan atau tidak aktif.');
+      const judgePayload = { ...judgeForm, userId: selectedUser.id, name: selectedUser.name, email: selectedUser.email, phone: judgeForm.phone || selectedUser.phone || '' };
+      if (editingJudgeId) await eventStudioService.updateJudge(editingJudgeId, judgePayload);
+      else await eventStudioService.assignJudges(judgePayload);
       await refreshLists();
       setShowAddJudgeModal(false);
       setEditingJudgeId(null);
@@ -461,13 +483,10 @@ export const CompetitionStudio: React.FC = () => {
                 <span>Total: {totalWeight}% / 100%</span>
               </span>
 
-              <button
-                type="button"
-                onClick={handleAddCriterion}
-                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold cursor-pointer"
-              >
-                + Tambah Kriteria
-              </button>
+              <div className="flex gap-2 flex-wrap">
+                <button type="button" onClick={handleAddCriterion} className="px-3.5 py-2 bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-white rounded-xl text-xs font-bold">+ Tambah Kriteria</button>
+                <button type="button" onClick={handleSaveCriteria} disabled={savingCriteria || !isWeightValid} className="px-3.5 py-2 bg-emerald-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold">{savingCriteria ? 'Menyimpan…' : 'Simpan Rubrik'}</button>
+              </div>
             </div>
           </div>
 
@@ -486,7 +505,6 @@ export const CompetitionStudio: React.FC = () => {
                       onChange={e => {
                         const updated = criteria.map(x => x.id === c.id ? { ...x, name: e.target.value } : x);
                         setCriteria(updated);
-                        eventStudioService.updateJudgingCriteria(updated);
                       }}
                       className="bg-transparent border-b border-slate-300 dark:border-white/20 text-[#171717] dark:text-white text-xs font-bold focus:border-emerald-500 focus:outline-none flex-1 py-1"
                     />
@@ -507,16 +525,13 @@ export const CompetitionStudio: React.FC = () => {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px] gap-2">
+                  <input type="text" value={(c as any).description || ''} onChange={e => setCriteria(current => current.map(x => x.id === c.id ? ({ ...x, description: e.target.value } as any) : x))} placeholder="Indikator: apa yang dinilai oleh juri?" aria-label="Indikator kriteria" className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-black/20 text-xs" />
+                  <label className="flex items-center gap-2 text-xs text-slate-500">Skor maks. <input type="number" min="1" max="100" value={c.maxScore} onChange={e => setCriteria(current => current.map(x => x.id === c.id ? { ...x, maxScore: Math.max(1, Number(e.target.value) || 1) } : x))} className="w-16 px-2 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-black/20" /></label>
+                </div>
                 <div className="flex items-center gap-3">
-                  <input
-                    type="range"
-                    min="5"
-                    max="60"
-                    step="5"
-                    value={c.weight}
-                    onChange={e => handleWeightChange(c.id, Number(e.target.value))}
-                    className="w-full accent-emerald-600 h-2 bg-slate-200 dark:bg-black/40 rounded-lg cursor-pointer"
-                  />
+                  <input type="range" min="0" max="100" step="1" value={c.weight} onChange={e => handleWeightChange(c.id, Number(e.target.value))} className="w-full accent-emerald-600 h-2 bg-slate-200 dark:bg-black/40 rounded-lg cursor-pointer" />
+                  <input aria-label="Bobot kriteria" type="number" min="0" max="100" value={c.weight} onChange={e => handleWeightChange(c.id, Math.max(0, Math.min(100, Number(e.target.value) || 0)))} className="w-16 px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-black/20 text-xs" />
                 </div>
               </div>
             ))}
@@ -561,7 +576,7 @@ export const CompetitionStudio: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <button type="button" disabled={savingRecord} onClick={() => {
                     setEditingJudgeId(j.id);
-                    setJudgeForm({ name: j.name, email: j.email, phone: j.phone, assignedCompetitions: [...j.assignedCompetitions], categories: [...j.categories], isLocked: j.isLocked });
+                    setJudgeForm({ name: j.name, email: j.email, phone: j.phone, assignedCompetitions: [...(j.assignedCompetitions || [])], categories: [...(j.categories || [])], isLocked: j.isLocked, userId: (j as any).userId || registeredUsers.find(u => u.email.toLowerCase() === j.email.toLowerCase())?.id || '' });
                     setShowAddJudgeModal(true);
                   }} className="px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-300 text-xs font-bold flex gap-1 items-center"><Edit2 className="w-3.5 h-3.5"/> Edit</button>
                   <button type="button" disabled={savingRecord} onClick={() => void handleArchiveJudge(j)} className="px-3 py-1.5 rounded-xl bg-rose-500/15 text-rose-700 dark:text-rose-300 text-xs font-bold flex gap-1 items-center"><Trash2 className="w-3.5 h-3.5"/> Arsipkan</button>
@@ -1153,39 +1168,30 @@ export const CompetitionStudio: React.FC = () => {
 
             <form onSubmit={handleSaveJudge} className="space-y-3.5 text-xs">
               <div>
-                <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Nama Lengkap Juri & Gelar:</label>
-                <input
-                  type="text"
-                  value={judgeForm.name}
-                  onChange={e => setJudgeForm({ ...judgeForm, name: e.target.value })}
-                  placeholder="Kak Drs. H. Achmad Soleh, M.Pd"
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white"
-                  required
-                />
+                <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Pilih akun pengguna terdaftar:</label>
+                <select value={judgeForm.userId || ''} onChange={e => { const user = registeredUsers.find(u => u.id === e.target.value); setJudgeForm(current => ({ ...current, userId: user?.id || '', name: user?.name || '', email: user?.email || '', phone: user?.phone || current.phone || '' })); }} required className="w-full px-3 py-3 bg-slate-50 dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white">
+                  <option value="">-- Cari dan pilih akun --</option>
+                  {registeredUsers.map(user => <option key={user.id} value={user.id}>{user.name} · {user.email} · {user.role}</option>)}
+                </select>
+                <p className="mt-1 text-[11px] text-slate-500">Hanya akun aktif yang sudah terdaftar. Nama dan email diambil dari data akun, bukan diketik ulang.</p>
+                {registeredUsers.length === 0 && <p className="mt-1 text-[11px] text-amber-600">Daftar akun belum tersedia. Periksa koneksi layanan pengguna sebelum menambahkan juri.</p>}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Nama akun</label><input readOnly value={judgeForm.name} className="w-full px-3 py-2 bg-slate-100 dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white" /></div>
+                <div><label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Email akun</label><input readOnly value={judgeForm.email} className="w-full px-3 py-2 bg-slate-100 dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono" /></div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Email Resmi Juri:</label>
-                  <input
-                    type="email"
-                    value={judgeForm.email}
-                    onChange={e => setJudgeForm({ ...judgeForm, email: e.target.value })}
-                    placeholder="juri@pramukabanyuwangi.id"
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono"
-                    required
-                  />
+              <div>
+                <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">No. WhatsApp (opsional):</label>
+                <input type="text" value={judgeForm.phone} onChange={e => setJudgeForm({ ...judgeForm, phone: e.target.value })} placeholder="Nomor kontak juri" className="w-full px-3 py-2 bg-slate-50 dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono" />
+              </div>
+              <div>
+                <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-2">Penugasan cabang lomba:</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-xl border border-[#ECECEF] dark:border-white/10 p-3 max-h-36 overflow-y-auto">
+                  {competitions.length === 0 && <p className="text-slate-500">Belum ada cabang lomba. Buat cabang terlebih dahulu.</p>}
+                  {competitions.map(comp => <label key={comp.id} className="flex items-start gap-2 text-slate-700 dark:text-slate-300 cursor-pointer"><input type="checkbox" checked={(judgeForm.assignedCompetitions || []).includes(comp.id)} onChange={e => setJudgeForm(current => ({ ...current, assignedCompetitions: e.target.checked ? Array.from(new Set([...(current.assignedCompetitions || []), comp.id])) : (current.assignedCompetitions || []).filter(id => id !== comp.id), categories: e.target.checked ? Array.from(new Set([...(current.categories || []), comp.category])) : (current.categories || []).filter(category => category !== comp.category || (current.assignedCompetitions || []).some(id => id !== comp.id && competitions.find(c => c.id === id)?.category === category)) }))} className="mt-0.5 accent-emerald-600" /><span>{comp.title}<span className="block text-[10px] text-slate-500">{comp.category}</span></span></label>)}
                 </div>
-                <div>
-                  <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">No. WhatsApp:</label>
-                  <input
-                    type="text"
-                    value={judgeForm.phone}
-                    onChange={e => setJudgeForm({ ...judgeForm, phone: e.target.value })}
-                    placeholder="0812-3456-7890"
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono"
-                  />
-                </div>
+                <p className="mt-1 text-[10px] text-slate-500">Juri hanya ditugaskan pada cabang yang dicentang.</p>
               </div>
 
               <div>
