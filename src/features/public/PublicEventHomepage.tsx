@@ -67,6 +67,17 @@ import { GlobalFooter } from '../../components/layout/GlobalFooter';
 import { VisitorPublicRegistrationModal } from '../visitors/VisitorPublicRegistrationModal';
 import { MediaItem, LeaderboardEntry, ScheduleItem, Announcement } from '../../types';
 
+/**
+ * Normalisasi URL logo kegiatan untuk browser tanpa mengubah kontrak backend.
+ */
+const resolveEventLogoUrl = (value: unknown): string => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const driveMatch = raw.match(/drive\.google\.com\/(?:file\/d\/|d\/|open\?id=|uc\?.*?id=)([a-zA-Z0-9_-]+)/i);
+  if (driveMatch?.[1]) return `https://drive.google.com/thumbnail?id=${driveMatch[1]}&sz=w1200`;
+  return raw;
+};
+
 export type InstallationState = 'LOADING' | 'CONFIGURED' | 'NOT_CONFIGURED' | 'BACKEND_UNREACHABLE';
 
 interface PublicEventHomepageProps {
@@ -97,6 +108,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
   const [activeVideoModal, setActiveVideoModal] = useState<MediaItem | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [eventLogoFailed, setEventLogoFailed] = useState(false);
   const [activePublicPage, setActivePublicPage] = useState<string>('home');
   const [scheduleRevision, setScheduleRevision] = useState(0);
   const [officialCompetitions, setOfficialCompetitions] = useState<Array<{id:string;title:string;category:string;scheduleTime:string;location:string}>>([]);
@@ -447,14 +459,16 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
               <div className="max-w-[620px] space-y-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-[22px] bg-white p-2.5 shadow-lg sm:h-[86px] sm:w-[86px] sm:rounded-[26px]">
-                    {eventLogo ? (
+                    {eventLogo && !eventLogoFailed ? (
                       <img
-                        src={eventLogo}
+                        src={resolveEventLogoUrl(eventLogo)}
                         alt={`Logo ${event.name || 'kegiatan'}`}
                         className="h-full w-full object-contain"
+                        referrerPolicy="no-referrer"
+                        onError={() => setEventLogoFailed(true)}
                       />
                     ) : (
-                      <span className="text-3xl">⚜️</span>
+                      <span className="text-3xl" role="img" aria-label="Lambang Pramuka" title="Logo kegiatan tidak tersedia">⚜️</span>
                     )}
                   </div>
                   <div className="min-w-0">
