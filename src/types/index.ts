@@ -1196,6 +1196,8 @@ export type VisitorCategory =
   | 'Tamu Undangan'
   | 'Umum'
   | 'Alumni'
+  | 'Mabiran'
+  | 'Mabigus'
   | 'Mitra'
   | 'Media'
   | 'VIP'
