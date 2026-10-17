@@ -28,7 +28,6 @@ import {
 import {
   customerBrandingDriveService,
 } from '../../services/customerBrandingDriveService';
-import { workspaceService } from '../../services/workspaceService';
 import {
   CustomerBrandingAsset,
   BrandingAssetType,
@@ -104,7 +103,7 @@ export const AdminBrandingManager: React.FC = () => {
     if (!modalType || !inputUrl.trim() || !validationResult?.valid) return;
 
     await customerBrandingDriveService.uploadBrandingAsset({
-      workspace_id: workspaceService.getCurrentWorkspace().id || '',
+      workspace_id: 'ws_banyuwangi',
       asset_type: modalType,
       file_name: inputFileName.trim() || `${modalType.toLowerCase()}_asset.png`,
       mime_type: 'image/png',
@@ -286,7 +285,7 @@ export const AdminBrandingManager: React.FC = () => {
           <div className="flex items-center gap-2 pt-1">
             <button
               onClick={() => openReplaceModal('APP_LOGO')}
-              className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#208C60] to-[#F47743] text-white text-xs font-bold shadow-xs hover:opacity-95 transition-opacity flex items-center justify-center gap-2 cursor-pointer"
+              className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#A61B1B] to-[#C62828] text-white text-xs font-bold shadow-xs hover:opacity-95 transition-opacity flex items-center justify-center gap-2 cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5" />
               <span>Ganti Logo</span>
@@ -346,7 +345,7 @@ export const AdminBrandingManager: React.FC = () => {
           <div className="flex items-center gap-2 pt-1">
             <button
               onClick={() => openReplaceModal('FAVICON')}
-              className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#208C60] to-[#F47743] text-white text-xs font-bold shadow-xs hover:opacity-95 transition-opacity flex items-center justify-center gap-2 cursor-pointer"
+              className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#A61B1B] to-[#C62828] text-white text-xs font-bold shadow-xs hover:opacity-95 transition-opacity flex items-center justify-center gap-2 cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5" />
               <span>Ganti Favicon</span>
@@ -468,7 +467,7 @@ export const AdminBrandingManager: React.FC = () => {
                   type="text"
                   value={inputFileName}
                   onChange={e => setInputFileName(e.target.value)}
-                  placeholder="Contoh: Logo_Kegiatan_Resmi.png"
+                  placeholder="Contoh: Logo_Kwarcab_Banyuwangi_2026.png"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
@@ -481,7 +480,7 @@ export const AdminBrandingManager: React.FC = () => {
                   type="url"
                   value={inputUrl}
                   onChange={e => handleUrlChange(e.target.value)}
-                  placeholder="https://example.com/assets/logo.png atau URL Drive publik"
+                  placeholder="https://drive.google.com/uc?id=... atau https://..."
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
@@ -522,7 +521,11 @@ export const AdminBrandingManager: React.FC = () => {
                   {validationResult.valid && (
                     <div className="pt-2 border-t border-emerald-200/60 dark:border-emerald-800/40 flex items-center gap-3">
                       <div className="w-12 h-12 rounded-xl bg-white p-1 border border-emerald-300 flex items-center justify-center shrink-0">
-                        <img src={inputUrl} alt="Preview" className="w-full h-full object-contain" />
+                        <img
+                          src={customerBrandingDriveService.getRenderableImageUrl(inputUrl)}
+                          alt="Preview"
+                          className="w-full h-full object-contain"
+                        />
                       </div>
                       <div className="text-[11px]">
                         <div>Dimensi: <strong>{validationResult.dimensions?.width}×{validationResult.dimensions?.height} px</strong></div>
@@ -546,7 +549,7 @@ export const AdminBrandingManager: React.FC = () => {
                 type="button"
                 disabled={!validationResult?.valid}
                 onClick={handleSaveAsset}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#208C60] to-[#F47743] text-white text-xs font-bold shadow-xs hover:opacity-95 disabled:opacity-50 transition-all cursor-pointer"
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#A61B1B] to-[#C62828] text-white text-xs font-bold shadow-xs hover:opacity-95 disabled:opacity-50 transition-all cursor-pointer"
               >
                 Simpan & Aktifkan
               </button>
