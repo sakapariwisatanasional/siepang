@@ -125,15 +125,17 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
   };
 
 
-  useEffect(() => {
-    setAppLogoFailed(false);
-  }, [effectiveBranding.appLogoUrl, effectiveBranding.version]);
-
   const localStatus = syncService.getLocalCampStatus();
   const effectiveBranding = customerBrandingDriveService.getEffectiveBranding(
     currentEvent.logoUrl,
     workspace.branding?.logoUrl
   );
+
+  // Declare effectiveBranding before this effect so its dependency values
+  // are initialized before React evaluates the dependency array.
+  useEffect(() => {
+    setAppLogoFailed(false);
+  }, [effectiveBranding.appLogoUrl, effectiveBranding.version]);
 
   const handleRoleSelect = (role: UserRole) => {
     if (authState.effectiveRoles.includes(role)) {
