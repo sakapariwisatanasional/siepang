@@ -12,6 +12,27 @@ import { DesktopSidebar } from '../../components/navigation/DesktopSidebar';
 import { MobileNavigation, NavTab } from '../../components/navigation/MobileNavigation';
 import { GlobalFooter } from '../../components/layout/GlobalFooter';
 
+
+/**
+ * Decorative global background. It is intentionally non-interactive and low-opacity
+ * so that forms, tables, and navigation remain readable on every page.
+ */
+const AppBackgroundDecor: React.FC = () => (
+  <div
+    aria-hidden="true"
+    className="pointer-events-none fixed inset-0 z-0 overflow-hidden select-none"
+  >
+    <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(198,40,40,0.055),transparent_52%),radial-gradient(ellipse_at_bottom_left,rgba(220,38,38,0.045),transparent_48%)]" />
+    <img
+      src="/assets/siepang-scout-campsite.png"
+      alt=""
+      draggable={false}
+      className="absolute -bottom-8 -right-28 w-[min(78vw,1000px)] max-w-none opacity-[0.055] object-contain sm:-bottom-12 sm:-right-24 sm:opacity-[0.065] lg:-right-16 lg:opacity-[0.075] dark:opacity-[0.035]"
+    />
+    <div className="absolute -bottom-20 -left-16 h-64 w-64 rounded-full bg-red-200/10 blur-3xl dark:bg-red-900/10" />
+  </div>
+);
+
 interface AppLayoutProps {
   children: React.ReactNode;
   activeTab: NavTab;
@@ -52,15 +73,18 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
   if (isPublicView) {
     return (
-      <div className="min-h-screen min-w-0 flex flex-col bg-[#FFF8F7] dark:bg-[#0E0E12] text-[#1F1F1F] dark:text-slate-100 transition-colors">
-        <main className="flex-1 min-h-0 flex flex-col min-w-0">{children}</main>
+      <div className="relative isolate min-h-screen min-w-0 flex flex-col bg-[#FFF8F7] dark:bg-[#0E0E12] text-[#1F1F1F] dark:text-slate-100 transition-colors">
+        <AppBackgroundDecor />
+        <main className="relative z-10 flex-1 min-h-0 flex flex-col min-w-0">{children}</main>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen min-w-0 flex flex-col bg-[#FFF8F7] dark:bg-[#0E0E12] text-[#1F1F1F] dark:text-slate-100 transition-colors">
+    <div className="relative isolate min-h-screen min-w-0 flex flex-col bg-[#FFF8F7] dark:bg-[#0E0E12] text-[#1F1F1F] dark:text-slate-100 transition-colors">
+      <AppBackgroundDecor />
       {/* Top Header */}
+      <div className="relative z-10">
       <GlobalHeader
         onOpenScanner={onOpenScanner}
         onOpenSyncCenter={onOpenSyncCenter}
@@ -69,9 +93,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         onOpenMore={() => setIsMobileMoreOpen(true)}
         onLogout={onLogout}
       />
+      </div>
 
       {/* Main Body with Sidebar + Content */}
-      <div className="flex-1 flex w-full min-w-0 min-h-0">
+      <div className="relative z-10 flex-1 flex w-full min-w-0 min-h-0">
         {/* Desktop Collapsible Sidebar */}
         <DesktopSidebar
           activeTab={activeTab}
@@ -169,6 +194,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       </div>
 
       {/* Mobile Fixed Bottom Navigation Bar (Part 7, 8, 9) */}
+      <div className="relative z-20">
       <MobileNavigation
         activeTab={activeTab}
         onTabChange={onTabChange}
@@ -178,6 +204,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         onToggleMoreMenu={setIsMobileMoreOpen}
         onLogout={onLogout}
       />
+      </div>
     </div>
   );
 };
