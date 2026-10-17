@@ -296,25 +296,6 @@ export class UserManagementService {
     // Muat hanya saat layar pengguna atau aksi admin benar-benar memerlukannya.
   }
 
-  private loadFromCache(): void {
-    try {
-      const cached = localStorage.getItem('siepang_users_cache');
-      if (cached) {
-        this.users = JSON.parse(cached);
-      }
-    } catch {
-      this.users = [];
-    }
-  }
-
-  private saveToCache(): void {
-    try {
-      localStorage.setItem('siepang_users_cache', JSON.stringify(this.users));
-    } catch {
-      // Ignore storage errors
-    }
-  }
-
   public subscribe(cb: () => void): () => void {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);
