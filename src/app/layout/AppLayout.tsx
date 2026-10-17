@@ -52,14 +52,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
   if (isPublicView) {
     return (
-      <div className="min-h-screen flex flex-col bg-[#FFF8F7] dark:bg-[#0E0E12] text-[#1F1F1F] dark:text-slate-100 transition-colors">
-        <main className="flex-1 flex flex-col min-w-0">{children}</main>
+      <div className="min-h-screen min-w-0 flex flex-col bg-[#FFF8F7] dark:bg-[#0E0E12] text-[#1F1F1F] dark:text-slate-100 transition-colors">
+        <main className="flex-1 min-h-0 flex flex-col min-w-0">{children}</main>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#FFF8F7] dark:bg-[#0E0E12] text-[#1F1F1F] dark:text-slate-100 transition-colors">
+    <div className="min-h-screen min-w-0 flex flex-col bg-[#FFF8F7] dark:bg-[#0E0E12] text-[#1F1F1F] dark:text-slate-100 transition-colors">
       {/* Top Header */}
       <GlobalHeader
         onOpenScanner={onOpenScanner}
@@ -71,7 +71,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       />
 
       {/* Main Body with Sidebar + Content */}
-      <div className="flex-1 flex w-full">
+      <div className="flex-1 flex w-full min-w-0 min-h-0">
         {/* Desktop Collapsible Sidebar */}
         <DesktopSidebar
           activeTab={activeTab}
@@ -82,7 +82,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         />
 
         {/* Primary Content Viewport */}
-        <main className="flex-1 flex flex-col min-w-0 p-3 sm:p-5 lg:p-8 pb-24 md:pb-8 overflow-x-hidden">
+        <main className="flex-1 min-h-0 flex flex-col min-w-0 p-3 sm:p-5 lg:p-8 pb-24 md:pb-8 overflow-x-hidden">
           <div className="flex-1 w-full max-w-7xl mx-auto min-w-0">
             {activeTab === 'home' && (
               <section aria-label="Akses cepat fitur SiEpang" className="mb-7 space-y-5">
