@@ -21,20 +21,26 @@ import {
 } from 'lucide-react';
 import { healthService } from '../../services/healthService';
 import { HealthIncident, OperationalIncident } from '../../types';
+import { authService } from '../../services/authService';
 
 export const HealthAndIncidents: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'health' | 'incidents'>('health');
   const [healthIncidents, setHealthIncidents] = useState<HealthIncident[]>(healthService.getHealthIncidents());
   const [opIncidents, setOpIncidents] = useState<OperationalIncident[]>(healthService.getOperationalIncidents());
+  const [loadError, setLoadError] = useState('');
   const [showHealthModal, setShowHealthModal] = useState(false);
   const [showOpModal, setShowOpModal] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
     const unsub = healthService.subscribe(() => {
+      if (!mounted) return;
       setHealthIncidents(healthService.getHealthIncidents());
       setOpIncidents(healthService.getOperationalIncidents());
     });
-    return () => unsub();
+    healthService.refresh().then(() => { if (mounted) setLoadError(''); })
+      .catch((err: any) => { if (mounted) setLoadError(err?.message || 'Gagal memuat data dari GAS.'); });
+    return () => { mounted = false; unsub(); };
   }, []);
 
   // New medical triage form
@@ -44,7 +50,7 @@ export const HealthAndIncidents: React.FC = () => {
     contingentName: '',
     severity: 'ringan' as 'ringan' | 'sedang' | 'darurat',
     type: 'Keletihan' as any,
-    location: 'Pos Medis Lapangan',
+    location: '',
     treatment: '',
   });
 
@@ -52,16 +58,16 @@ export const HealthAndIncidents: React.FC = () => {
   const [newOp, setNewOp] = useState({
     title: '',
     category: 'Barang Hilang / Temuan' as any,
-    location: 'Area Utama Perkemahan',
+    location: '',
     severity: 'rendah' as 'rendah' | 'sedang' | 'tinggi',
     description: '',
   });
 
-  const handleHealthSubmit = (e: React.FormEvent) => {
+  const handleHealthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newHealth.participantName) return;
 
-    healthService.recordHealthIncident({
+    try { await healthService.recordHealthIncident({
       participantCode: newHealth.participantCode,
       participantName: newHealth.participantName,
       contingentName: newHealth.contingentName,
@@ -69,26 +75,24 @@ export const HealthAndIncidents: React.FC = () => {
       type: newHealth.type,
       location: newHealth.location,
       reportedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      reportedBy: 'dr. Arif (Posko Medis)',
+      reportedBy: authService.getCurrentUser()?.name || authService.getCurrentUser()?.id || '',
       treatment: newHealth.treatment,
-    });
-    setShowHealthModal(false);
+    }); setLoadError(''); setShowHealthModal(false); } catch (err: any) { setLoadError(err?.message || 'Gagal menyimpan melalui GAS.'); }
   };
 
-  const handleOpSubmit = (e: React.FormEvent) => {
+  const handleOpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newOp.title) return;
 
-    healthService.recordOperationalIncident({
+    try { await healthService.recordOperationalIncident({
       title: newOp.title,
       category: newOp.category,
       location: newOp.location,
       reportedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      reportedBy: 'Petugas Keamanan Buper',
+      reportedBy: authService.getCurrentUser()?.name || authService.getCurrentUser()?.id || '',
       severity: newOp.severity,
       description: newOp.description,
-    });
-    setShowOpModal(false);
+    }); setLoadError(''); setShowOpModal(false); } catch (err: any) { setLoadError(err?.message || 'Gagal menyimpan melalui GAS.'); }
   };
 
   const getSeverityBadge = (severity: HealthIncident['severity']) => {
@@ -117,6 +121,7 @@ export const HealthAndIncidents: React.FC = () => {
 
   return (
     <div className="space-y-5 max-w-3xl mx-auto pb-8">
+      {loadError && <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">{loadError}</div>}
       {/* Header with Segmented Navigation */}
       <div className="bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 p-5 sm:p-6 rounded-[28px] shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
