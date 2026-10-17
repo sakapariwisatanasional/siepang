@@ -1,96 +1,34 @@
-/**
- * @license
- * SiEpang - Logistics & Equipment Inventory Service
- * Manages campsite inventory items, condition, stock availability, and loan tracking.
- * Consumes ApiClient / ApiTransport to persist to customer Spreadsheet.
- */
-
+/** SiEpang — Logistics inventory. GAS Spreadsheet is the only source of truth. */
 import { LogisticItem } from '../types';
+import { adminPersistenceService } from './adminPersistenceService';
+import { eventService } from './eventService';
 import { apiClient } from './apiClient';
 
+const mapItem = (r: any): LogisticItem => ({ id: String(r.id || ''), name: String(r.name || ''), category: r.category, totalStock: Number(r.total_stock ?? r.totalStock ?? 0), availableStock: Number(r.available_stock ?? r.availableStock ?? 0), borrowedStock: Number(r.borrowed_stock ?? r.borrowedStock ?? 0), unit: String(r.unit || ''), location: String(r.location || '') });
+const eventId = () => { const id = eventService.getCurrentEvent()?.id; if (!id) throw new Error('Event aktif belum dikonfigurasi dari GAS.'); return id; };
 class LogisticsService {
-  private items: LogisticItem[] = [];
-  private listeners: Set<() => void> = new Set();
-
-  public subscribe(cb: () => void): () => void {
-    this.listeners.add(cb);
-    return () => this.listeners.delete(cb);
-  }
-
-  private notify(): void {
-    this.listeners.forEach(cb => cb());
-  }
-
-  public getItems(): LogisticItem[] {
-    return [...this.items];
-  }
-
+  private items: LogisticItem[] = []; private listeners = new Set<() => void>();
+  public subscribe(cb: () => void): () => void { this.listeners.add(cb); return () => this.listeners.delete(cb); }
+  private notify(): void { this.listeners.forEach(cb => cb()); }
+  public getItems(): LogisticItem[] { return [...this.items]; }
+  public async refreshItems(): Promise<LogisticItem[]> { const rows = await adminPersistenceService.list<any>('logistics', { event_id: eventId() }); this.items = rows.map(mapItem); this.notify(); return this.getItems(); }
   public async addItem(item: Omit<LogisticItem, 'id' | 'borrowedStock'>): Promise<LogisticItem> {
-    const newItem: LogisticItem = {
-      ...item,
-      id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      borrowedStock: 0,
-      availableStock: item.totalStock,
-    };
-
-    this.items.unshift(newItem);
-    this.notify();
-
-    try {
-      await apiClient.request('logistics/add', { data: newItem });
-    } catch (e) {
-      console.warn('Error syncing logistics item:', e);
-    }
-
-    return newItem;
+    if (!item.name.trim() || !Number.isFinite(item.totalStock) || item.totalStock < 0) throw new Error('Nama barang dan stok yang valid wajib diisi.');
+    const result = await apiClient.request<any>('logistics/add', { data: { ...item, event_id: eventId(), totalStock: item.totalStock, availableStock: item.totalStock, borrowedStock: 0 } });
+    if (!result.success || !result.data) throw new Error(result.error?.message || 'GAS belum mengonfirmasi penyimpanan logistik.');
+    await this.refreshItems(); const row = mapItem(result.data.record || result.data); if (!row.id) throw new Error('GAS menyimpan permintaan tetapi tidak mengembalikan ID barang.'); return row;
   }
-
   public async updateItem(id: string, updates: Partial<LogisticItem>): Promise<void> {
-    const item = this.items.find(i => i.id === id);
-    if (item) {
-      Object.assign(item, updates);
-      this.notify();
-      try {
-        await apiClient.request('logistics/update', { data: { id, updates } });
-      } catch (e) {
-        console.warn('Error updating logistics item:', e);
-      }
-    }
+    const result = await apiClient.request<any>('logistics/update', { data: { id, updates } });
+    if (!result.success) throw new Error(result.error?.message || 'GAS belum mengonfirmasi perubahan barang.'); await this.refreshItems();
   }
-
   public async recordLoan(id: string): Promise<boolean> {
-    const item = this.items.find(i => i.id === id);
-    if (!item || item.availableStock <= 0) return false;
-
-    item.availableStock -= 1;
-    item.borrowedStock += 1;
-    this.notify();
-
-    try {
-      await apiClient.request('logistics/loan', { data: { id, count: 1 } });
-    } catch (e) {
-      console.warn('Error recording logistics loan:', e);
-    }
-
-    return true;
+    const result = await apiClient.request<any>('logistics/loan', { data: { id, count: 1 } });
+    if (!result.success) throw new Error(result.error?.message || 'GAS belum mengonfirmasi peminjaman.'); await this.refreshItems(); return true;
   }
-
   public async recordReturn(id: string): Promise<boolean> {
-    const item = this.items.find(i => i.id === id);
-    if (!item || item.borrowedStock <= 0) return false;
-
-    item.availableStock += 1;
-    item.borrowedStock -= 1;
-    this.notify();
-
-    try {
-      await apiClient.request('logistics/return', { data: { id, count: 1 } });
-    } catch (e) {
-      console.warn('Error recording logistics return:', e);
-    }
-
-    return true;
+    const result = await apiClient.request<any>('logistics/return', { data: { id, count: 1 } });
+    if (!result.success) throw new Error(result.error?.message || 'GAS belum mengonfirmasi pengembalian.'); await this.refreshItems(); return true;
   }
 }
-
 export const logisticsService = new LogisticsService();
