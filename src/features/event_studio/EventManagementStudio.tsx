@@ -192,7 +192,7 @@ export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
    * Tidak ada perubahan terhadap service/API/GAS; hanya layout/navigation presentation.
    */
   return (
-    <div className="w-full max-w-6xl mx-auto px-1 sm:px-0 pb-8 sm:pb-12">
+    <div className="w-full max-w-7xl mx-auto px-1 sm:px-0 pb-8 sm:pb-12">
       {activeSection === 'overview' ? (
         <>
           {/* EVENT HEADER */}
@@ -219,7 +219,7 @@ export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
                     </p>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <div className="flex flex-wrap items-center gap-2 min-w-0 sm:shrink-0">
                     <div className={`min-h-9 px-2.5 sm:px-3 rounded-xl border text-[11px] font-semibold flex items-center gap-1.5 ${
                       saveState.status === 'Saving…'
                         ? 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border-sky-200'
@@ -297,14 +297,14 @@ export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
                     <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white">Jelajahi Manajemen Event</h2>
                     <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">Pilih kategori di kiri, lalu buka fitur dari kartu di kanan.</p>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-[minmax(180px,220px)_minmax(0,1fr)] gap-3 sm:gap-4 items-start">
-                    <nav aria-label="Kategori manajemen event" className="flex gap-1.5 overflow-x-auto pb-1 md:flex-col md:overflow-visible md:pb-0 rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-white/[0.025] p-2 no-scrollbar">
+                  <div className="grid grid-cols-1 lg:grid-cols-[minmax(190px,220px)_minmax(0,1fr)] gap-3 sm:gap-4 items-start">
+                    <nav aria-label="Kategori manajemen event" className="flex gap-1.5 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0 rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-white/[0.025] p-2 no-scrollbar">
                       {STUDIO_CATEGORIES.map(category => {
                         const Icon = category.icon;
                         const selected = activeCategory === category.id;
                         return (
                           <button key={category.id} type="button" onClick={() => setActiveCategory(category.id)} aria-pressed={selected}
-                            className={`min-w-[148px] md:min-w-0 min-h-11 md:min-h-[54px] flex items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 ${selected ? 'bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-200 ring-1 ring-red-200 dark:ring-red-900/60' : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-white/5'}`}>
+                            className={`min-w-[148px] lg:min-w-0 min-h-11 lg:min-h-[54px] flex items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 ${selected ? 'bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-200 ring-1 ring-red-200 dark:ring-red-900/60' : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-white/5'}`}>
                             <span className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center ${selected ? 'bg-red-100 dark:bg-red-900/50' : 'bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10'}`}><Icon className="w-4 h-4" /></span>
                             <span className="min-w-0 flex-1"><span className="block text-[11px] sm:text-xs font-bold leading-tight">{category.label}</span><span className="hidden md:block text-[10px] mt-1 opacity-75 leading-tight">{category.sections.length} fitur</span></span>
                             <ChevronRight className={`hidden md:block w-3.5 h-3.5 shrink-0 ${selected ? 'text-red-600' : 'text-slate-400'}`} />
@@ -316,11 +316,11 @@ export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
                       {STUDIO_CATEGORIES.filter(category => category.id === activeCategory).map(category => (
                         <div key={category.id}>
                           <div className="flex items-center justify-between gap-2 mb-2.5"><div className="min-w-0"><h3 className="text-sm font-extrabold text-slate-900 dark:text-white">{category.label}</h3><p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{category.description}</p></div><span className="shrink-0 rounded-full bg-slate-100 dark:bg-white/10 px-2.5 py-1 text-[10px] font-bold text-slate-500 dark:text-slate-300">{category.sections.length} fitur</span></div>
-                          <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-3 gap-2 sm:gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-3 gap-2.5 sm:gap-3">
                             {MENU_ITEMS.filter(item => category.sections.includes(item.id)).map(item => (
-                              <button key={item.id} type="button" onClick={() => openSection(item.id)} className="group min-h-[100px] sm:min-h-[116px] rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.035] hover:border-red-300 dark:hover:border-red-800 hover:bg-red-50/50 dark:hover:bg-red-950/15 p-3 flex flex-col items-start justify-between text-left shadow-sm transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 active:scale-[0.99]">
-                                <span className="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 flex items-center justify-center text-xl font-bold" aria-hidden="true">{item.icon}</span>
-                                <span className="w-full mt-3"><span className="flex items-start justify-between gap-1.5"><span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-white leading-snug">{item.label}</span><ChevronRight className="w-4 h-4 shrink-0 mt-0.5 text-slate-400 group-hover:text-red-600 group-hover:translate-x-0.5 transition-transform" /></span><span className="block mt-1 text-[10px] sm:text-[11px] leading-snug text-slate-500 dark:text-slate-400">{item.description}</span></span>
+                              <button key={item.id} type="button" onClick={() => openSection(item.id)} className="group min-h-[84px] sm:min-h-[96px] rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.035] hover:border-red-300 dark:hover:border-red-800 hover:bg-red-50/50 dark:hover:bg-red-950/15 p-3 sm:p-3.5 flex items-center gap-3 text-left shadow-sm transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 active:scale-[0.99]">
+                                <span className="w-10 h-10 shrink-0 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 flex items-center justify-center text-xl font-bold" aria-hidden="true">{item.icon}</span>
+                                <span className="min-w-0 flex-1"><span className="flex items-start justify-between gap-1.5"><span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-white leading-snug">{item.label}</span><ChevronRight className="w-4 h-4 shrink-0 mt-0.5 text-slate-400 group-hover:text-red-600 group-hover:translate-x-0.5 transition-transform" /></span><span className="block mt-1 text-[10px] sm:text-[11px] leading-snug text-slate-500 dark:text-slate-400">{item.description}</span></span>
                               </button>
                             ))}
                           </div>
