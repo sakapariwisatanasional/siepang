@@ -34,6 +34,7 @@ const send = async <T>(action: string, payload: Record<string, unknown>): Promis
 export const gudepRegistrationService = {
   list: () => send<{ gudep: GudepRecord[] }>('gudep.registration.list', {}),
   detail: (gudep_id: string) => send<GudepDetail>('gudep.registration.detail', { gudep_id }),
+  syncContingent: (gudep_id: string) => send<{ gudep_id: string; contingent_id: string; created: boolean; participant_count: number }>('gudep.registration.syncContingent', { gudep_id }),
   create: (data: {
     request_key: string; gudep_number: string; gudep_name: string;
     institution_name?: string; address?: string; contact_name?: string;
