@@ -174,7 +174,7 @@ export const ParticipantList: React.FC = () => {
     setGudepLoading(true);
     setGudepLoadError('');
     gudepRegistrationService.list().then(({ gudep }) => {
-      if (active) setGudepOptions((gudep || []).filter(g => g.verification_status === 'VERIFIED' && g.activation_status === 'ACTIVE'));
+      if (active) setGudepOptions((gudep || []).filter(g => g.verification_status !== 'REJECTED')); // Pendaftaran peserta boleh menunggu verifikasi admin.
     }).catch((err: any) => {
       if (active) { setGudepOptions([]); setGudepLoadError(err?.message || 'Daftar Gudep tidak dapat dimuat.'); }
     }).finally(() => { if (active) setGudepLoading(false); });
@@ -190,7 +190,7 @@ export const ParticipantList: React.FC = () => {
     setReguLoading(true);
     setReguLoadError('');
     gudepRegistrationService.detail(stepData.gudepId).then(result => {
-      if (active) setReguOptions((result.regu || []).filter(r => r.verification_status === 'VERIFIED' && r.activation_status === 'ACTIVE'));
+      if (active) setReguOptions((result.regu || []).filter(r => r.verification_status !== 'REJECTED')); // Status regu diverifikasi terpisah.
     }).catch((err: any) => {
       if (active) { setReguOptions([]); setReguLoadError(err?.message || 'Daftar regu tidak dapat dimuat.'); }
     }).finally(() => { if (active) setReguLoading(false); });
@@ -226,6 +226,29 @@ export const ParticipantList: React.FC = () => {
     return () => { active = false; };
   }, [showGudepManager, managerSelectedId]);
 
+  const submitManagerGudep = async (gudepId: string) => {
+    if (managerBusy || !gudepId) return;
+    setManagerBusy(true); setManagerError(''); setManagerMessage('');
+    try {
+      await gudepRegistrationService.submit(gudepId);
+      await refreshGudepManager(gudepId);
+      setManagerMessage('Pengajuan Gudep berhasil dikirim. Menunggu verifikasi administrasi dari panitia/admin.');
+    } catch (err: any) { setManagerError(err?.message || 'Gagal mengajukan Gudep.'); }
+    finally { setManagerBusy(false); }
+  };
+
+  const submitManagerRegu = async (gudepId: string, reguId: string) => {
+    if (managerBusy || !gudepId || !reguId) return;
+    setManagerBusy(true); setManagerError(''); setManagerMessage('');
+    try {
+      await gudepRegistrationService.submitRegu(gudepId, reguId);
+      const fresh = await gudepRegistrationService.detail(gudepId);
+      setManagerRegu(fresh.regu || []);
+      setManagerMessage('Pengajuan regu berhasil dikirim. Status verifikasi regu terpisah dari Gudep.');
+    } catch (err: any) { setManagerError(err?.message || 'Gagal mengajukan regu.'); }
+    finally { setManagerBusy(false); }
+  };
+
   const submitNewGudep = async (e: React.FormEvent) => {
     e.preventDefault();
     if (managerBusy) return;
@@ -234,7 +257,7 @@ export const ParticipantList: React.FC = () => {
       const result = await gudepRegistrationService.create({ ...gudepForm, request_key: gudepCreateKey.current });
       gudepCreateKey.current = makeRequestKey();
       setGudepForm({ gudep_number: '', gudep_name: '', institution_name: '' });
-      setManagerMessage(`Gugus Depan ${result.gudep.gudep_name} tersimpan. Perlu verifikasi dan aktivasi sebelum digunakan mendaftarkan peserta.`);
+      setManagerMessage(`Gugus Depan ${result.gudep.gudep_name} tersimpan. Tambahkan regu dan ajukan administrasi; peserta dapat didaftarkan sambil menunggu verifikasi admin.`);
       await refreshGudepManager(result.gudep.gudep_id);
     } catch (err: any) { setManagerError(err?.message || 'Gagal menyimpan Gudep. Periksa riwayat GAS sebelum mengulangi.'); }
     finally { setManagerBusy(false); }
@@ -1192,9 +1215,12 @@ export const ParticipantList: React.FC = () => {
                 <label className="text-sm">Kuota (1–100) *<input required type="number" min={1} max={100} value={reguForm.quota} onChange={e=>setReguForm(x=>({...x,quota:Number(e.target.value)}))} className="mt-1 w-full rounded-xl border p-3 bg-white text-slate-900 dark:bg-[#242428] dark:border-white/20 dark:text-white" /></label>
               </div>
               <div className="flex justify-end"><button type="submit" disabled={managerBusy || !managerSelectedId} className="rounded-xl bg-emerald-600 disabled:opacity-50 text-white font-bold px-4 py-2.5 inline-flex gap-2 items-center"><Plus className="h-4 w-4" /> Simpan Regu ke GAS</button></div>
-              {managerSelectedId && <div className="text-sm space-y-1"><h4 className="font-semibold">Daftar regu di Gudep terpilih ({managerRegu.length})</h4>{managerRegu.map(r=><p key={r.regu_id} className="border-b border-slate-100 dark:border-white/10 py-1">{r.regu_name} · {r.gender} · Kuota {r.quota} · {r.verification_status || 'PENDING'}</p>)}</div>}
+              {managerSelectedId && <div className="text-sm space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-semibold">Daftar regu di Gudep terpilih ({managerRegu.length})</h4>{managerGudep.find(g=>g.gudep_id===managerSelectedId)?.registration_status !== 'SUBMITTED' && <button type="button" disabled={managerBusy || managerRegu.length===0} onClick={()=>void submitManagerGudep(managerSelectedId)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Ajukan Gudep ke Admin</button>}</div>
+                {managerRegu.map(r=><div key={r.regu_id} className="border-b border-slate-100 dark:border-white/10 py-2 flex flex-wrap items-center justify-between gap-2"><span>{r.regu_name} · {r.gender} · Kuota {r.quota} · {r.registration_status || 'DRAFT'} / {r.verification_status || 'PENDING'}</span>{r.registration_status !== 'SUBMITTED' && r.verification_status !== 'VERIFIED' && <button type="button" disabled={managerBusy} onClick={()=>void submitManagerRegu(managerSelectedId,r.regu_id)} className="rounded-lg border border-blue-500 px-2 py-1 text-xs font-bold text-blue-700 dark:text-blue-300 disabled:opacity-40">Ajukan Regu</button>}</div>)}
+              </div>}
             </form>
-            <p className="text-xs text-amber-700 dark:text-amber-300">Gudep dan regu baru berstatus draf/pending. Data peserta hanya dapat menggunakan Gudep/Regu yang sudah diverifikasi dan diaktifkan oleh Admin. Jika muncul ADMIN_ONLY, backend GAS harus diperbarui agar role registration_officer mendapat izin pembuatan.</p>
+            <p className="text-xs text-amber-700 dark:text-amber-300">Pendaftaran peserta dapat dikirim saat administrasi Gudep/Regu masih menunggu. Verifikasi peserta, Gudep, dan Regu dilakukan terpisah oleh panitia/admin.</p>
           </div>
         </div>
       )}
@@ -1240,7 +1266,7 @@ export const ParticipantList: React.FC = () => {
                     <div className="mt-1 text-[11px] text-[#6B7280] dark:text-slate-400">{selectedPangkalanLabel || 'Pangkalan akan tampil otomatis'}</div>
                   </div>
                   <div className="rounded-2xl border border-[#ECECEF] dark:border-white/10 bg-[#FAFAFA] dark:bg-white/5 p-3">
-                    <div className="text-[#6B7280] dark:text-slate-400">Regu aktif</div>
+                    <div className="text-[#6B7280] dark:text-slate-400">Regu terpilih</div>
                     <div className="mt-1 text-sm font-bold text-[#171717] dark:text-white">{selectedRegu ? selectedRegu.regu_name : 'Belum dipilih'}</div>
                     <div className="mt-1 text-[11px] text-[#6B7280] dark:text-slate-400">Difilter sesuai gender peserta</div>
                   </div>
