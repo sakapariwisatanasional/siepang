@@ -12,12 +12,9 @@ import {
   AlertTriangle,
   Server,
   UserCheck,
-  UserRoundPen,
   ChevronDown,
   Sparkles,
   Calendar,
-  Building2,
-  Tent,
   ShieldAlert,
   Clock,
   Sun,
@@ -38,12 +35,11 @@ import { customerBrandingDriveService } from '../../services/customerBrandingDri
 import { syncQueue } from '../../offline/syncQueue';
 import { syncService } from '../../services/syncService';
 import { localCampServerService } from '../../services/localCampServerService';
-import { NetworkConnectionState, UserRole, Workspace, ScoutEvent, LocalServerOperationalMode } from '../../types';
+import { NetworkConnectionState, UserRole, ScoutEvent, LocalServerOperationalMode } from '../../types';
 import { OfflineEmergencySession } from '../../offline/types';
 
 interface GlobalHeaderProps {
   onOpenSyncCenter: () => void;
-  onNavigateProfile?: () => void;
   onOpenScanner?: () => void;
   onNavigatePublic?: () => void;
   onOpenMore?: () => void;
@@ -52,7 +48,6 @@ interface GlobalHeaderProps {
 
 export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
   onOpenSyncCenter,
-  onNavigateProfile,
   onNavigatePublic,
   onOpenMore,
   onLogout,
@@ -63,7 +58,7 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
     name: 'Tamu / Pengunjung',
     role: 'viewer' as UserRole,
     email: 'tamu@siepang.id',
-    avatar: '',
+    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
     workspaceId: workspaceService.getCurrentWorkspace().id || '',
     eventId: eventService.getCurrentEvent().id || '',
   };
@@ -127,6 +122,7 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
     const mins = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
     return `${hours}j ${mins}m`;
   };
+
 
   const localStatus = syncService.getLocalCampStatus();
   const effectiveBranding = customerBrandingDriveService.getEffectiveBranding(
@@ -192,15 +188,14 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
       )}
 
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 px-3.5 sm:px-6 py-2.5">
-        {/* Left Zone: Static Authoritative Single-Event Identity (1 Instalasi = 1 Kegiatan) */}
+        {/* Left Zone: fixed installation identity (single-event mode) */}
         <div className="flex items-center gap-2.5 min-w-0">
-          {/* Logo Badge */}
           <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-gradient-to-tr from-[#A61B1B] via-[#C62828] to-[#E34848] p-[1.5px] shadow-sm flex items-center justify-center shrink-0">
             <div className="w-full h-full rounded-[10px] bg-white dark:bg-[#121215] flex items-center justify-center font-bold text-xs overflow-hidden">
               {effectiveBranding.appLogoUrl ? (
                 <img
                   src={`${effectiveBranding.appLogoUrl}?v=${effectiveBranding.version}`}
-                  alt="Logo Pramuka"
+                  alt="Logo kegiatan"
                   className="w-full h-full object-contain p-0.5"
                   onError={(e) => {
                     (e.currentTarget as HTMLElement).style.display = 'none';
@@ -212,28 +207,12 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
             </div>
           </div>
 
-          {/* Compact Mobile Identity */}
-          <div className="min-w-0 md:hidden flex-1">
-            <span className="text-sm font-bold tracking-tight text-[#171717] dark:text-white truncate block">
-              {currentEvent.shortName || currentEvent.name}
-            </span>
-            <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate block">
-              {workspace.name}
-            </span>
-          </div>
-
-          {/* Desktop Full Workspace & Event Identity */}
-          <div className="min-w-0 hidden md:block">
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm font-bold tracking-tight text-[#171717] dark:text-white truncate max-w-[260px]">
-                {currentEvent.name}
-              </span>
-              <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
-                {currentEvent.status || 'AKTIF'}
-              </span>
+          <div className="min-w-0">
+            <div className="text-sm font-bold tracking-tight text-[#171717] dark:text-white truncate max-w-[190px] sm:max-w-[280px]">
+              {currentEvent.name || workspace.name || 'SiEpang'}
             </div>
-            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate max-w-[260px]">
-              {workspace.name}
+            <div className="text-[10px] font-semibold text-[#A61B1B] dark:text-purple-300 truncate max-w-[200px] sm:max-w-[300px]">
+              {workspace.organization || workspace.name || currentEvent.shortName}
             </div>
           </div>
         </div>
@@ -289,7 +268,7 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
             <button
               type="button"
               onClick={onNavigatePublic}
-              className="flex items-center justify-center w-11 h-11 md:w-auto md:px-3 md:py-1.5 rounded-xl md:rounded-full text-xs font-semibold bg-gradient-to-r from-[#A61B1B] to-[#E34848] text-white hover:opacity-90 shadow-xs transition-opacity shrink-0 min-w-[44px] min-h-[44px] cursor-pointer"
+              className="flex items-center justify-center w-11 h-11 md:w-auto md:px-3 md:py-1.5 rounded-xl md:rounded-full text-xs font-semibold bg-gradient-to-r from-[#A61B1B] to-[#C62828] text-white hover:opacity-90 shadow-xs transition-opacity shrink-0 min-w-[44px] min-h-[44px] cursor-pointer"
               title="Portal Publik"
               aria-label="Portal Publik"
             >
@@ -430,16 +409,6 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
                   )}
 
                   <div className="pt-2 border-t border-[#ECECEF] dark:border-white/10 space-y-1">
-                    {onNavigateProfile && (
-                      <button
-                        type="button"
-                        onClick={() => { setShowRoleMenu(false); onNavigateProfile(); }}
-                        className="w-full flex items-center gap-2 p-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors"
-                      >
-                        <UserRoundPen className="w-4 h-4 text-emerald-600" />
-                        <span>Profil Saya / Edit Biodata</span>
-                      </button>
-                    )}
                     <button
                       type="button"
                       onClick={() => {
@@ -609,16 +578,6 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
 
 
               <div className="pt-2 border-t border-slate-100 dark:border-white/5 space-y-1.5 mt-2">
-                {onNavigateProfile && (
-                  <button
-                    type="button"
-                    onClick={() => { setShowRoleMenu(false); onNavigateProfile(); }}
-                    className="w-full py-2.5 px-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300 font-bold text-xs flex items-center gap-2"
-                  >
-                    <UserRoundPen className="w-4 h-4" />
-                    Profil Saya / Edit Biodata
-                  </button>
-                )}
                 <button
                   type="button"
                   onClick={() => {
