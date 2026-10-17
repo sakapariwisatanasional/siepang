@@ -21,6 +21,10 @@ import {
   Sparkles,
   Shield,
   Eye,
+  RefreshCw,
+  UserRound,
+  UserCheck,
+  Save,
 } from 'lucide-react';
 import { eventStudioService } from '../../services/eventStudioService';
 import { CampsiteLot, CampFacility, FacilityCategory, Contingent } from '../../types';
@@ -104,6 +108,15 @@ export const CampsiteManager: React.FC = () => {
   };
   const [selectedLot, setSelectedLot] = useState<CampsiteLot | null>(null);
   const [selectedFacility, setSelectedFacility] = useState<CampFacility | null>(null);
+  type OccupancyRegu = {regu_id: string; regu_name: string; gudep_id: string; gudep_name: string; gender: string; quota: number; member_count: number};
+  type OccupancyLot = {id: string; lot_code: string; subcamp_name: string; capacity: number; gender: string; status: string; assigned_regu_id: string; assigned_regu_name: string; assigned_gudep_id: string};
+  const [occupancyLots, setOccupancyLots] = useState<OccupancyLot[]>([]);
+  const [occupancyRegus, setOccupancyRegus] = useState<OccupancyRegu[]>([]);
+  const [occupancyParticipants, setOccupancyParticipants] = useState<any[]>([]);
+  const [occupancyLoading, setOccupancyLoading] = useState(false);
+  const [occupancySaving, setOccupancySaving] = useState(false);
+  const [occupancyError, setOccupancyError] = useState('');
+  const [occupancyReguId, setOccupancyReguId] = useState('');
 
   // Auto-Assign Wizard state (Requirement 17)
   const [showAutoAssignModal, setShowAutoAssignModal] = useState(false);
@@ -152,6 +165,51 @@ export const CampsiteManager: React.FC = () => {
 
   const [toast, setToast] = useState<string | null>(null);
   const eventId = String(eventStudioService.getEvent()?.id || 'unassigned');
+  const loadOccupancyData = async () => {
+    setOccupancyLoading(true);
+    setOccupancyError('');
+    try {
+      const [options, participants] = await Promise.all([
+        apiTransport.send<{lots: OccupancyLot[]; regus: OccupancyRegu[]}>('participants.admin.campsiteOptions', {}, {timeoutMs:45000}),
+        apiTransport.send<{participants: any[]}>('participants.list', {}, {timeoutMs:45000}),
+      ]);
+      if (!options.ok || !options.data) throw new Error(options.error?.message || 'Gagal memuat data kavling dan regu dari GAS.');
+      if (!participants.ok || !Array.isArray(participants.data?.participants)) throw new Error(participants.error?.message || 'Gagal memuat daftar peserta dari GAS.');
+      setOccupancyLots(options.data.lots || []);
+      setOccupancyRegus(options.data.regus || []);
+      setOccupancyParticipants(participants.data.participants);
+      const current = options.data.lots?.find(l => l.id === selectedLot?.id);
+      setOccupancyReguId(current?.assigned_regu_id || '');
+    } catch (error: any) {
+      setOccupancyError(error?.message || 'Data penghuni kavling tidak dapat dimuat.');
+    } finally { setOccupancyLoading(false); }
+  };
+  const saveReguOccupancy = async () => {
+    if (!selectedLot || !occupancyReguId || occupancySaving) return;
+    setOccupancySaving(true);
+    setOccupancyError('');
+    try {
+      const response = await apiTransport.send<any>('participants.admin.assignCampsite', {
+        lot_id: selectedLot.id,
+        regu_id: occupancyReguId,
+      }, {timeoutMs:60000});
+      if (!response.ok || !response.data) throw new Error(response.error?.message || 'Gagal menyimpan penempatan regu.');
+      await loadOccupancyData();
+      await eventStudioService.initialSync();
+      setLots([...eventStudioService.listLots()]);
+      const refreshed = eventStudioService.listLots().find(l => l.id === selectedLot.id);
+      if (refreshed) setSelectedLot(refreshed);
+      showToast(`Penempatan regu tersimpan di GAS. ${response.data.assigned_count || 0} peserta diperbarui.`);
+    } catch (error: any) {
+      setOccupancyError(error?.message || 'Gagal menyimpan penempatan regu.');
+    } finally { setOccupancySaving(false); }
+  };
+  useEffect(() => { void loadOccupancyData(); }, []);
+  useEffect(() => {
+    if (!selectedLot) return;
+    const current = occupancyLots.find(l => l.id === selectedLot.id);
+    setOccupancyReguId(current?.assigned_regu_id || '');
+  }, [selectedLot?.id, occupancyLots]);
   const [mapImage, setMapImage] = useState<string>('');
   const [mapEditing, setMapEditing] = useState(false);
   const [savingPosition, setSavingPosition] = useState(false);
@@ -733,6 +791,40 @@ export const CampsiteManager: React.FC = () => {
                     </select>
                   </div>
                   <p className="text-slate-400 text-[11px] mt-1">{selectedLot.notes}</p>
+                  <section className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-3 sm:p-4 space-y-3" aria-label="Penempatan regu dan peserta">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-white font-semibold text-sm"><Users size={16}/> Regu & penghuni kavling</div>
+                      <button type="button" onClick={() => void loadOccupancyData()} disabled={occupancyLoading} className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1.5 text-[11px] text-slate-200 disabled:opacity-50"><RefreshCw size={13} className={occupancyLoading ? 'animate-spin' : ''}/> Muat ulang</button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-2">
+                      <label className="text-[11px] text-slate-300">Tempatkan satu regu ke kavling ini
+                        <select value={occupancyReguId} onChange={e => setOccupancyReguId(e.target.value)} className="mt-1 w-full rounded-xl border border-white/15 bg-slate-900 px-3 py-2.5 text-sm text-white" disabled={occupancyLoading || occupancySaving}>
+                          <option value="">Pilih regu terverifikasi dan aktif…</option>
+                          {occupancyRegus.map(r => <option key={r.regu_id} value={r.regu_id}>{r.regu_name} · {r.gudep_name} · {r.member_count}/{r.quota} anggota</option>)}
+                        </select>
+                      </label>
+                      <button type="button" onClick={() => void saveReguOccupancy()} disabled={!occupancyReguId || occupancySaving || occupancyLoading} className="self-end inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-emerald-950 disabled:opacity-40"><Save size={15}/>{occupancySaving ? 'Menyimpan…' : 'Simpan penempatan'}</button>
+                    </div>
+                    <p className="text-[11px] text-slate-400">Satu kavling hanya dapat ditempati satu regu. Penyimpanan akan memperbarui lokasi peserta anggota regu di backend GAS.</p>
+                    {occupancyError && <p role="alert" className="rounded-lg border border-rose-400/30 bg-rose-950/40 p-2 text-xs text-rose-200">{occupancyError}</p>}
+                    {occupancyLoading ? <p className="text-xs text-slate-300">Memuat penghuni dari GAS…</p> : (() => {
+                      const canonicalLot = occupancyLots.find(l => l.id === selectedLot.id);
+                      const lotCode = canonicalLot?.lot_code || selectedLot.lotNumber;
+                      const occupants = occupancyParticipants.filter(p => String(p.lot_number || p.lotNumber || '').trim() === String(lotCode || '').trim());
+                      const assignedRegu = occupancyRegus.find(r => r.regu_id === (canonicalLot?.assigned_regu_id || ''));
+                      return <div className="space-y-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          <div className="rounded-xl bg-white/5 p-2"><div className="text-[10px] uppercase tracking-wide text-slate-400">Regu</div><div className="mt-1 text-sm font-semibold text-white">{canonicalLot?.assigned_regu_name || assignedRegu?.regu_name || 'Belum ditempatkan'}</div></div>
+                          <div className="rounded-xl bg-white/5 p-2"><div className="text-[10px] uppercase tracking-wide text-slate-400">Jumlah peserta</div><div className="mt-1 text-sm font-semibold text-white">{occupants.length}</div></div>
+                          <div className="rounded-xl bg-white/5 p-2"><div className="text-[10px] uppercase tracking-wide text-slate-400">Kapasitas</div><div className="mt-1 text-sm font-semibold text-white">{canonicalLot?.capacity || selectedLot.capacity || '—'}</div></div>
+                        </div>
+                        <div className="overflow-hidden rounded-xl border border-white/10">
+                          <div className="flex items-center justify-between bg-white/5 px-3 py-2"><span className="text-xs font-semibold text-white">Daftar peserta di {lotCode}</span><span className="text-[10px] text-slate-400">Data GAS</span></div>
+                          {occupants.length ? <div className="max-h-48 overflow-y-auto divide-y divide-white/10">{occupants.map((p, i) => <div key={String(p.id || p.participant_id || i)} className="flex items-center gap-2 px-3 py-2"><div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300"><UserRound size={14}/></div><div className="min-w-0 flex-1"><div className="truncate text-xs font-medium text-white">{p.name || p.fullName || 'Tanpa nama'}</div><div className="truncate text-[10px] text-slate-400">{p.pramuka_id || p.pramukaId || p.id} · {p.institution || p.contingent_name || p.contingent_id || 'Kontingen belum tersedia'}</div></div><UserCheck size={14} className="text-emerald-300"/></div>)}</div> : <div className="px-3 py-4 text-center text-xs text-slate-400">Belum ada peserta yang tercatat pada kavling ini.</div>}
+                        </div>
+                      </div>;
+                    })()}
+                  </section>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-white">
                     <label>Lebar (%)<input type="number" min="2" max="30" step="1" value={getShape(selectedLot.id).width} onChange={e=>patchShape(selectedLot.id,{width:Math.max(2,Math.min(30,Number(e.target.value)||2))})} className="mt-1 w-full rounded bg-white/15 p-2" /></label>
                     <label>Tinggi (%)<input type="number" min="2" max="30" step="1" value={getShape(selectedLot.id).height} onChange={e=>patchShape(selectedLot.id,{height:Math.max(2,Math.min(30,Number(e.target.value)||2))})} className="mt-1 w-full rounded bg-white/15 p-2" /></label>
