@@ -284,7 +284,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       }`}
     >
       {/* Brand Header */}
-      <div className="h-16 flex items-center justify-between px-4 border-b border-[#ECECEF] dark:border-white/10">
+      <div className="h-[4.25rem] flex items-center justify-between px-4 border-b border-[#ECECEF] dark:border-white/10 bg-white/95 dark:bg-[#0E0E12]/95">
         {!collapsed ? (
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#A61B1B] to-[#E34848] text-white flex items-center justify-center text-sm font-bold shadow-xs shrink-0">
@@ -323,7 +323,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             return (
               <button key={item.id} type="button" onClick={() => onTabChange(item.id)}
                 aria-current={active ? 'page' : undefined}
-                className={`rounded-2xl border px-2 py-3 flex flex-col items-center gap-1.5 transition-colors text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 ${active ? 'border-red-500/40 bg-red-50 text-red-800 dark:bg-red-900/20 dark:text-red-300' : 'border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5'}`}>
+                className={`min-h-[76px] rounded-2xl border px-2.5 py-3 flex flex-col items-center justify-center gap-2 transition-all hover:-translate-y-0.5 hover:shadow-sm text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 ${active ? 'border-red-500/40 bg-red-50 text-red-800 dark:bg-red-900/20 dark:text-red-300' : 'border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5'}`}>
                 <Icon className="w-5 h-5" aria-hidden="true" />
                 {item.label}
               </button>
@@ -347,7 +347,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       </div>
 
       {!collapsed && (
-        <div className="px-3 pb-2">
+        <div className="px-3 pb-3">
           <label htmlFor="siepang-sidebar-search" className="sr-only">Cari menu</label>
           <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 px-2.5 focus-within:ring-2 focus-within:ring-red-500/40">
             <Search className="w-4 h-4 text-slate-400 shrink-0" aria-hidden="true" />
@@ -359,12 +359,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       )}
 
       {/* Grouped Navigation Menu (Requirement 34, 35) */}
-      <div className="flex-1 overflow-y-auto px-3 py-1 space-y-3 no-scrollbar" aria-label="Menu SiEpang">
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-4 no-scrollbar" aria-label="Menu SiEpang">
         {filteredGroups.length === 0 && !collapsed && <p className="p-3 text-xs text-slate-500">Tidak ada menu yang cocok.</p>}
         {filteredGroups.map(group => (
           <div key={group.id} className="space-y-1">
             {!collapsed && (
-              <div className="px-2.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              <div className="px-2.5 pt-1 pb-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-[0.12em]">
                 {group.label}
               </div>
             )}
@@ -379,7 +379,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                   type="button"
                   onClick={() => onTabChange(item.id)}
                   aria-current={isActive ? 'page' : undefined}
-                  className={`w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer group relative focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 ${
+                  className={`w-full flex items-center gap-2.5 px-3 py-3 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer group relative focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 ${
                     isActive
                       ? 'bg-red-50 dark:bg-red-900/25 text-red-800 dark:text-red-300 font-bold ring-1 ring-red-200 dark:ring-red-800/50'
                       : 'text-slate-600 dark:text-slate-300 hover:text-[#171717] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5'
@@ -387,7 +387,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                   title={collapsed ? item.label : undefined}
                 >
                   <Icon
-                    className={`w-4 h-4 shrink-0 transition-colors ${
+                    className={`w-[18px] h-[18px] shrink-0 transition-colors ${
                       isActive ? 'text-[#C62828] dark:text-red-300' : 'text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white'
                     }`}
                   />
@@ -405,7 +405,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           <button
             type="button"
             onClick={onLogout}
-            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-all cursor-pointer ${
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-all cursor-pointer ${
               collapsed ? 'justify-center' : ''
             }`}
             title="Keluar / Ganti Akun"
