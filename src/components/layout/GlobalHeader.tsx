@@ -28,10 +28,6 @@ import {
   LogOut,
   Laptop,
   ShieldCheck,
-  Cloud,
-  Monitor,
-  Zap,
-  ArrowRight,
 } from 'lucide-react';
 import { TrustedDevicesModal } from './TrustedDevicesModal';
 import { authService, AuthState } from '../../services/authService';
@@ -133,13 +129,10 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
   };
 
   const localStatus = syncService.getLocalCampStatus();
-  // Event identity is authoritative. The event logo is rendered only from
-  // currentEvent.logoUrl hydrated by the existing GAS/public.current flow.
-  // No workspace/app logo is substituted for an event logo.
-  const eventLogoUrl = String(currentEvent.logoUrl || '').trim();
-  const eventLogoSrc = eventLogoUrl
-    ? `${eventLogoUrl}${eventLogoUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(currentEvent.id || 'event')}`
-    : '';
+  const effectiveBranding = customerBrandingDriveService.getEffectiveBranding(
+    currentEvent.logoUrl,
+    workspace.branding?.logoUrl
+  );
 
   const handleRoleSelect = (role: UserRole) => {
     if (authState.effectiveRoles.includes(role)) {
@@ -158,7 +151,7 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-30 w-full bg-white dark:bg-[#121215] border-b border-red-100 dark:border-white/10 text-[#171717] dark:text-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors">
+    <header className="sticky top-0 z-30 w-full bg-white dark:bg-[#121215] border-b border-[#ECECEF] dark:border-white/10 text-[#171717] dark:text-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors">
       {/* Visual Warning for Emergency Offline Credential Mode (Section 7) */}
       {authState.authenticationMode === 'OFFLINE_EMERGENCY' && authState.offlineSession && (
         <div className="bg-amber-950/90 border-b border-amber-500/40 px-3.5 sm:px-6 py-1.5 text-xs text-amber-200 flex flex-wrap items-center justify-between gap-2 shadow-inner">
@@ -202,22 +195,21 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
         {/* Left Zone: Static Authoritative Single-Event Identity (1 Instalasi = 1 Kegiatan) */}
         <div className="flex items-center gap-2.5 min-w-0">
           {/* Logo Badge */}
-          <div className="w-10 h-10 md:w-11 md:h-11 rounded-2xl bg-white border-2 border-[#D71920]/20 shadow-sm flex items-center justify-center shrink-0 overflow-hidden">
-            {eventLogoSrc ? (
-              <img
-                src={eventLogoSrc}
-                alt={`Logo ${currentEvent.name || 'kegiatan'}`}
-                className="w-full h-full object-contain p-1"
-                referrerPolicy="no-referrer"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = 'none';
-                }}
-              />
-            ) : (
-              <span className="text-sm font-black text-[#D71920]" aria-label="Logo kegiatan belum tersedia">
-                {(currentEvent.shortName || currentEvent.name || 'S').trim().charAt(0).toUpperCase()}
-              </span>
-            )}
+          <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-gradient-to-tr from-[#A61B1B] via-[#C62828] to-[#E34848] p-[1.5px] shadow-sm flex items-center justify-center shrink-0">
+            <div className="w-full h-full rounded-[10px] bg-white dark:bg-[#121215] flex items-center justify-center font-bold text-xs overflow-hidden">
+              {effectiveBranding.appLogoUrl ? (
+                <img
+                  src={`${effectiveBranding.appLogoUrl}?v=${effectiveBranding.version}`}
+                  alt="Logo Pramuka"
+                  className="w-full h-full object-contain p-0.5"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLElement).style.display = 'none';
+                  }}
+                />
+              ) : (
+                '⚜️'
+              )}
+            </div>
           </div>
 
           {/* Compact Mobile Identity */}
@@ -236,7 +228,7 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
               <span className="text-sm font-bold tracking-tight text-[#171717] dark:text-white truncate max-w-[260px]">
                 {currentEvent.name}
               </span>
-              <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-[#C51F1F] dark:text-red-300 text-[10px] font-bold">
+              <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
                 {currentEvent.status || 'AKTIF'}
               </span>
             </div>
@@ -260,15 +252,9 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
             }`}
             title="Mode Operasional SiEpang (Klik untuk ganti atau konfigurasi Server Buper)"
           >
-            {operationalMode === 'cloud' ? (
-              <Cloud className="w-3.5 h-3.5" />
-            ) : operationalMode === 'local' ? (
-              <Monitor className="w-3.5 h-3.5" />
-            ) : (
-              <Zap className="w-3.5 h-3.5" />
-            )}
+            <Server className="w-3.5 h-3.5" />
             <span className="capitalize">
-              {operationalMode === 'cloud' ? 'Cloud' : operationalMode === 'local' ? 'Buper LAN' : 'Hybrid'}
+              {operationalMode === 'cloud' ? '☁️ Cloud' : operationalMode === 'local' ? '💻 Buper LAN' : '⚡ Hybrid'}
             </span>
           </button>
 
@@ -303,7 +289,7 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
             <button
               type="button"
               onClick={onNavigatePublic}
-              className="flex items-center justify-center w-11 h-11 md:w-auto md:px-3 md:py-1.5 rounded-xl md:rounded-full text-xs font-semibold bg-[#D71920] text-white hover:opacity-90 shadow-xs transition-opacity shrink-0 min-w-[44px] min-h-[44px] cursor-pointer"
+              className="flex items-center justify-center w-11 h-11 md:w-auto md:px-3 md:py-1.5 rounded-xl md:rounded-full text-xs font-semibold bg-gradient-to-r from-[#A61B1B] to-[#E34848] text-white hover:opacity-90 shadow-xs transition-opacity shrink-0 min-w-[44px] min-h-[44px] cursor-pointer"
               title="Portal Publik"
               aria-label="Portal Publik"
             >
@@ -448,9 +434,9 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
                       <button
                         type="button"
                         onClick={() => { setShowRoleMenu(false); onNavigateProfile(); }}
-                        className="w-full flex items-center gap-2 p-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
+                        className="w-full flex items-center gap-2 p-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors"
                       >
-                        <UserRoundPen className="w-4 h-4 text-[#D71920]" />
+                        <UserRoundPen className="w-4 h-4 text-emerald-600" />
                         <span>Profil Saya / Edit Biodata</span>
                       </button>
                     )}
