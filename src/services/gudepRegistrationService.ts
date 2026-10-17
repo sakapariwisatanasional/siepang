@@ -10,10 +10,11 @@ import { apiTransport } from './apiTransport';
 export type GudepRecord = {
   gudep_id: string; event_id: string; gudep_name: string; gudep_number: string;
   institution_name?: string; registration_status: string; verification_status: string; activation_status?: 'ACTIVE' | 'INACTIVE';
+  contingent_verification_status?: string; contingent_verification_notes?: string;
 };
 export type GudepRegu = {
   regu_id: string; event_id: string; gudep_id: string; regu_name: string;
-  gender: 'PUTRA' | 'PUTRI'; quota: number; verification_status?: string; activation_status?: 'ACTIVE' | 'INACTIVE';
+  gender: 'PUTRA' | 'PUTRI'; quota: number; registration_status?: string; verification_status?: string; activation_status?: 'ACTIVE' | 'INACTIVE';
 };
 export type GudepAdvisor = {
   advisor_id: string; gudep_id: string; full_name: string; gender?: string;
@@ -62,8 +63,12 @@ export const gudepRegistrationService = {
     send<{ assignment_id: string; status: string }>('gudep.operator.assign', data),
   activateGudep: (gudep_id: string, activation_status: 'ACTIVE' | 'INACTIVE') => send<{gudep_id:string;activation_status:string;regu_updated:number}>('gudep.registration.activate',{gudep_id,activation_status}),
   activateRegu: (gudep_id: string, regu_id: string, activation_status: 'ACTIVE' | 'INACTIVE') => send<{regu_id:string;activation_status:string}>('gudep.regu.setActivation',{gudep_id,regu_id,activation_status}),
-  syncReguVerification: (gudep_id: string) => send<{ gudep_id: string; verification_status: string; regu_updated: number }>('gudep.registration.syncReguVerification', { gudep_id }),
+  // Kept only for backward compatibility; the backend deliberately rejects auto-approval.
+  syncReguVerification: (gudep_id: string) => send<never>('gudep.registration.syncReguVerification', { gudep_id }),
   submit: (gudep_id: string) => send<unknown>('gudep.registration.submit', { gudep_id }),
+  submitRegu: (gudep_id: string, regu_id: string) => send<unknown>('gudep.regu.submit', { gudep_id, regu_id }),
+  verifyRegu: (gudep_id: string, regu_id: string, decision: 'VERIFIED' | 'REVISION' | 'REJECTED', notes = '') => send<unknown>('gudep.regu.verify', { gudep_id, regu_id, decision, notes }),
+  verifyContingent: (gudep_id: string, decision: 'VERIFIED' | 'REVISION' | 'REJECTED', notes = '') => send<unknown>('contingent.registration.verify', { gudep_id, decision, notes }),
   verify: (gudep_id: string, decision: 'VERIFIED' | 'REVISION' | 'REJECTED', notes = '') =>
     send<unknown>('gudep.registration.verify', { gudep_id, decision, notes }),
 };
