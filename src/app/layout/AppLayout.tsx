@@ -22,14 +22,14 @@ const AppBackgroundDecor: React.FC = () => (
     aria-hidden="true"
     className="pointer-events-none fixed inset-0 z-0 overflow-hidden select-none"
   >
-    <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(198,40,40,0.055),transparent_52%),radial-gradient(ellipse_at_bottom_left,rgba(220,38,38,0.045),transparent_48%)]" />
+    <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(198,40,40,0.025),transparent_52%),radial-gradient(ellipse_at_bottom_left,rgba(220,38,38,0.02),transparent_48%)]" />
     <img
       src="/assets/siepang-scout-campsite.png"
       alt=""
       draggable={false}
-      className="absolute -bottom-8 -right-28 w-[min(78vw,1000px)] max-w-none opacity-[0.055] object-contain sm:-bottom-12 sm:-right-24 sm:opacity-[0.065] lg:-right-16 lg:opacity-[0.075] dark:opacity-[0.035]"
+      className="absolute -bottom-8 -right-28 w-[min(78vw,1000px)] max-w-none opacity-[0.018] object-contain sm:-bottom-12 sm:-right-24 sm:opacity-[0.025] lg:-right-16 lg:opacity-[0.03] dark:opacity-[0.015]"
     />
-    <div className="absolute -bottom-20 -left-16 h-64 w-64 rounded-full bg-red-200/10 blur-3xl dark:bg-red-900/10" />
+    <div className="absolute -bottom-20 -left-16 h-64 w-64 rounded-full bg-red-200/[0.04] blur-3xl dark:bg-red-900/[0.035]" />
   </div>
 );
 
