@@ -96,16 +96,16 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
     <>
       <nav
         aria-label="Navigasi utama seluler"
-        className="md:hidden fixed inset-x-0 bottom-0 z-40 border-t border-red-100 bg-white/95 px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-2 shadow-[0_-8px_30px_rgba(15,23,42,0.07)] backdrop-blur-xl dark:border-white/10 dark:bg-[#121215]/95"
+        className="md:hidden fixed inset-x-0 bottom-0 z-40 border-t border-red-100/90 bg-white/95 px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-2 shadow-[0_-8px_30px_rgba(127,29,29,0.10)] backdrop-blur-xl dark:border-white/10 dark:bg-[#121215]/95"
       >
-        <div className="mx-auto grid h-14 max-w-lg grid-cols-5 items-center gap-1">
+        <div className="mx-auto grid h-14 max-w-xl grid-cols-5 items-center gap-1 sm:gap-2">
           {navButton({ id: 'home', label: 'Beranda', icon: Home })}
           {navButton(primary)}
           <button
             type="button"
             onClick={() => { setMoreMenuOpen(false); onOpenScanner(); }}
             aria-label="Buka pemindai QR"
-            className="mx-auto flex h-12 w-12 -translate-y-2 items-center justify-center rounded-2xl bg-[#C62828] text-white shadow-lg shadow-red-900/20 transition-transform active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
+            className="mx-auto flex h-12 w-12 -translate-y-2 items-center justify-center rounded-2xl bg-gradient-to-br from-[#A61B1B] to-[#E34848] text-white shadow-lg shadow-red-900/25 transition-transform active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
           >
             <QrCode className="h-6 w-6" />
           </button>
