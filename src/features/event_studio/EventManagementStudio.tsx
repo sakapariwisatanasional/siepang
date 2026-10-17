@@ -192,12 +192,12 @@ export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
    * Tidak ada perubahan terhadap service/API/GAS; hanya layout/navigation presentation.
    */
   return (
-    <div className="w-full max-w-7xl mx-auto px-1 sm:px-0 pb-8 sm:pb-12">
+    <div className="w-full max-w-[88rem] mx-auto px-3 sm:px-4 lg:px-5 pb-10 sm:pb-12">
       {activeSection === 'overview' ? (
         <>
           {/* EVENT HEADER */}
           <section className="rounded-2xl sm:rounded-[24px] bg-white dark:bg-[#141418] border border-slate-200 dark:border-white/10 shadow-sm overflow-hidden">
-            <div className="p-3 sm:p-5">
+            <div className="p-4 sm:p-6 lg:p-7">
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                   <div className="min-w-0">
@@ -297,16 +297,16 @@ export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
                     <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white">Jelajahi Manajemen Event</h2>
                     <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">Pilih kategori di kiri, lalu buka fitur dari kartu di kanan.</p>
                   </div>
-                  <div className="grid grid-cols-1 lg:grid-cols-[minmax(190px,220px)_minmax(0,1fr)] gap-3 sm:gap-4 items-start">
-                    <nav aria-label="Kategori manajemen event" className="flex gap-1.5 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0 rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-white/[0.025] p-2 no-scrollbar">
+                  <div className="grid grid-cols-1 xl:grid-cols-[minmax(210px,240px)_minmax(0,1fr)] gap-4 sm:gap-5 lg:gap-6 items-start">
+                    <nav aria-label="Kategori manajemen event" className="flex gap-2 overflow-x-auto pb-2 xl:flex-col xl:overflow-visible xl:pb-2 rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-white/[0.025] p-3 no-scrollbar">
                       {STUDIO_CATEGORIES.map(category => {
                         const Icon = category.icon;
                         const selected = activeCategory === category.id;
                         return (
                           <button key={category.id} type="button" onClick={() => setActiveCategory(category.id)} aria-pressed={selected}
-                            className={`min-w-[148px] lg:min-w-0 min-h-11 lg:min-h-[54px] flex items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 ${selected ? 'bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-200 ring-1 ring-red-200 dark:ring-red-900/60' : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-white/5'}`}>
+                            className={`min-w-[160px] xl:min-w-0 min-h-[56px] flex items-center gap-3 rounded-xl px-3 py-3 text-left leading-snug transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 ${selected ? 'bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-200 ring-1 ring-red-200 dark:ring-red-900/60' : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-white/5'}`}>
                             <span className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center ${selected ? 'bg-red-100 dark:bg-red-900/50' : 'bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10'}`}><Icon className="w-4 h-4" /></span>
-                            <span className="min-w-0 flex-1"><span className="block text-[11px] sm:text-xs font-bold leading-tight">{category.label}</span><span className="hidden md:block text-[10px] mt-1 opacity-75 leading-tight">{category.sections.length} fitur</span></span>
+                            <span className="min-w-0 flex-1"><span className="block text-xs font-bold leading-snug break-words">{category.label}</span><span className="hidden xl:block text-[11px] mt-1 opacity-75 leading-snug">{category.sections.length} fitur</span></span>
                             <ChevronRight className={`hidden md:block w-3.5 h-3.5 shrink-0 ${selected ? 'text-red-600' : 'text-slate-400'}`} />
                           </button>
                         );
@@ -315,12 +315,12 @@ export const EventManagementStudio: React.FC<EventManagementStudioProps> = ({
                     <div className="min-w-0">
                       {STUDIO_CATEGORIES.filter(category => category.id === activeCategory).map(category => (
                         <div key={category.id}>
-                          <div className="flex items-center justify-between gap-2 mb-2.5"><div className="min-w-0"><h3 className="text-sm font-extrabold text-slate-900 dark:text-white">{category.label}</h3><p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{category.description}</p></div><span className="shrink-0 rounded-full bg-slate-100 dark:bg-white/10 px-2.5 py-1 text-[10px] font-bold text-slate-500 dark:text-slate-300">{category.sections.length} fitur</span></div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-3 gap-2.5 sm:gap-3">
+                          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2.5 mb-4"><div className="min-w-0"><h3 className="text-base font-extrabold leading-snug text-slate-900 dark:text-white break-words">{category.label}</h3><p className="text-xs sm:text-sm leading-relaxed text-slate-500 dark:text-slate-400 mt-1 break-words">{category.description}</p></div><span className="self-start shrink-0 rounded-full bg-slate-100 dark:bg-white/10 px-3 py-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-300">{category.sections.length} fitur</span></div>
+                          <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-4 sm:gap-5">
                             {MENU_ITEMS.filter(item => category.sections.includes(item.id)).map(item => (
-                              <button key={item.id} type="button" onClick={() => openSection(item.id)} className="group min-h-[84px] sm:min-h-[96px] rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.035] hover:border-red-300 dark:hover:border-red-800 hover:bg-red-50/50 dark:hover:bg-red-950/15 p-3 sm:p-3.5 flex items-center gap-3 text-left shadow-sm transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 active:scale-[0.99]">
-                                <span className="w-10 h-10 shrink-0 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 flex items-center justify-center text-xl font-bold" aria-hidden="true">{item.icon}</span>
-                                <span className="min-w-0 flex-1"><span className="flex items-start justify-between gap-1.5"><span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-white leading-snug">{item.label}</span><ChevronRight className="w-4 h-4 shrink-0 mt-0.5 text-slate-400 group-hover:text-red-600 group-hover:translate-x-0.5 transition-transform" /></span><span className="block mt-1 text-[10px] sm:text-[11px] leading-snug text-slate-500 dark:text-slate-400">{item.description}</span></span>
+                              <button key={item.id} type="button" onClick={() => openSection(item.id)} className="group min-h-[112px] rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.035] hover:border-red-300 dark:hover:border-red-800 hover:bg-red-50/50 dark:hover:bg-red-950/15 p-4 sm:p-5 flex items-start gap-3 sm:gap-4 text-left shadow-sm transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 active:scale-[0.99]">
+                                <span className="w-11 h-11 shrink-0 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 flex items-center justify-center text-xl font-bold" aria-hidden="true">{item.icon}</span>
+                                <span className="min-w-0 flex-1"><span className="flex items-start gap-2"><span className="min-w-0 flex-1 text-sm font-bold text-slate-800 dark:text-white leading-snug break-words">{item.label}</span><ChevronRight className="w-4 h-4 shrink-0 mt-0.5 text-slate-400 group-hover:text-red-600 group-hover:translate-x-0.5 transition-transform" /></span><span className="block mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400 break-words">{item.description}</span></span>
                               </button>
                             ))}
                           </div>
