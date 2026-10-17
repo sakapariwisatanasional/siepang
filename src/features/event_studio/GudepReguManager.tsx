@@ -64,7 +64,7 @@ export const GudepReguManager: React.FC = () => {
     setBusy(true); setError(''); setMessage('');
     try {
       const result = await gudepRegistrationService.create({ ...gForm, request_key: gudepKey.current });
-      setMessage(`Gudep ${result.gudep.gudep_name} berhasil disimpan di GAS.`);
+      setMessage(`Gudep ${result.gudep.gudep_name} berhasil disimpan di GAS. Lengkapi pengajuan administrasi dan tunggu keputusan panitia/admin.`);
       gudepKey.current = newKey(); setGForm(blankGudep()); setAddGudep(false);
       await load(result.gudep.gudep_id);
     } catch (err: any) { setError(err?.message || 'Penyimpanan Gudep gagal. Cek GAS sebelum mencoba dengan data baru.'); }
@@ -76,7 +76,7 @@ export const GudepReguManager: React.FC = () => {
     setBusy(true); setError(''); setMessage('');
     try {
       const result = await gudepRegistrationService.createRegu({ ...rForm, gudep_id: selectedId, request_key: reguKey.current });
-      setMessage(`Regu ${result.regu.regu_name} berhasil disimpan di GAS.`);
+      setMessage(`Regu ${result.regu.regu_name} berhasil disimpan di GAS. Lengkapi pengajuan administrasi dan tunggu keputusan panitia/admin.`);
       reguKey.current = newKey(); setRForm(blankRegu()); setAddRegu(false);
       const updated = await gudepRegistrationService.detail(selectedId);
       setRegu(updated.regu || []);
@@ -108,22 +108,8 @@ export const GudepReguManager: React.FC = () => {
       await load(selectedId);
       const fresh = await gudepRegistrationService.detail(selectedId);
       setRegu(fresh.regu || []);
-      setMessage(`Keputusan ${decision} berhasil disimpan ke GAS, termasuk status seluruh Regu.`);
+      setMessage(`Keputusan ${decision} berhasil disimpan ke GAS. Status Regu tidak berubah.`);
     } catch (e: any) { setError(e?.message || 'Gagal menyimpan keputusan verifikasi.'); }
-    finally { setBusy(false); }
-  };
-
-  const syncVerifiedRegu = async () => {
-    if (busy || !selectedId) return;
-    if (!window.confirm('Samakan status Regu PENDING menjadi VERIFIED mengikuti Gudep yang sudah disetujui?')) return;
-    setBusy(true); setError(''); setMessage('');
-    try {
-      const result = await gudepRegistrationService.syncReguVerification(selectedId);
-      const fresh = await gudepRegistrationService.detail(selectedId);
-      setRegu(fresh.regu || []);
-      setMessage(`${result.regu_updated} Regu berhasil disinkronkan menjadi VERIFIED di GAS.`);
-      await load(selectedId);
-    } catch (e: any) { setError(e?.message || 'Gagal menyinkronkan status regu.'); }
     finally { setBusy(false); }
   };
 
@@ -146,7 +132,7 @@ export const GudepReguManager: React.FC = () => {
       await gudepRegistrationService.activateRegu(selectedId,id,status);
       const result = await gudepRegistrationService.detail(selectedId);
       setRegu(result.regu || []);
-      setMessage('Status aktivasi Regu berhasil disimpan di GAS.');
+      setMessage('Status aktivasi Regu berhasil disimpan di GAS. Lengkapi pengajuan administrasi dan tunggu keputusan panitia/admin.');
     } catch (e: any) { setError(e?.message || 'Aktivasi Regu gagal.'); }
     finally { setBusy(false); }
   };
@@ -198,15 +184,12 @@ export const GudepReguManager: React.FC = () => {
         </div>
       </div>}
       {selected.verification_status === 'VERIFIED' && <div className="space-y-2">
-        <p className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-200">Gudep telah diverifikasi. Verifikasi Gudep mencakup semua Regu yang diajukan. Aktivasi operasional terpisah dari persetujuan. Hanya Admin berwenang dapat mengaktifkan Gudep dan seluruh Regu yang VERIFIED.</p>
+        <p className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-200">Gudep telah diverifikasi secara administrasi. Setiap Regu harus diajukan dan diverifikasi secara terpisah. Aktivasi operasional terpisah dari keputusan verifikasi.</p>
         <p className="text-xs text-slate-700 dark:text-slate-200">Status aktivasi: <strong>{selected.activation_status || 'INACTIVE'}</strong></p>
         <div className="flex flex-wrap gap-2">
           {selected.activation_status !== 'ACTIVE' ? <button type="button" disabled={busy || detailLoading || regu.length === 0 || regu.some(r => r.verification_status !== 'VERIFIED')} onClick={() => void changeActivation('ACTIVE')} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-40">Verifikasi selesai — Aktifkan Gudep & Regu</button> : <button type="button" disabled={busy} onClick={() => void changeActivation('INACTIVE')} className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-40">Nonaktifkan Gudep & Regu</button>}
         </div>
-        {!detailLoading && regu.some(r => r.verification_status === 'PENDING') && <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/40 p-3">
-          <span className="text-xs text-amber-600 dark:text-amber-300">Ada Regu lama berstatus PENDING walaupun Gudep sudah VERIFIED.</span>
-          <button type="button" disabled={busy} onClick={() => void syncVerifiedRegu()} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-40">Sinkronkan Verifikasi Regu</button>
-        </div>}
+
       </div>}
       {selected.verification_status === 'REJECTED' && <p className="rounded-xl bg-rose-50 p-3 text-xs text-rose-900 dark:bg-rose-950/20 dark:text-rose-200">Pengajuan ditolak. Data tidak dihapus.</p>}
       {selected.verification_status === 'REVISION' && <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">Pengajuan dikembalikan ke DRAFT untuk perbaikan. Fungsi edit data memerlukan endpoint update GAS yang belum tersedia.</p>}
