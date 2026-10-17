@@ -12,23 +12,28 @@ import { LogisticItem } from '../../types';
 export const LogisticsInventory: React.FC = () => {
   const [items, setItems] = useState<LogisticItem[]>(logisticsService.getItems());
 
+  const [loadError, setLoadError] = useState('');
   useEffect(() => {
-    const unsub = logisticsService.subscribe(() => {
-      setItems(logisticsService.getItems());
-    });
-    return () => unsub();
+    let mounted = true;
+    const unsub = logisticsService.subscribe(() => { if (mounted) setItems(logisticsService.getItems()); });
+    logisticsService.refreshItems().then(() => { if (mounted) setLoadError(''); })
+      .catch((err: any) => { if (mounted) setLoadError(err?.message || 'Gagal memuat inventaris dari GAS.'); });
+    return () => { mounted = false; unsub(); };
   }, []);
 
-  const handleQuickBorrow = (id: string) => {
-    logisticsService.recordLoan(id);
+  const handleQuickBorrow = async (id: string) => {
+    try { await logisticsService.recordLoan(id); setLoadError(''); }
+    catch (err: any) { setLoadError(err?.message || 'Peminjaman gagal disimpan melalui GAS.'); }
   };
 
-  const handleQuickReturn = (id: string) => {
-    logisticsService.recordReturn(id);
+  const handleQuickReturn = async (id: string) => {
+    try { await logisticsService.recordReturn(id); setLoadError(''); }
+    catch (err: any) { setLoadError(err?.message || 'Pengembalian gagal disimpan melalui GAS.'); }
   };
 
   return (
     <div className="space-y-5 max-w-4xl mx-auto pb-8">
+      {loadError && <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">{loadError}</div>}
       {/* Header */}
       <div className="bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 p-5 sm:p-6 rounded-[28px] shadow-xs space-y-2">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
