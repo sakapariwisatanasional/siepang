@@ -208,7 +208,13 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
                     <option value="Tamu Undangan">Tamu Undangan</option>
                     <option value="Umum">Masyarakat Umum</option>
                     <option value="Alumni">Purna / Alumni</option>
+                    <option value="Mabiran">Mabiran</option>
+                    <option value="Mabigus">Mabigus</option>
                     <option value="Mitra">Mitra / Sponsor</option>
+                    <option value="Media">Media</option>
+                    <option value="VIP">VIP</option>
+                    <option value="VVIP">VVIP</option>
+                    <option value="Lainnya">Lainnya</option>
                   </select>
                 </div>
 
