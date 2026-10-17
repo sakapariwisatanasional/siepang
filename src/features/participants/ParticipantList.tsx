@@ -1204,9 +1204,9 @@ export const ParticipantList: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <form
             onSubmit={handleFinishStepReg}
-            className="siepang-participant-registration w-full max-w-5xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] shadow-2xl max-h-[94vh] overflow-hidden"
+            className="siepang-participant-registration flex w-full max-w-6xl flex-col bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] shadow-2xl max-h-[94dvh] overflow-hidden"
           >
-            <div className="flex items-start justify-between gap-4 px-5 sm:px-7 py-5 border-b border-[#ECECEF] dark:border-white/10">
+            <div className="sticky top-0 z-10 flex shrink-0 items-start justify-between gap-4 px-5 sm:px-7 py-4 sm:py-5 border-b border-[#ECECEF] dark:border-white/10 bg-white/95 dark:bg-[#141418]/95 backdrop-blur-sm">
               <div className="space-y-1.5">
                 <span className="inline-flex items-center rounded-full bg-[#F9E8E1] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#C62828] dark:bg-[#C62828]/15 dark:text-[#FFB08C]">
                   Formulir Peserta · Prioritas Profil
@@ -1221,8 +1221,10 @@ export const ParticipantList: React.FC = () => {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px]">
-              <div className="max-h-[calc(94vh-88px)] overflow-y-auto px-5 sm:px-7 py-5 space-y-6">
+            {/* One shared scroll area prevents competing scrollbars in the form and summary. */}
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px]">
+              <div className="min-w-0 px-4 sm:px-6 lg:px-7 py-5 space-y-5 sm:space-y-6">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                   <div className="rounded-2xl border border-[#ECECEF] dark:border-white/10 bg-[#FAFAFA] dark:bg-white/5 p-3">
                     <div className="text-[#6B7280] dark:text-slate-400">Profil prioritas</div>
@@ -1518,7 +1520,7 @@ export const ParticipantList: React.FC = () => {
                 </div>
               </div>
 
-              <aside className="border-t xl:border-t-0 xl:border-l border-[#ECECEF] dark:border-white/10 bg-[#FCFCFD] dark:bg-[#111216] px-5 sm:px-6 py-5 space-y-4 max-h-[calc(94vh-88px)] overflow-y-auto">
+              <aside className="min-w-0 border-t xl:border-t-0 xl:border-l border-[#ECECEF] dark:border-white/10 bg-[#FCFCFD] dark:bg-[#111216] px-4 sm:px-5 py-5 space-y-4">
                 <div className="rounded-3xl border border-[#ECECEF] dark:border-white/10 bg-white dark:bg-white/[0.03] p-4 space-y-3">
                   <div>
                     <h4 className="text-sm font-bold text-[#171717] dark:text-white">Ringkasan Profil Peserta</h4>
@@ -1595,6 +1597,7 @@ export const ParticipantList: React.FC = () => {
                   </button>
                 </div>
               </aside>
+              </div>
             </div>
           </form>
         </div>
