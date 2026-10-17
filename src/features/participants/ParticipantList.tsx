@@ -2,7 +2,7 @@
  * @license
  * SiEpang - Participant Directory, Verification Workspace, Step-Registration & Import v1.1
  * Fully implements:
- * - Requirement 8: Single-page participant registration form (identity, Gudep/regu, medical info, photo, documents)
+ * - Requirement 8: Mobile-friendly step-based participant registration experience (1. Identity, 2. Org, 3. Info, 4. Docs, 5. Review, 6. Submit)
  * - Requirement 9: Participant Verification Workspace for Registration Officers (pending queue, preview, approve, request revision with reason, reject)
  * - Requirement 10: Participant Status History tracking & timeline viewer
  * - Requirement 11: Duplicate Participant Detection with review modal
@@ -39,9 +39,6 @@ import {
   Sliders,
   Image as ImageIcon,
   Users,
-  School,
-  Plus,
-  RefreshCw,
 } from 'lucide-react';
 import { participantService } from '../../services/participantService';
 import { gudepRegistrationService, GudepRecord, GudepRegu } from '../../services/gudepRegistrationService';
@@ -49,7 +46,6 @@ import { authService } from '../../services/authService';
 import { profilePhotoService } from '../../services/profilePhotoService';
 import { Participant, ParticipantStatus, Contingent, ProfilePhotoStatus, PhotoRequiredConfig, PhotoReplacementPolicy } from '../../types';
 import { PersonalQrModal } from './PersonalQrModal';
-import { ParticipantAdminDialog } from './ParticipantAdminDialog';
 import { ProfilePhotoUploader } from '../../components/media/ProfilePhotoUploader';
 
 function makeRequestKey(): string {
@@ -71,7 +67,7 @@ export const ParticipantList: React.FC = () => {
     label: string;
     impactDescription: string;
   } | null>(null);
-  const [adminDialog, setAdminDialog] = useState<{mode:'assign'|'edit'|'archive'; participants:Participant[]} | null>(null);
+  const [bulkTargetContingent, setBulkTargetContingent] = useState('');
   const [bulkTargetCategory, setBulkTargetCategory] = useState<Participant['role']>('Penggalang');
 
   // Modals
@@ -82,18 +78,6 @@ export const ParticipantList: React.FC = () => {
   const [revisionReasonText, setRevisionReasonText] = useState('Foto KTA atau dokumen izin kurang jelas, mohon unggah ulang.');
   const [showImportModal, setShowImportModal] = useState(false);
   const [showStepRegModal, setShowStepRegModal] = useState(false);
-  const [showGudepManager, setShowGudepManager] = useState(false);
-  const [managerGudep, setManagerGudep] = useState<GudepRecord[]>([]);
-  const [managerSelectedId, setManagerSelectedId] = useState('');
-  const [managerRegu, setManagerRegu] = useState<GudepRegu[]>([]);
-  const [managerBusy, setManagerBusy] = useState(false);
-  const [managerLoading, setManagerLoading] = useState(false);
-  const [managerError, setManagerError] = useState('');
-  const [managerMessage, setManagerMessage] = useState('');
-  const [gudepForm, setGudepForm] = useState({ gudep_number: '', gudep_name: '', institution_name: '' });
-  const [reguForm, setReguForm] = useState({ regu_name: '', gender: 'PUTRA' as 'PUTRA' | 'PUTRI', quota: 8 });
-  const gudepCreateKey = useRef(makeRequestKey());
-  const reguCreateKey = useRef(makeRequestKey());
   const [showPhotoConfigModal, setShowPhotoConfigModal] = useState(false);
   const [photoConfig, setPhotoConfig] = useState<PhotoRequiredConfig>(profilePhotoService.getRequiredConfig());
   const [photoPolicy, setPhotoPolicy] = useState<PhotoReplacementPolicy>(profilePhotoService.getReplacementPolicy());
@@ -174,7 +158,7 @@ export const ParticipantList: React.FC = () => {
     setGudepLoading(true);
     setGudepLoadError('');
     gudepRegistrationService.list().then(({ gudep }) => {
-      if (active) setGudepOptions((gudep || []).filter(g => g.verification_status !== 'REJECTED')); // Pendaftaran peserta boleh menunggu verifikasi admin.
+      if (active) setGudepOptions((gudep || []).filter(g => g.verification_status === 'VERIFIED' && g.activation_status === 'ACTIVE'));
     }).catch((err: any) => {
       if (active) { setGudepOptions([]); setGudepLoadError(err?.message || 'Daftar Gudep tidak dapat dimuat.'); }
     }).finally(() => { if (active) setGudepLoading(false); });
@@ -190,107 +174,16 @@ export const ParticipantList: React.FC = () => {
     setReguLoading(true);
     setReguLoadError('');
     gudepRegistrationService.detail(stepData.gudepId).then(result => {
-      if (active) setReguOptions((result.regu || []).filter(r => r.verification_status !== 'REJECTED')); // Status regu diverifikasi terpisah.
+      if (active) setReguOptions((result.regu || []).filter(r => r.verification_status === 'VERIFIED' && r.activation_status === 'ACTIVE'));
     }).catch((err: any) => {
       if (active) { setReguOptions([]); setReguLoadError(err?.message || 'Daftar regu tidak dapat dimuat.'); }
     }).finally(() => { if (active) setReguLoading(false); });
     return () => { active = false; };
   }, [showStepRegModal, stepData.gudepId]);
 
-  const refreshGudepManager = async (preferredId?: string) => {
-    setManagerLoading(true);
-    try {
-      const response = await gudepRegistrationService.list();
-      const items = response.gudep || [];
-      setManagerGudep(items);
-      setManagerSelectedId(previous => items.some(g => g.gudep_id === (preferredId || previous))
-        ? (preferredId || previous) : (items[0]?.gudep_id || ''));
-      setManagerError('');
-    } catch (err: any) {
-      setManagerError(err?.message || 'Gagal memuat Gugus Depan dari GAS.');
-    } finally { setManagerLoading(false); }
-  };
-
-  useEffect(() => {
-    if (showGudepManager) void refreshGudepManager();
-  }, [showGudepManager]);
-
-  useEffect(() => {
-    if (!showGudepManager || !managerSelectedId) { setManagerRegu([]); return; }
-    let active = true;
-    gudepRegistrationService.detail(managerSelectedId).then(data => {
-      if (active) setManagerRegu(data.regu || []);
-    }).catch((err: any) => {
-      if (active) setManagerError(err?.message || 'Gagal memuat regu.');
-    });
-    return () => { active = false; };
-  }, [showGudepManager, managerSelectedId]);
-
-  const submitManagerGudep = async (gudepId: string) => {
-    if (managerBusy || !gudepId) return;
-    setManagerBusy(true); setManagerError(''); setManagerMessage('');
-    try {
-      await gudepRegistrationService.submit(gudepId);
-      await refreshGudepManager(gudepId);
-      setManagerMessage('Pengajuan Gudep berhasil dikirim. Menunggu verifikasi administrasi dari panitia/admin.');
-    } catch (err: any) { setManagerError(err?.message || 'Gagal mengajukan Gudep.'); }
-    finally { setManagerBusy(false); }
-  };
-
-  const submitManagerRegu = async (gudepId: string, reguId: string) => {
-    if (managerBusy || !gudepId || !reguId) return;
-    setManagerBusy(true); setManagerError(''); setManagerMessage('');
-    try {
-      await gudepRegistrationService.submitRegu(gudepId, reguId);
-      const fresh = await gudepRegistrationService.detail(gudepId);
-      setManagerRegu(fresh.regu || []);
-      setManagerMessage('Pengajuan regu berhasil dikirim. Status verifikasi regu terpisah dari Gudep.');
-    } catch (err: any) { setManagerError(err?.message || 'Gagal mengajukan regu.'); }
-    finally { setManagerBusy(false); }
-  };
-
-  const submitNewGudep = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (managerBusy) return;
-    setManagerBusy(true); setManagerError(''); setManagerMessage('');
-    try {
-      const result = await gudepRegistrationService.create({ ...gudepForm, request_key: gudepCreateKey.current });
-      gudepCreateKey.current = makeRequestKey();
-      setGudepForm({ gudep_number: '', gudep_name: '', institution_name: '' });
-      setManagerMessage(`Gugus Depan ${result.gudep.gudep_name} tersimpan. Tambahkan regu dan ajukan administrasi; peserta dapat didaftarkan sambil menunggu verifikasi admin.`);
-      await refreshGudepManager(result.gudep.gudep_id);
-    } catch (err: any) { setManagerError(err?.message || 'Gagal menyimpan Gudep. Periksa riwayat GAS sebelum mengulangi.'); }
-    finally { setManagerBusy(false); }
-  };
-
-  const submitNewRegu = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (managerBusy || !managerSelectedId) return;
-    setManagerBusy(true); setManagerError(''); setManagerMessage('');
-    try {
-      const result = await gudepRegistrationService.createRegu({ ...reguForm, gudep_id: managerSelectedId, request_key: reguCreateKey.current });
-      reguCreateKey.current = makeRequestKey();
-      setReguForm({ regu_name: '', gender: 'PUTRA', quota: 8 });
-      setManagerMessage(`Regu ${result.regu.regu_name} tersimpan. Regu hanya dapat dipilih peserta setelah diverifikasi dan diaktifkan.`);
-      const detail = await gudepRegistrationService.detail(managerSelectedId);
-      setManagerRegu(detail.regu || []);
-    } catch (err: any) { setManagerError(err?.message || 'Gagal menyimpan regu.'); }
-    finally { setManagerBusy(false); }
-  };
-
   const selectedGudep = gudepOptions.find(g => g.gudep_id === stepData.gudepId);
   const matchingRegu = reguOptions.filter(r => r.gender === (stepData.gender === 'M' ? 'PUTRA' : 'PUTRI'));
   const selectedRegu = matchingRegu.find(r => r.regu_id === stepData.reguId);
-  const selectedPangkalanLabel = selectedGudep?.institution_name || selectedGudep?.gudep_name || '';
-  const priorityProfileCompletion = [
-    stepData.name.trim(),
-    stepData.membershipNumber.trim(),
-    stepData.gudepId,
-    stepData.reguId,
-    stepData.emergencyContact.trim(),
-    stepData.profile_photo_status !== 'NOT_UPLOADED' ? 'uploaded' : '',
-  ].filter(Boolean).length;
-  const documentChecklistCompletion = [stepData.docKta, stepData.docIzin, stepData.docSehat].filter(Boolean).length;
 
   const contingents = participantService.getContingents();
   const participants = participantService.getParticipants({
@@ -313,65 +206,54 @@ export const ParticipantList: React.FC = () => {
   };
 
   // Verification actions (Requirement 9)
-  const [verificationBusyId, setVerificationBusyId] = useState<string | null>(null);
-
-  const handleApprove = async (p: Participant) => {
-    if (verificationBusyId) return;
-    setVerificationBusyId(p.id);
-    try {
-      await participantService.approveParticipant(p.id, currentActorName);
-      showToast(`✓ Peserta '${p.name}' disetujui dan status dibaca ulang dari Spreadsheet.`);
-    } catch (err: any) {
-      showToast(`Gagal menyimpan persetujuan: ${err?.message || 'Kesalahan GAS'}`);
-    } finally { setVerificationBusyId(null); }
+  const handleApprove = (p: Participant) => {
+    participantService.approveParticipant(p.id, currentActorName);
+    showToast(`✓ Peserta '${p.name}' disetujui (Approved).`);
   };
 
-  const handleVerify = async (p: Participant) => {
-    if (verificationBusyId) return;
-    setVerificationBusyId(p.id);
-    try {
-      await participantService.verifyParticipant(p.id, currentActorName);
-      showToast(`✓ Berkas '${p.name}' terverifikasi dan tersimpan di Spreadsheet.`);
-    } catch (err: any) {
-      showToast(`Gagal menyimpan verifikasi: ${err?.message || 'Kesalahan GAS'}`);
-    } finally { setVerificationBusyId(null); }
+  const handleVerify = (p: Participant) => {
+    participantService.verifyParticipant(p.id, currentActorName);
+    showToast(`✓ Berkas '${p.name}' terverifikasi.`);
   };
 
-  const handleConfirmRevision = async () => {
-    if (!revisionModalTarget || verificationBusyId) return;
-    const target = revisionModalTarget;
-    setVerificationBusyId(target.id);
-    try {
-      await participantService.requestRevision(target.id, revisionReasonText, currentActorName);
-      showToast(`⚠️ Permintaan revisi untuk '${target.name}' tersimpan di Spreadsheet.`);
-      setRevisionModalTarget(null);
-    } catch (err: any) {
-      showToast(`Gagal menyimpan revisi: ${err?.message || 'Kesalahan GAS'}`);
-    } finally { setVerificationBusyId(null); }
+  const handleConfirmRevision = () => {
+    if (!revisionModalTarget) return;
+    participantService.requestRevision(revisionModalTarget.id, revisionReasonText, currentActorName);
+    showToast(`⚠️ Permintaan perbaikan berkas dikirimkan ke '${revisionModalTarget.name}'.`);
+    setRevisionModalTarget(null);
   };
 
-  const handleReject = async (p: Participant) => {
+  const handleReject = (p: Participant) => {
     const reason = prompt('Masukkan alasan penolakan berkas:', 'Data ganda atau syarat kepramukaan tidak terpenuhi');
-    if (!reason?.trim() || verificationBusyId) return;
-    setVerificationBusyId(p.id);
-    try {
-      await participantService.rejectParticipant(p.id, reason, currentActorName);
-      showToast(`Peserta '${p.name}' ditolak dan status tersimpan di Spreadsheet.`);
-    } catch (err: any) {
-      showToast(`Gagal menyimpan penolakan: ${err?.message || 'Kesalahan GAS'}`);
-    } finally { setVerificationBusyId(null); }
+    if (reason) {
+      participantService.rejectParticipant(p.id, reason, currentActorName);
+      showToast(`Peserta '${p.name}' ditolak.`);
+    }
   };
 
-  // Admin participant mutations now use persistent GAS endpoints only.
-  // The previous local-only bulk helpers must never claim a successful write.
+  // Bulk Actions (Requirement 13)
   const handleExecuteBulkAction = () => {
     if (!bulkActionConfirm) return;
-    if (bulkActionConfirm.action === 'assign_contingent' || bulkActionConfirm.action === 'archive') {
-      const picked = participants.filter(p => selectedIds.includes(p.id));
-      if (picked.length) setAdminDialog({mode:bulkActionConfirm.action === 'archive'?'archive':'assign',participants:picked});
-    } else {
-      showToast('Aksi massal ini belum memiliki endpoint GAS resmi; perubahan tidak dijalankan.');
+    const actor = currentActorName;
+
+    if (bulkActionConfirm.action === 'approve') {
+      const count = participantService.bulkApprove(selectedIds, actor);
+      showToast(`✅ ${count} peserta berhasil disetujui massal.`);
+    } else if (bulkActionConfirm.action === 'archive') {
+      const count = participantService.bulkArchive(selectedIds);
+      showToast(`📦 ${count} peserta berhasil diarsipkan.`);
+    } else if (bulkActionConfirm.action === 'assign_contingent') {
+      const ctg = contingents.find(c => c.id === bulkTargetContingent);
+      if (ctg) {
+        participantService.bulkAssignContingent(selectedIds, ctg.id, ctg.name);
+        showToast(`✅ ${selectedIds.length} peserta dialokasikan ke ${ctg.name}.`);
+      }
+    } else if (bulkActionConfirm.action === 'assign_category') {
+      participantService.bulkAssignCategory(selectedIds, bulkTargetCategory);
+      showToast(`✅ ${selectedIds.length} peserta diubah ke tingkatan ${bulkTargetCategory}.`);
     }
+
+    setSelectedIds([]);
     setBulkActionConfirm(null);
   };
 
@@ -402,6 +284,7 @@ export const ParticipantList: React.FC = () => {
     if (!stepData.name.trim()) return;
     if (!selectedGudep || !selectedRegu) {
       showToast('Pilih Gugus Depan dan regu yang sesuai terlebih dahulu.');
+      setRegStep(2);
       return;
     }
 
@@ -409,11 +292,7 @@ export const ParticipantList: React.FC = () => {
     const entityType = (stepData.role === 'Pembina Pendamping' || stepData.role === 'Pimpinan Kontingen') ? 'OFFICIAL' : 'PARTICIPANT';
     if (!profilePhotoService.isSubmissionAllowed(entityType, stepData.profile_photo_status)) {
       showToast('⚠️ Foto profil resmi wajib diunggah sebelum pendaftaran dapat diselesaikan.');
-      return;
-    }
-
-    if (!stepData.docKta || !stepData.docIzin || !stepData.docSehat) {
-      showToast('Lengkapi konfirmasi tiga berkas pendukung wajib sebelum mengirim pendaftaran.');
+      setRegStep(4);
       return;
     }
 
@@ -530,7 +409,7 @@ export const ParticipantList: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 p-5 rounded-[28px] shadow-xs">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full bg-[#FFF0F4] text-[#F47743] border border-[#FFE0E8] text-[10px] font-bold">
+            <span className="px-2.5 py-0.5 rounded-full bg-[#FFF1F1] text-[#C62828] border border-[#FECACA] text-[10px] font-bold">
               Manajemen Peserta Online v1.1
             </span>
             <span className="text-xs text-[#6B7280] dark:text-slate-400">{loadState === 'loading' ? 'Memuat peserta…' : loadState === 'error' ? 'Gagal memuat' : `Total ${participants.length} Terdaftar`}</span>
@@ -565,7 +444,7 @@ export const ParticipantList: React.FC = () => {
               <ShieldCheck className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Verifikasi Berkas</span>
               {pendingVerificationList.length > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-[#F47743] text-white font-bold text-[10px]">
+                <span className="px-1.5 py-0.2 rounded-full bg-[#C62828] text-white font-bold text-[10px]">
                   {pendingVerificationList.length}
                 </span>
               )}
@@ -581,17 +460,6 @@ export const ParticipantList: React.FC = () => {
           >
             <Camera className="w-4 h-4 text-[#208C60] dark:text-purple-400" />
             <span className="hidden sm:inline sm:ml-1.5">Kebijakan Foto</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowGudepManager(true)}
-            className="flex items-center justify-center gap-1.5 p-2.5 sm:px-3 sm:py-2 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-bold border border-emerald-200 dark:border-emerald-500/20 transition-colors"
-            title="Daftarkan Gugus Depan dan Regu"
-            aria-label="Kelola Gugus Depan dan Regu"
-          >
-            <School className="w-4 h-4" />
-            <span className="hidden sm:inline">+ Gudep / Regu</span>
           </button>
 
           <button
@@ -612,7 +480,7 @@ export const ParticipantList: React.FC = () => {
               setRegistrationRequestKey(makeRequestKey());
               setShowStepRegModal(true);
             }}
-            className="flex items-center justify-center p-2.5 sm:px-4 sm:py-2 bg-gradient-to-r from-[#208C60] via-[#F47743] to-[#F4A53A] hover:opacity-95 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-pink-500/20 shrink-0 min-w-[44px] min-h-[44px] cursor-pointer"
+            className="flex items-center justify-center p-2.5 sm:px-4 sm:py-2 bg-gradient-to-r from-[#208C60] via-[#C62828] to-[#F4A53A] hover:opacity-95 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-pink-500/20 shrink-0 min-w-[44px] min-h-[44px] cursor-pointer"
             title="Registrasi Peserta Baru"
             aria-label="Registrasi Peserta Baru"
           >
@@ -631,26 +499,28 @@ export const ParticipantList: React.FC = () => {
               <Search className="w-4 h-4 text-[#9CA3AF] absolute left-3.5 top-3" />
               <input
                 type="text"
-                placeholder="Cari nama, nomor NTA, kode peserta, atau Gugus Depan..."
+                placeholder="Cari nama, nomor NTA, kode peserta (cth: PST-2026), atau kontingen..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-2xl text-base sm:text-xs text-[#171717] dark:text-white placeholder-[#9CA3AF] focus:outline-none focus:border-[#F47743]"
+                className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-2xl text-base sm:text-xs text-[#171717] dark:text-white placeholder-[#9CA3AF] focus:outline-none focus:border-[#C62828]"
               />
             </div>
 
             <select
               value={contingentFilter}
               onChange={e => setContingentFilter(e.target.value)}
-              className="bg-white dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-2xl px-3 py-2 text-base sm:text-xs text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
+              className="bg-white dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-2xl px-3 py-2 text-base sm:text-xs text-[#171717] dark:text-white focus:outline-none focus:border-[#C62828]"
             >
-              <option value="all">Semua Gugus Depan</option>
-              {[...new Map(participants.map(p=>[p.contingentId,{id:p.contingentId,name:p.contingentName}])).values()].filter(c=>c.id).map(c=>(<option key={c.id} value={c.id}>{c.name}</option>))}
+              <option value="all">Semua Kontingen ({contingents.length})</option>
+              {contingents.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
             </select>
 
             <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value as any)}
-              className="bg-white dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-2xl px-3 py-2 text-base sm:text-xs text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
+              className="bg-white dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-2xl px-3 py-2 text-base sm:text-xs text-[#171717] dark:text-white focus:outline-none focus:border-[#C62828]"
             >
               <option value="all">Semua Status</option>
               <option value="approved">Approved (Disetujui)</option>
@@ -665,7 +535,7 @@ export const ParticipantList: React.FC = () => {
           {selectedIds.length > 0 && (
             <div className="p-3 sm:p-4 rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs animate-in fade-in">
               <div className="flex items-center gap-2 font-bold text-[#171717] dark:text-white">
-                <span className="w-6 h-6 rounded-lg bg-[#FFF0F4] text-[#F47743] flex items-center justify-center font-mono text-xs font-black">
+                <span className="w-6 h-6 rounded-lg bg-[#FFF1F1] text-[#C62828] flex items-center justify-center font-mono text-xs font-black">
                   {selectedIds.length}
                 </span>
                 <span>Peserta Terpilih</span>
@@ -681,7 +551,7 @@ export const ParticipantList: React.FC = () => {
                       impactDescription: `Apakah Anda yakin ingin menyetujui ${selectedIds.length} peserta terpilih sekaligus? Peserta yang disetujui akan berstatus 'approved' dan berhak mencetak ID Card.`,
                     })
                   }
-                  className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center gap-1.5 min-h-[44px] cursor-pointer"
+                  className="px-3 py-2 rounded-xl bg-[#C62828] hover:bg-[#A61B1B] text-white font-bold flex items-center gap-1.5 min-h-[44px] cursor-pointer"
                   title={`Approve ${selectedIds.length} Peserta`}
                   aria-label={`Approve ${selectedIds.length} Peserta`}
                 >
@@ -694,16 +564,16 @@ export const ParticipantList: React.FC = () => {
                   onClick={() =>
                     setBulkActionConfirm({
                       action: 'assign_contingent',
-                      label: 'Alokasikan Gudep & Regu Massal',
-                      impactDescription: `Pindahkan ${selectedIds.length} peserta ke Gudep dan Regu aktif setelah validasi GAS.`,
+                      label: 'Alokasikan Kontingen Massal',
+                      impactDescription: `Pindahkan ${selectedIds.length} peserta ke kontingen yang ditentukan di bawah ini.`,
                     })
                   }
                   className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 font-semibold border border-white/10 flex items-center gap-1.5 min-h-[44px] cursor-pointer"
-                  title="Alokasikan Gudep dan Regu"
-                  aria-label="Alokasikan Gudep dan Regu"
+                  title="Alokasikan Kontingen"
+                  aria-label="Alokasikan Kontingen"
                 >
                   <Users className="w-4 h-4" />
-                  <span className="hidden sm:inline">Atur Gudep/Regu</span>
+                  <span className="hidden sm:inline">Atur Kontingen</span>
                 </button>
 
                 <button
@@ -760,7 +630,7 @@ export const ParticipantList: React.FC = () => {
                         if (e.target.checked) setSelectedIds(participants.map(p => p.id));
                         else setSelectedIds([]);
                       }}
-                      className="accent-[#F47743] rounded"
+                      className="accent-[#C62828] rounded"
                     />
                   </th>
                   <th className="py-3 px-3">Peserta & Identitas</th>
@@ -795,7 +665,7 @@ export const ParticipantList: React.FC = () => {
                               if (e.target.checked) setSelectedIds([...selectedIds, p.id]);
                               else setSelectedIds(selectedIds.filter(id => id !== p.id));
                             }}
-                            className="accent-[#F47743] rounded"
+                            className="accent-[#C62828] rounded"
                           />
                         </td>
                         <td className="py-3 px-3">
@@ -831,7 +701,7 @@ export const ParticipantList: React.FC = () => {
                           </div>
                         </td>
                         <td className="py-3 px-3">
-                          <div className="font-bold text-[#F47743] font-mono">⚡ {p.xp} XP</div>
+                          <div className="font-bold text-[#C62828] font-mono">⚡ {p.xp} XP</div>
                           <div className="text-[10px] text-[#6B7280] dark:text-slate-400">{p.attendanceCount} Kegiatan Hadir</div>
                         </td>
                         <td className="py-3 px-3 text-center">
@@ -852,7 +722,7 @@ export const ParticipantList: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => setSelectedQrParticipant(p)}
-                              className="p-2 rounded-xl bg-[#FAFAFA] hover:bg-pink-50 text-[#F47743] border border-[#ECECEF] dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 transition-colors min-w-[38px] min-h-[38px] flex items-center justify-center cursor-pointer"
+                              className="p-2 rounded-xl bg-[#FAFAFA] hover:bg-red-50 text-[#C62828] border border-[#ECECEF] dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 transition-colors min-w-[38px] min-h-[38px] flex items-center justify-center cursor-pointer"
                               title="Buka QR Pass"
                               aria-label={`Buka QR Pass ${p.name}`}
                             >
@@ -867,10 +737,6 @@ export const ParticipantList: React.FC = () => {
                             >
                               <History className="w-4 h-4" />
                             </button>
-                            <button type="button" onClick={() => setAdminDialog({mode:'edit', participants:[p]})}
-                              className="p-2 rounded-xl bg-white/5 text-emerald-500 border border-white/10 text-[10px] font-bold" title="Edit Peserta">Edit</button>
-                            <button type="button" onClick={() => setAdminDialog({mode:'archive', participants:[p]})}
-                              className="p-2 rounded-xl bg-white/5 text-rose-400 border border-white/10 text-[10px] font-bold" title="Arsipkan Peserta">Arsip</button>
                             <button
                               type="button"
                               onClick={() => setSelectedDetail(p)}
@@ -898,14 +764,14 @@ export const ParticipantList: React.FC = () => {
           <div className="p-4 rounded-3xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
             <div>
               <h3 className="text-sm font-bold text-[#171717] dark:text-white flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-[#F47743]" />
+                <ShieldCheck className="w-4 h-4 text-[#C62828]" />
                 <span>Antrean Verifikasi Berkas Peserta (Registration Officers Workspace)</span>
               </h3>
               <p className="text-xs text-[#6B7280] dark:text-slate-400 mt-0.5">
                 Periksa kelengkapan KTA, surat mandat, izin orang tua, dan surat sehat sebelum disetujui.
               </p>
             </div>
-            <span className="px-3 py-1 rounded-full bg-pink-50 text-[#F47743] border border-pink-200 dark:bg-pink-950/40 dark:text-pink-300 dark:border-pink-800 text-xs font-bold shrink-0 self-start sm:self-auto">
+            <span className="px-3 py-1 rounded-full bg-red-50 text-[#C62828] border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800 text-xs font-bold shrink-0 self-start sm:self-auto">
               {pendingVerificationList.length} Menunggu Verifikasi
             </span>
           </div>
@@ -921,14 +787,14 @@ export const ParticipantList: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {pendingVerificationList.map(p => (
-                <div key={p.id} className="p-5 rounded-3xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 hover:border-[#F47743]/40 transition-all space-y-3 shadow-xs">
+                <div key={p.id} className="p-5 rounded-3xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 hover:border-[#C62828]/40 transition-all space-y-3 shadow-xs">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <img src={p.photoUrl || profilePhotoService.getPlaceholderUrl(p.name)} onError={e => { const fallback = profilePhotoService.getPlaceholderUrl(p.name); if (e.currentTarget.src !== fallback) e.currentTarget.src = fallback; }} alt={p.name} className="w-12 h-12 rounded-2xl object-cover border border-[#ECECEF] dark:border-white/10" />
                       <div>
                         <h4 className="text-sm font-bold text-[#171717] dark:text-white">{p.name}</h4>
                         <div className="text-xs text-[#6B7280] dark:text-slate-300">{p.contingentName} · {p.role}</div>
-                        <div className="text-[10px] text-[#F47743] font-mono mt-0.5">
+                        <div className="text-[10px] text-[#C62828] font-mono mt-0.5">
                           {p.code} | NTA: {p.membershipNumber || '-'}
                         </div>
                       </div>
@@ -1013,8 +879,7 @@ export const ParticipantList: React.FC = () => {
                   {/* Actions: Approve / Request Revision / Reject */}
                   <div className="pt-2 border-t border-[#ECECEF] dark:border-white/5 flex items-center justify-between gap-2">
                     <button
-                      onClick={() => void handleApprove(p)}
-                      disabled={verificationBusyId !== null}
+                      onClick={() => handleApprove(p)}
                       className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer min-h-[40px]"
                     >
                       <Check className="w-3.5 h-3.5 stroke-[3]" />
@@ -1023,7 +888,6 @@ export const ParticipantList: React.FC = () => {
 
                     <button
                       onClick={() => {
-                        if (verificationBusyId) return;
                         setRevisionModalTarget(p);
                         setRevisionReasonText('Foto KTA atau dokumen izin orang tua kurang jelas, mohon unggah ulang.');
                       }}
@@ -1033,8 +897,7 @@ export const ParticipantList: React.FC = () => {
                     </button>
 
                     <button
-                      onClick={() => void handleReject(p)}
-                      disabled={verificationBusyId !== null}
+                      onClick={() => handleReject(p)}
                       className="py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 dark:bg-rose-500/20 dark:hover:bg-rose-500/30 dark:text-rose-300 dark:border-rose-500/30 rounded-xl text-xs font-bold transition-colors cursor-pointer min-h-[40px]"
                     >
                       Tolak
@@ -1080,7 +943,7 @@ export const ParticipantList: React.FC = () => {
             <div className="pt-2 border-t border-[#ECECEF] dark:border-white/10 flex justify-end gap-2">
               <button onClick={() => setRevisionModalTarget(null)} className="px-4 py-2 text-xs text-[#6B7280] hover:text-[#171717] dark:text-slate-400 dark:hover:text-white cursor-pointer">Batal</button>
               <button
-                onClick={() => void handleConfirmRevision()}
+                onClick={handleConfirmRevision}
                 className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer"
               >
                 Kirim Permintaan Revisi
@@ -1096,7 +959,7 @@ export const ParticipantList: React.FC = () => {
           <div className="w-full max-w-md bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-[#ECECEF] dark:border-white/10">
               <div>
-                <span className="text-[10px] text-[#F47743] font-bold font-mono uppercase">Riwayat Status Berkas</span>
+                <span className="text-[10px] text-[#C62828] font-bold font-mono uppercase">Riwayat Status Berkas</span>
                 <h3 className="text-sm font-bold text-[#171717] dark:text-white">{statusHistoryTarget.name}</h3>
               </div>
               <button onClick={() => setStatusHistoryTarget(null)} className="p-1 text-[#6B7280] hover:text-[#171717] dark:text-slate-400 dark:hover:text-white cursor-pointer">✕</button>
@@ -1111,7 +974,7 @@ export const ParticipantList: React.FC = () => {
                 statusHistoryTarget.statusHistory?.map((item, idx) => (
                   <div key={idx} className="p-3 rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/5 text-xs space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-[#171717] dark:text-white uppercase text-[10px] px-2 py-0.5 rounded bg-pink-50 dark:bg-pink-950/40 text-[#F47743] border border-pink-200 dark:border-pink-800">
+                      <span className="font-bold text-[#171717] dark:text-white uppercase text-[10px] px-2 py-0.5 rounded bg-red-50 dark:bg-red-950/40 text-[#C62828] border border-red-200 dark:border-red-800">
                         {item.previous_status} → {item.new_status}
                       </span>
                       <span className="text-[10px] text-[#9CA3AF] dark:text-slate-500 font-mono">{item.timestamp}</span>
@@ -1136,9 +999,6 @@ export const ParticipantList: React.FC = () => {
         </div>
       )}
 
-      {adminDialog && <ParticipantAdminDialog mode={adminDialog.mode} participants={adminDialog.participants}
-        onClose={() => setAdminDialog(null)} onSaved={message => { setSelectedIds([]); showToast(message); }} />}
-
       {/* BULK ACTION IMPACT CONFIRMATION MODAL (Requirement 13 & 57) */}
       {bulkActionConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
@@ -1151,6 +1011,22 @@ export const ParticipantList: React.FC = () => {
             <p className="text-xs text-[#6B7280] dark:text-slate-300 leading-relaxed">
               {bulkActionConfirm.impactDescription}
             </p>
+
+            {bulkActionConfirm.action === 'assign_contingent' && (
+              <div>
+                <label className="text-xs text-[#171717] dark:text-slate-400 block mb-1 font-semibold">Pilih Kontingen Tujuan:</label>
+                <select
+                  value={bulkTargetContingent}
+                  onChange={e => setBulkTargetContingent(e.target.value)}
+                  className="w-full p-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white text-xs"
+                >
+                  <option value="">-- Pilih Kontingen --</option>
+                  {contingents.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {bulkActionConfirm.action === 'assign_category' && (
               <div>
@@ -1178,7 +1054,7 @@ export const ParticipantList: React.FC = () => {
               </button>
               <button
                 onClick={handleExecuteBulkAction}
-                className="px-5 py-2.5 bg-[#F47743] hover:bg-[#E78B3C] text-white font-bold rounded-xl shadow-xs cursor-pointer"
+                className="px-5 py-2.5 bg-[#C62828] hover:bg-[#E78B3C] text-white font-bold rounded-xl shadow-xs cursor-pointer"
               >
                 Konfirmasi & Jalankan
               </button>
@@ -1187,440 +1063,333 @@ export const ParticipantList: React.FC = () => {
         </div>
       )}
 
-      {/* Gugus Depan dan Regu: data ditulis melalui GAS, bukan localStorage. */}
-      {showGudepManager && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label="Kelola Gugus Depan dan Regu">
-          <div className="w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white dark:bg-[#141418] shadow-2xl p-5 sm:p-7 space-y-5 text-slate-900 dark:text-white">
-            <div className="flex justify-between gap-3 items-start border-b dark:border-white/10 pb-4">
-              <div><h2 className="text-xl font-bold">Pendaftaran Gugus Depan & Regu</h2><p className="text-sm text-slate-500 dark:text-slate-400">Buat pangkalan dan regu langsung dari halaman peserta.</p></div>
-              <button type="button" aria-label="Tutup" onClick={() => setShowGudepManager(false)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10"><X className="h-5 w-5" /></button>
-            </div>
-            {managerError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-900/20 dark:text-rose-300">{managerError}</p>}
-            {managerMessage && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">{managerMessage}</p>}
-            <form onSubmit={submitNewGudep} className="rounded-2xl border border-slate-200 dark:border-white/10 p-4 space-y-3">
-              <h3 className="font-bold flex gap-2 items-center"><School className="h-4 w-4" /> 1. Tambah Gugus Depan</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label className="text-sm">Nomor Gugus Depan *<input required maxLength={60} value={gudepForm.gudep_number} onChange={e => setGudepForm(x=>({...x,gudep_number:e.target.value}))} placeholder="Contoh: 07.101–07.102" className="mt-1 w-full rounded-xl border p-3 bg-white text-slate-900 dark:bg-[#242428] dark:border-white/20 dark:text-white" /></label>
-                <label className="text-sm">Nama Gugus Depan *<input required maxLength={150} value={gudepForm.gudep_name} onChange={e => setGudepForm(x=>({...x,gudep_name:e.target.value}))} placeholder="Contoh: Gugus Depan Melati" className="mt-1 w-full rounded-xl border p-3 bg-white text-slate-900 dark:bg-[#242428] dark:border-white/20 dark:text-white" /></label>
-              </div>
-              <label className="text-sm block">Nama Pangkalan / Sekolah<input maxLength={150} value={gudepForm.institution_name} onChange={e => setGudepForm(x=>({...x,institution_name:e.target.value}))} placeholder="Contoh: SMP Negeri 1 Malang" className="mt-1 w-full rounded-xl border p-3 bg-white text-slate-900 dark:bg-[#242428] dark:border-white/20 dark:text-white" /></label>
-              <div className="flex justify-end"><button type="submit" disabled={managerBusy} className="rounded-xl bg-emerald-600 disabled:opacity-50 text-white font-bold px-4 py-2.5 inline-flex gap-2 items-center"><Plus className="h-4 w-4" /> Simpan Gudep ke GAS</button></div>
-            </form>
-            <form onSubmit={submitNewRegu} className="rounded-2xl border border-slate-200 dark:border-white/10 p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2"><h3 className="font-bold flex gap-2 items-center"><Users className="h-4 w-4" /> 2. Tambah Regu</h3><button type="button" disabled={managerLoading || managerBusy} onClick={() => void refreshGudepManager()} className="text-xs text-emerald-600 flex gap-1 items-center"><RefreshCw className="h-3.5 w-3.5" /> Segarkan</button></div>
-              <label className="text-sm block">Pilih Gugus Depan *<select required value={managerSelectedId} onChange={e => setManagerSelectedId(e.target.value)} className="mt-1 w-full rounded-xl border p-3 bg-white text-slate-900 dark:bg-[#242428] dark:border-white/20 dark:text-white"><option value="">{managerLoading?'Memuat…':'-- Pilih Gugus Depan --'}</option>{managerGudep.map(g=><option value={g.gudep_id} key={g.gudep_id}>{g.gudep_number} — {g.gudep_name} ({g.verification_status})</option>)}</select></label>
-              <div className="grid sm:grid-cols-3 gap-3">
-                <label className="text-sm">Nama Regu *<input required maxLength={120} value={reguForm.regu_name} onChange={e=>setReguForm(x=>({...x,regu_name:e.target.value}))} placeholder="Contoh: Regu Elang" className="mt-1 w-full rounded-xl border p-3 bg-white text-slate-900 dark:bg-[#242428] dark:border-white/20 dark:text-white" /></label>
-                <label className="text-sm">Jenis Regu *<select value={reguForm.gender} onChange={e=>setReguForm(x=>({...x,gender:e.target.value as 'PUTRA'|'PUTRI'}))} className="mt-1 w-full rounded-xl border p-3 bg-white text-slate-900 dark:bg-[#242428] dark:border-white/20 dark:text-white"><option value="PUTRA">Putra</option><option value="PUTRI">Putri</option></select></label>
-                <label className="text-sm">Kuota (1–100) *<input required type="number" min={1} max={100} value={reguForm.quota} onChange={e=>setReguForm(x=>({...x,quota:Number(e.target.value)}))} className="mt-1 w-full rounded-xl border p-3 bg-white text-slate-900 dark:bg-[#242428] dark:border-white/20 dark:text-white" /></label>
-              </div>
-              <div className="flex justify-end"><button type="submit" disabled={managerBusy || !managerSelectedId} className="rounded-xl bg-emerald-600 disabled:opacity-50 text-white font-bold px-4 py-2.5 inline-flex gap-2 items-center"><Plus className="h-4 w-4" /> Simpan Regu ke GAS</button></div>
-              {managerSelectedId && <div className="text-sm space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-semibold">Daftar regu di Gudep terpilih ({managerRegu.length})</h4>{managerGudep.find(g=>g.gudep_id===managerSelectedId)?.registration_status !== 'SUBMITTED' && <button type="button" disabled={managerBusy || managerRegu.length===0} onClick={()=>void submitManagerGudep(managerSelectedId)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Ajukan Gudep ke Admin</button>}</div>
-                {managerRegu.map(r=><div key={r.regu_id} className="border-b border-slate-100 dark:border-white/10 py-2 flex flex-wrap items-center justify-between gap-2"><span>{r.regu_name} · {r.gender} · Kuota {r.quota} · {r.registration_status || 'DRAFT'} / {r.verification_status || 'PENDING'}</span>{r.registration_status !== 'SUBMITTED' && r.verification_status !== 'VERIFIED' && <button type="button" disabled={managerBusy} onClick={()=>void submitManagerRegu(managerSelectedId,r.regu_id)} className="rounded-lg border border-blue-500 px-2 py-1 text-xs font-bold text-blue-700 dark:text-blue-300 disabled:opacity-40">Ajukan Regu</button>}</div>)}
-              </div>}
-            </form>
-            <p className="text-xs text-amber-700 dark:text-amber-300">Pendaftaran peserta dapat dikirim saat administrasi Gudep/Regu masih menunggu. Verifikasi peserta, Gudep, dan Regu dilakukan terpisah oleh panitia/admin.</p>
-          </div>
-        </div>
-      )}
-
       {/* STEP-BASED REGISTRATION MODAL (Requirement 8) */}
       {showStepRegModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
           <form
             onSubmit={handleFinishStepReg}
-            className="siepang-participant-registration w-full max-w-5xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] shadow-2xl max-h-[94vh] overflow-hidden"
+            className="siepang-participant-registration w-full max-w-lg bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
           >
-            <div className="flex items-start justify-between gap-4 px-5 sm:px-7 py-5 border-b border-[#ECECEF] dark:border-white/10">
-              <div className="space-y-1.5">
-                <span className="inline-flex items-center rounded-full bg-[#F9E8E1] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#F47743] dark:bg-[#F47743]/15 dark:text-[#FFB08C]">
-                  Formulir Peserta · Prioritas Profil
-                </span>
-                <div>
-                  <h3 className="text-lg sm:text-xl font-bold text-[#171717] dark:text-white">Pendaftaran Peserta Baru</h3>
-                  <p className="text-xs sm:text-sm text-[#6B7280] dark:text-slate-400">Fokuskan pengisian pada data profil utama terlebih dahulu, lalu lengkapi kesehatan, foto resmi, dan verifikasi berkas.</p>
-                </div>
+            <div className="flex items-center justify-between pb-3 border-b border-[#ECECEF] dark:border-white/10">
+              <div>
+                <span className="text-[10px] text-[#C62828] font-bold font-mono">LANGKAH {regStep} DARI 6</span>
+                <h3 className="text-base font-bold text-[#171717] dark:text-white">Formulir Pendaftaran Peserta</h3>
               </div>
-              <button type="button" disabled={isSubmittingRegistration} onClick={() => setShowStepRegModal(false)} className="shrink-0 p-2 rounded-xl text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#171717] dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/10 cursor-pointer" aria-label="Tutup formulir">
-                ✕
-              </button>
+              <button type="button" disabled={isSubmittingRegistration} onClick={() => setShowStepRegModal(false)} className="p-1 text-[#6B7280] hover:text-[#171717] dark:text-slate-400 dark:hover:text-white cursor-pointer">✕</button>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px]">
-              <div className="max-h-[calc(94vh-88px)] overflow-y-auto px-5 sm:px-7 py-5 space-y-6">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                  <div className="rounded-2xl border border-[#ECECEF] dark:border-white/10 bg-[#FAFAFA] dark:bg-white/5 p-3">
-                    <div className="text-[#6B7280] dark:text-slate-400">Profil prioritas</div>
-                    <div className="mt-1 text-base font-bold text-[#171717] dark:text-white">{priorityProfileCompletion}/6</div>
-                    <div className="mt-1 text-[11px] text-[#6B7280] dark:text-slate-400">Nama, NTA, gudep, regu, kontak darurat, foto</div>
+            {/* Stepper Progress Bar */}
+            <div className="w-full bg-gray-100 dark:bg-black/40 h-2 rounded-full overflow-hidden">
+              <div
+                className="h-full transition-all duration-300"
+                style={{
+                  width: `${(regStep / 6) * 100}%`,
+                  background: 'linear-gradient(135deg, #833AB4 0%, #C13584 30%, #E1306C 52%, #F77737 78%, #FCAF45 100%)',
+                }}
+              />
+            </div>
+
+            {/* STEP 1: IDENTITY */}
+            {regStep === 1 && (
+              <div className="space-y-3 text-xs animate-in fade-in">
+                <div className="font-bold text-[#171717] dark:text-slate-200">1. Identitas Pribadi Peserta</div>
+                <div>
+                  <label className="text-[#6B7280] dark:text-slate-300 block mb-1 font-semibold">Nama Lengkap Peserta *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: Rian Anggara"
+                    value={stepData.name}
+                    onChange={e => setStepData({ ...stepData, name: e.target.value })}
+                    className="w-full p-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white focus:outline-none focus:border-[#C62828]"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[#6B7280] dark:text-slate-300 block mb-1 font-semibold">Jenis Kelamin</label>
+                    <select
+                      value={stepData.gender}
+                      onChange={e => setStepData({ ...stepData, gender: e.target.value as any })}
+                      className="w-full p-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white focus:outline-none focus:border-[#C62828]"
+                    >
+                      <option value="M">Putra</option>
+                      <option value="F">Putri</option>
+                    </select>
                   </div>
-                  <div className="rounded-2xl border border-[#ECECEF] dark:border-white/10 bg-[#FAFAFA] dark:bg-white/5 p-3">
-                    <div className="text-[#6B7280] dark:text-slate-400">Berkas terkonfirmasi</div>
-                    <div className="mt-1 text-base font-bold text-[#171717] dark:text-white">{documentChecklistCompletion}/3</div>
-                    <div className="mt-1 text-[11px] text-[#6B7280] dark:text-slate-400">KTA, surat izin, surat sehat</div>
-                  </div>
-                  <div className="rounded-2xl border border-[#ECECEF] dark:border-white/10 bg-[#FAFAFA] dark:bg-white/5 p-3">
-                    <div className="text-[#6B7280] dark:text-slate-400">Gudep terpilih</div>
-                    <div className="mt-1 text-sm font-bold text-[#171717] dark:text-white line-clamp-2">{selectedGudep ? selectedGudep.gudep_name : 'Belum dipilih'}</div>
-                    <div className="mt-1 text-[11px] text-[#6B7280] dark:text-slate-400">{selectedPangkalanLabel || 'Pangkalan akan tampil otomatis'}</div>
-                  </div>
-                  <div className="rounded-2xl border border-[#ECECEF] dark:border-white/10 bg-[#FAFAFA] dark:bg-white/5 p-3">
-                    <div className="text-[#6B7280] dark:text-slate-400">Regu terpilih</div>
-                    <div className="mt-1 text-sm font-bold text-[#171717] dark:text-white">{selectedRegu ? selectedRegu.regu_name : 'Belum dipilih'}</div>
-                    <div className="mt-1 text-[11px] text-[#6B7280] dark:text-slate-400">Difilter sesuai gender peserta</div>
+                  <div>
+                    <label className="text-[#6B7280] dark:text-slate-300 block mb-1 font-semibold">Golongan Pramuka</label>
+                    <select
+                      value={stepData.role}
+                      onChange={e => setStepData({ ...stepData, role: e.target.value as any })}
+                      className="w-full p-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white focus:outline-none focus:border-[#C62828]"
+                    >
+                      <option value="Penggalang">Penggalang</option>
+                      <option value="Penegak">Penegak</option>
+                      <option value="Pandega">Pandega</option>
+                      {/* Pembina didaftarkan melalui menu Gudep → Pembina, bukan sebagai peserta regu. */}
+                    </select>
                   </div>
                 </div>
-
-                <section className="rounded-3xl border border-[#ECECEF] dark:border-white/10 bg-white dark:bg-white/[0.02] p-4 sm:p-5 space-y-4">
-                  <div className="flex items-start gap-3">
-                    <div className="h-9 w-9 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 flex items-center justify-center font-bold">1</div>
-                    <div>
-                      <h4 className="text-sm font-bold text-[#171717] dark:text-white">Data Profil Prioritas</h4>
-                      <p className="text-xs text-[#6B7280] dark:text-slate-400">Isi identitas utama peserta lebih dahulu karena bagian ini menjadi dasar profil, kartu peserta, dan pencarian direktori.</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                    <div className="sm:col-span-2">
-                      <label className="block mb-1 font-semibold text-[#6B7280] dark:text-slate-300">Nama Lengkap Peserta *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Contoh: Rian Anggara"
-                        value={stepData.name}
-                        onChange={e => setStepData({ ...stepData, name: e.target.value })}
-                        className="w-full p-3 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-2xl text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block mb-1 font-semibold text-[#6B7280] dark:text-slate-300">Jenis Kelamin *</label>
-                      <select
-                        value={stepData.gender}
-                        onChange={e => setStepData({ ...stepData, gender: e.target.value as any, reguId: '' })}
-                        className="w-full p-3 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-2xl text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
-                      >
-                        <option value="M">Putra</option>
-                        <option value="F">Putri</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block mb-1 font-semibold text-[#6B7280] dark:text-slate-300">Golongan Pramuka *</label>
-                      <select
-                        value={stepData.role}
-                        onChange={e => setStepData({ ...stepData, role: e.target.value as any })}
-                        className="w-full p-3 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-2xl text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
-                      >
-                        <option value="Penggalang">Penggalang</option>
-                        <option value="Penegak">Penegak</option>
-                        <option value="Pandega">Pandega</option>
-                        <option value="Pembina Pendamping">Pembina Pendamping</option>
-                        <option value="Pimpinan Kontingen">Pimpinan Kontingen</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block mb-1 font-semibold text-[#6B7280] dark:text-slate-300">Nomor Tanda Anggota (NTA / KTA) *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Contoh: 10.01.002.0451"
-                        value={stepData.membershipNumber}
-                        onChange={e => setStepData({ ...stepData, membershipNumber: e.target.value })}
-                        className="w-full p-3 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-2xl text-[#171717] dark:text-white font-mono focus:outline-none focus:border-[#F47743]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block mb-1 font-semibold text-[#6B7280] dark:text-slate-300">Nomor HP Peserta</label>
-                      <input
-                        type="text"
-                        placeholder="Contoh: 0812-xxxx-xxxx"
-                        value={stepData.phone}
-                        onChange={e => setStepData({ ...stepData, phone: e.target.value })}
-                        className="w-full p-3 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-2xl text-[#171717] dark:text-white font-mono focus:outline-none focus:border-[#F47743]"
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="block mb-1 font-semibold text-[#6B7280] dark:text-slate-300">Email Peserta</label>
-                      <input
-                        type="email"
-                        placeholder="Contoh: peserta@contoh.id"
-                        value={stepData.email}
-                        onChange={e => setStepData({ ...stepData, email: e.target.value })}
-                        className="w-full p-3 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-2xl text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
-                      />
-                    </div>
-                  </div>
-                </section>
-
-                <section className="rounded-3xl border border-[#ECECEF] dark:border-white/10 bg-white dark:bg-white/[0.02] p-4 sm:p-5 space-y-4">
-                  <div className="flex items-start gap-3">
-                    <div className="h-9 w-9 rounded-2xl bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-300 flex items-center justify-center font-bold">2</div>
-                    <div>
-                      <h4 className="text-sm font-bold text-[#171717] dark:text-white">Penempatan Gudep & Regu</h4>
-                      <p className="text-xs text-[#6B7280] dark:text-slate-400">Pilih gugus depan lebih dulu. Daftar regu otomatis menyesuaikan dengan pilihan putra/putri.</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                    <div className="sm:col-span-2">
-                      <label className="block mb-1 font-semibold text-[#6B7280] dark:text-slate-300">Gugus Depan *</label>
-                      <select
-                        required
-                        disabled={gudepLoading || !!gudepLoadError}
-                        value={stepData.gudepId}
-                        onChange={e => {
-                          const g = gudepOptions.find(x => x.gudep_id === e.target.value);
-                          setStepData(prev => ({
-                            ...prev,
-                            gudepId: e.target.value,
-                            reguId: '',
-                            contingentId: g?.gudep_id || '',
-                            contingentName: g?.gudep_name || '',
-                            schoolPangkalan: g?.institution_name || g?.gudep_name || '',
-                          }));
-                        }}
-                        className="w-full p-3 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-2xl text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
-                      >
-                        <option value="">{gudepLoading ? 'Memuat Gudep…' : '-- Pilih Gugus Depan --'}</option>
-                        {gudepOptions.map(g => (
-                          <option key={g.gudep_id} value={g.gudep_id}>{g.gudep_number} — {g.gudep_name}</option>
-                        ))}
-                      </select>
-                      {gudepLoadError && <p role="alert" className="mt-2 text-rose-500">{gudepLoadError}</p>}
-                      {!gudepLoading && !gudepLoadError && gudepOptions.length === 0 && (
-                        <p className="mt-2 text-amber-500">Belum ada Gudep yang dapat diakses akun ini. Hubungi admin untuk membuat Gudep atau menugaskan operator.</p>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block mb-1 font-semibold text-[#6B7280] dark:text-slate-300">Pangkalan / Sekolah</label>
-                      <input
-                        type="text"
-                        readOnly
-                        value={selectedPangkalanLabel}
-                        placeholder="Terisi otomatis setelah Gudep dipilih"
-                        className="w-full p-3 bg-[#F3F4F6] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-2xl text-[#171717] dark:text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block mb-1 font-semibold text-[#6B7280] dark:text-slate-300">Regu {stepData.gender === 'M' ? 'Putra' : 'Putri'} *</label>
-                      <select
-                        required
-                        disabled={!stepData.gudepId || reguLoading || !!reguLoadError}
-                        value={stepData.reguId}
-                        onChange={e => setStepData(prev => ({ ...prev, reguId: e.target.value }))}
-                        className="w-full p-3 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-2xl text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
-                      >
-                        <option value="">{reguLoading ? 'Memuat regu…' : '-- Pilih Regu --'}</option>
-                        {matchingRegu.map(r => <option key={r.regu_id} value={r.regu_id}>{r.regu_name} (kuota {r.quota})</option>)}
-                      </select>
-                      {reguLoadError && <p role="alert" className="mt-2 text-rose-500">{reguLoadError}</p>}
-                      {stepData.gudepId && !reguLoading && !reguLoadError && matchingRegu.length === 0 && (
-                        <p className="mt-2 text-amber-500">Belum ada regu {stepData.gender === 'M' ? 'Putra' : 'Putri'} di Gudep ini. Buat regu terlebih dahulu pada pengelolaan Gudep.</p>
-                      )}
-                    </div>
-                  </div>
-                </section>
-
-                <section className="rounded-3xl border border-[#ECECEF] dark:border-white/10 bg-white dark:bg-white/[0.02] p-4 sm:p-5 space-y-4">
-                  <div className="flex items-start gap-3">
-                    <div className="h-9 w-9 rounded-2xl bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-300 flex items-center justify-center font-bold">3</div>
-                    <div>
-                      <h4 className="text-sm font-bold text-[#171717] dark:text-white">Informasi Tambahan & Kesehatan</h4>
-                      <p className="text-xs text-[#6B7280] dark:text-slate-400">Data ini membantu panitia dalam penanganan peserta di lapangan dan situasi darurat.</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                    <div>
-                      <label className="block mb-1 font-semibold text-[#6B7280] dark:text-slate-300">Golongan Darah</label>
-                      <select
-                        value={stepData.bloodType}
-                        onChange={e => setStepData({ ...stepData, bloodType: e.target.value })}
-                        className="w-full p-3 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-2xl text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743]"
-                      >
-                        <option value="A+">A+</option>
-                        <option value="B+">B+</option>
-                        <option value="AB+">AB+</option>
-                        <option value="O+">O+</option>
-                        <option value="Tidak Tahu">Tidak Tahu</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block mb-1 font-semibold text-[#6B7280] dark:text-slate-300">Kontak Darurat (Ortu/Wali) *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="0812-3456-7890"
-                        value={stepData.emergencyContact}
-                        onChange={e => setStepData({ ...stepData, emergencyContact: e.target.value })}
-                        className="w-full p-3 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-2xl text-[#171717] dark:text-white font-mono focus:outline-none focus:border-[#F47743]"
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="block mb-1 font-semibold text-[#6B7280] dark:text-slate-300">Catatan Medis / Riwayat Penyakit</label>
-                      <textarea
-                        rows={3}
-                        placeholder="Contoh: Riwayat asma dingin, alergi obat tertentu, atau kebutuhan penanganan khusus."
-                        value={stepData.medicalNotes}
-                        onChange={e => setStepData({ ...stepData, medicalNotes: e.target.value })}
-                        className="w-full p-3 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-2xl text-[#171717] dark:text-white focus:outline-none focus:border-[#F47743] resize-none"
-                      />
-                    </div>
-                  </div>
-                </section>
-
-                <section className="rounded-3xl border border-[#ECECEF] dark:border-white/10 bg-white dark:bg-white/[0.02] p-4 sm:p-5 space-y-4">
-                  <div className="flex items-start gap-3">
-                    <div className="h-9 w-9 rounded-2xl bg-fuchsia-50 dark:bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-300 flex items-center justify-center font-bold">4</div>
-                    <div>
-                      <h4 className="text-sm font-bold text-[#171717] dark:text-white">Foto Profil Resmi & Berkas Wajib</h4>
-                      <p className="text-xs text-[#6B7280] dark:text-slate-400">Foto profil dan verifikasi tiga berkas wajib menjadi dasar kelengkapan pendaftaran sebelum peserta diproses oleh panitia.</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 text-xs">
-                    <ProfilePhotoUploader
-                      entityType={(stepData.role === 'Pembina Pendamping' || stepData.role === 'Pimpinan Kontingen') ? 'OFFICIAL' : 'PARTICIPANT'}
-                      entityId={`draft_p_${stepData.membershipNumber || Date.now()}`}
-                      entityName={stepData.name || 'Peserta'}
-                      currentPhotoUrl={stepData.photoUrl}
-                      required={profilePhotoService.isPhotoRequired((stepData.role === 'Pembina Pendamping' || stepData.role === 'Pimpinan Kontingen') ? 'OFFICIAL' : 'PARTICIPANT')}
-                      onPhotoSaved={rec => {
-                        setStepData({
-                          ...stepData,
-                          photoUrl: rec.profile_photo_url,
-                          profile_photo_file_id: rec.profile_photo_file_id,
-                          profile_photo_status: rec.profile_photo_status,
-                        });
-                        showToast('✓ Foto profil berhasil diproses & disimpan.');
-                      }}
-                      onPhotoRemoved={() => {
-                        setStepData({
-                          ...stepData,
-                          photoUrl: '',
-                          profile_photo_file_id: '',
-                          profile_photo_status: 'NOT_UPLOADED',
-                        });
-                      }}
-                    />
-
-                    <div className="grid grid-cols-1 gap-3 pt-1">
-                      <label className="flex items-start gap-3 p-3 rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={stepData.docKta}
-                          required
-                          onChange={e => setStepData({ ...stepData, docKta: e.target.checked })}
-                          className="mt-1 accent-[#F47743] rounded"
-                        />
-                        <span className="text-[#171717] dark:text-slate-200">KTA / NTA Pramuka tersedia untuk diunggah atau dibawa saat verifikasi fisik.</span>
-                      </label>
-                      <label className="flex items-start gap-3 p-3 rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={stepData.docIzin}
-                          required
-                          onChange={e => setStepData({ ...stepData, docIzin: e.target.checked })}
-                          className="mt-1 accent-[#F47743] rounded"
-                        />
-                        <span className="text-[#171717] dark:text-slate-200">Surat izin dari orang tua / gugus depan tersedia untuk unggah digital atau verifikasi fisik.</span>
-                      </label>
-                      <label className="flex items-start gap-3 p-3 rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={stepData.docSehat}
-                          required
-                          onChange={e => setStepData({ ...stepData, docSehat: e.target.checked })}
-                          className="mt-1 accent-[#F47743] rounded"
-                        />
-                        <span className="text-[#171717] dark:text-slate-200">Surat keterangan sehat tersedia untuk diunggah sekarang atau diverifikasi panitia di lokasi.</span>
-                      </label>
-                    </div>
-                  </div>
-                </section>
-
-                <div className="rounded-2xl border border-[#ECECEF] dark:border-white/10 bg-[#FFF7F1] dark:bg-[#F47743]/10 px-4 py-3 text-xs text-[#7C4A1E] dark:text-[#FFD7C2]">
-                  Pastikan nama, NTA, Gudep, regu, kontak darurat, foto resmi, dan konfirmasi berkas telah benar. Data akan dikirim ke GAS dan masuk ke antrean verifikasi panitia.
+                <div>
+                  <label className="text-[#6B7280] dark:text-slate-300 block mb-1 font-semibold">Nomor Tanda Anggota (NTA / KTA)</label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: 10.01.002.0451"
+                    value={stepData.membershipNumber}
+                    onChange={e => setStepData({ ...stepData, membershipNumber: e.target.value })}
+                    className="w-full p-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono focus:outline-none focus:border-[#C62828]"
+                  />
                 </div>
               </div>
+            )}
 
-              <aside className="border-t xl:border-t-0 xl:border-l border-[#ECECEF] dark:border-white/10 bg-[#FCFCFD] dark:bg-[#111216] px-5 sm:px-6 py-5 space-y-4 max-h-[calc(94vh-88px)] overflow-y-auto">
-                <div className="rounded-3xl border border-[#ECECEF] dark:border-white/10 bg-white dark:bg-white/[0.03] p-4 space-y-3">
-                  <div>
-                    <h4 className="text-sm font-bold text-[#171717] dark:text-white">Ringkasan Profil Peserta</h4>
-                    <p className="text-xs text-[#6B7280] dark:text-slate-400">Panel ini membantu panitia memastikan data profil utama sudah lengkap sebelum disimpan.</p>
-                  </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 p-3">
-                      <div className="text-[#6B7280] dark:text-slate-400">Nama peserta</div>
-                      <div className="mt-1 font-semibold text-[#171717] dark:text-white">{stepData.name || 'Belum diisi'}</div>
-                    </div>
-                    <div className="rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 p-3">
-                      <div className="text-[#6B7280] dark:text-slate-400">Golongan & gender</div>
-                      <div className="mt-1 font-semibold text-[#171717] dark:text-white">{stepData.role} · {stepData.gender === 'M' ? 'Putra' : 'Putri'}</div>
-                    </div>
-                    <div className="rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 p-3">
-                      <div className="text-[#6B7280] dark:text-slate-400">NTA / KTA</div>
-                      <div className="mt-1 font-semibold text-[#171717] dark:text-white break-all">{stepData.membershipNumber || 'Belum diisi'}</div>
-                    </div>
-                    <div className="rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 p-3">
-                      <div className="text-[#6B7280] dark:text-slate-400">Gudep / Pangkalan</div>
-                      <div className="mt-1 font-semibold text-[#171717] dark:text-white">{selectedGudep ? `${selectedGudep.gudep_name}` : 'Belum dipilih'}</div>
-                      <div className="mt-1 text-[11px] text-[#6B7280] dark:text-slate-400">{selectedPangkalanLabel || 'Pangkalan akan muncul otomatis.'}</div>
-                    </div>
-                    <div className="rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 p-3">
-                      <div className="text-[#6B7280] dark:text-slate-400">Regu</div>
-                      <div className="mt-1 font-semibold text-[#171717] dark:text-white">{selectedRegu ? `${selectedRegu.regu_name} · kuota ${selectedRegu.quota}` : 'Belum dipilih'}</div>
-                    </div>
-                    <div className="rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 p-3">
-                      <div className="text-[#6B7280] dark:text-slate-400">Kontak darurat</div>
-                      <div className="mt-1 font-semibold text-[#171717] dark:text-white break-all">{stepData.emergencyContact || 'Belum diisi'}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-3xl border border-[#ECECEF] dark:border-white/10 bg-white dark:bg-white/[0.03] p-4 space-y-3">
-                  <h4 className="text-sm font-bold text-[#171717] dark:text-white">Checklist Siap Kirim</h4>
-                  <div className="space-y-2 text-xs">
-                    {[
-                      { label: 'Nama peserta terisi', ok: !!stepData.name.trim() },
-                      { label: 'NTA / KTA terisi', ok: !!stepData.membershipNumber.trim() },
-                      { label: 'Gudep telah dipilih', ok: !!stepData.gudepId },
-                      { label: 'Regu telah dipilih', ok: !!stepData.reguId },
-                      { label: 'Kontak darurat terisi', ok: !!stepData.emergencyContact.trim() },
-                      { label: 'Foto profil resmi tersedia', ok: stepData.profile_photo_status !== 'NOT_UPLOADED' },
-                      { label: '3 berkas pendukung dikonfirmasi', ok: documentChecklistCompletion === 3 },
-                    ].map(item => (
-                      <div key={item.label} className="flex items-start gap-2 rounded-2xl border border-[#ECECEF] dark:border-white/10 px-3 py-2 bg-[#FAFAFA] dark:bg-white/5">
-                        <span className={`mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${item.ok ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'}`}>
-                          {item.ok ? '✓' : '!'}
-                        </span>
-                        <span className="text-[#171717] dark:text-slate-200">{item.label}</span>
-                      </div>
+            {/* STEP 2: GUGUS DEPAN & REGU — sumber tunggal dari GAS */}
+            {regStep === 2 && (
+              <div className="space-y-3 text-xs animate-in fade-in">
+                <div className="font-bold text-[#171717] dark:text-slate-200">2. Pilih Gugus Depan & Regu</div>
+                <p className="text-[#6B7280] dark:text-slate-400">Pilih Gudep terlebih dahulu. Regu akan disaring otomatis berdasarkan Putra/Putri pada langkah pertama.</p>
+                <div>
+                  <label className="text-[#6B7280] dark:text-slate-300 block mb-1 font-semibold">Gugus Depan *</label>
+                  <select
+                    required
+                    disabled={gudepLoading || !!gudepLoadError}
+                    value={stepData.gudepId}
+                    onChange={e => {
+                      const g = gudepOptions.find(x => x.gudep_id === e.target.value);
+                      setStepData(prev => ({ ...prev,
+                        gudepId: e.target.value, reguId: '',
+                        contingentId: g?.gudep_id || '',
+                        contingentName: g?.gudep_name || '',
+                        schoolPangkalan: g?.institution_name || g?.gudep_name || '',
+                      }));
+                    }}
+                    className="w-full p-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white"
+                  >
+                    <option value="">{gudepLoading ? 'Memuat Gudep…' : '-- Pilih Gugus Depan --'}</option>
+                    {gudepOptions.map(g => (
+                      <option key={g.gudep_id} value={g.gudep_id}>{g.gudep_number} — {g.gudep_name}</option>
                     ))}
+                  </select>
+                  {gudepLoadError && <p role="alert" className="text-rose-500 mt-2">{gudepLoadError}</p>}
+                  {!gudepLoading && !gudepLoadError && gudepOptions.length === 0 && (
+                    <p className="text-amber-500 mt-2">Belum ada Gudep yang dapat diakses akun ini. Hubungi admin untuk membuat Gudep atau menugaskan operator.</p>
+                  )}
+                </div>
+                <div>
+                  <label className="text-[#6B7280] dark:text-slate-300 block mb-1 font-semibold">Regu {stepData.gender === 'M' ? 'Putra' : 'Putri'} *</label>
+                  <select
+                    required
+                    disabled={!stepData.gudepId || reguLoading || !!reguLoadError}
+                    value={stepData.reguId}
+                    onChange={e => setStepData(prev => ({ ...prev, reguId: e.target.value }))}
+                    className="w-full p-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white"
+                  >
+                    <option value="">{reguLoading ? 'Memuat regu…' : '-- Pilih Regu --'}</option>
+                    {matchingRegu.map(r => <option key={r.regu_id} value={r.regu_id}>{r.regu_name} (kuota {r.quota})</option>)}
+                  </select>
+                  {reguLoadError && <p role="alert" className="text-rose-500 mt-2">{reguLoadError}</p>}
+                  {stepData.gudepId && !reguLoading && !reguLoadError && matchingRegu.length === 0 && (
+                    <p className="text-amber-500 mt-2">Belum ada regu {stepData.gender === 'M' ? 'Putra' : 'Putri'} di Gudep ini. Buat regu terlebih dahulu pada pengelolaan Gudep.</p>
+                  )}
+                </div>
+                {selectedGudep && <p className="text-[#6B7280] dark:text-slate-400">Pangkalan: {selectedGudep.institution_name || selectedGudep.gudep_name}</p>}
+              </div>
+            )}
+
+            {/* STEP 3: PARTICIPANT INFORMATION */}
+            {regStep === 3 && (
+              <div className="space-y-3 text-xs animate-in fade-in">
+                <div className="font-bold text-[#171717] dark:text-slate-200">3. Informasi Tambahan & Medis</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[#6B7280] dark:text-slate-300 block mb-1 font-semibold">Golongan Darah</label>
+                    <select
+                      value={stepData.bloodType}
+                      onChange={e => setStepData({ ...stepData, bloodType: e.target.value })}
+                      className="w-full p-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white focus:outline-none focus:border-[#C62828]"
+                    >
+                      <option value="A+">A+</option>
+                      <option value="B+">B+</option>
+                      <option value="AB+">AB+</option>
+                      <option value="O+">O+</option>
+                      <option value="Tidak Tahu">Tidak Tahu</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[#6B7280] dark:text-slate-300 block mb-1 font-semibold">Kontak Darurat (Ortu/Wali)</label>
+                    <input
+                      type="text"
+                      placeholder="0812-3456-7890"
+                      value={stepData.emergencyContact}
+                      onChange={e => setStepData({ ...stepData, emergencyContact: e.target.value })}
+                      className="w-full p-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono focus:outline-none focus:border-[#C62828]"
+                    />
                   </div>
                 </div>
-
-                <div className="space-y-3 pt-1">
-                  <button
-                    type="submit"
-                    disabled={isSubmittingRegistration || gudepLoading || reguLoading || !selectedGudep || !selectedRegu}
-                    aria-busy={isSubmittingRegistration}
-                    className="w-full px-6 py-3.5 text-white rounded-2xl text-sm font-bold shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ background: 'linear-gradient(135deg, #833AB4 0%, #C13584 30%, #E1306C 52%, #F77737 78%, #FCAF45 100%)' }}
-                  >
-                    {isSubmittingRegistration ? 'Menyimpan ke GAS…' : 'Kirim & Daftarkan Peserta'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isSubmittingRegistration}
-                    onClick={() => setShowStepRegModal(false)}
-                    className="w-full px-5 py-3 rounded-2xl border border-[#ECECEF] dark:border-white/10 bg-white dark:bg-white/5 text-[#6B7280] dark:text-slate-300 font-semibold cursor-pointer"
-                  >
-                    Batal
-                  </button>
+                <div>
+                  <label className="text-[#6B7280] dark:text-slate-300 block mb-1 font-semibold">Catatan Medis / Riwayat Penyakit</label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: Riwayat asma dingin"
+                    value={stepData.medicalNotes}
+                    onChange={e => setStepData({ ...stepData, medicalNotes: e.target.value })}
+                    className="w-full p-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white focus:outline-none focus:border-[#C62828]"
+                  />
                 </div>
-              </aside>
+              </div>
+            )}
+
+            {/* STEP 4: PHOTO & REQUIRED DOCUMENTS (Requirements 25 - 34) */}
+            {regStep === 4 && (
+              <div className="space-y-4 text-xs animate-in fade-in">
+                <div className="space-y-1">
+                  <div className="font-bold text-[#171717] dark:text-slate-200">4. Foto Profil Resmi & Kelengkapan Berkas</div>
+                  <p className="text-[11px] text-[#6B7280] dark:text-slate-400">
+                    Unggah pas foto resmi berseragam Pramuka. Foto akan dipangkas 1:1 dan disimpan di Google Drive Kwartir untuk ID Card dan Piagam.
+                  </p>
+                </div>
+
+                {/* Profile Photo Uploader Component */}
+                <ProfilePhotoUploader
+                  entityType={(stepData.role === 'Pembina Pendamping' || stepData.role === 'Pimpinan Kontingen') ? 'OFFICIAL' : 'PARTICIPANT'}
+                  entityId={`draft_p_${stepData.membershipNumber || Date.now()}`}
+                  entityName={stepData.name || 'Peserta'}
+                  currentPhotoUrl={stepData.photoUrl}
+                  required={profilePhotoService.isPhotoRequired((stepData.role === 'Pembina Pendamping' || stepData.role === 'Pimpinan Kontingen') ? 'OFFICIAL' : 'PARTICIPANT')}
+                  onPhotoSaved={rec => {
+                    setStepData({
+                      ...stepData,
+                      photoUrl: rec.profile_photo_url,
+                      profile_photo_file_id: rec.profile_photo_file_id,
+                      profile_photo_status: rec.profile_photo_status,
+                    });
+                    showToast('✓ Foto profil berhasil diproses & disimpan.');
+                  }}
+                  onPhotoRemoved={() => {
+                    setStepData({
+                      ...stepData,
+                      photoUrl: '',
+                      profile_photo_file_id: '',
+                      profile_photo_status: 'NOT_UPLOADED',
+                    });
+                  }}
+                />
+
+                <div className="space-y-2 pt-2 border-t border-[#ECECEF] dark:border-white/5">
+                  <div className="text-[11px] font-semibold text-[#171717] dark:text-slate-300">Berkas Pendukung Wajib:</div>
+                  <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={stepData.docKta}
+                      onChange={e => setStepData({ ...stepData, docKta: e.target.checked })}
+                      className="accent-[#C62828] rounded"
+                    />
+                    <span className="text-[#171717] dark:text-slate-200">KTA / NTA Pramuka (Digital / Fisik Terlampir)</span>
+                  </label>
+                  <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={stepData.docIzin}
+                      onChange={e => setStepData({ ...stepData, docIzin: e.target.checked })}
+                      className="accent-[#C62828] rounded"
+                    />
+                    <span className="text-[#171717] dark:text-slate-200">Surat Izin Mengikuti Perkemahan dari Orang Tua / Gugus Depan</span>
+                  </label>
+                  <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={stepData.docSehat}
+                      onChange={e => setStepData({ ...stepData, docSehat: e.target.checked })}
+                      className="accent-[#C62828] rounded"
+                    />
+                    <span className="text-[#171717] dark:text-slate-200">Surat Keterangan Sehat dari Fasilitas Kesehatan / Dokter</span>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 5: REVIEW */}
+            {regStep === 5 && (
+              <div className="space-y-3 text-xs animate-in fade-in">
+                <div className="font-bold text-[#171717] dark:text-slate-200">5. Tinjau Ringkasan Pendaftaran</div>
+                <div className="p-3.5 rounded-2xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 space-y-2">
+                  <div className="flex items-center gap-3 pb-2 border-b border-[#ECECEF] dark:border-white/10">
+                    <img
+                      src={stepData.photoUrl || profilePhotoService.getPlaceholderUrl(stepData.name)}
+                      alt="Foto Profil"
+                      className="w-12 h-12 rounded-xl object-cover border border-[#ECECEF] dark:border-white/10 bg-slate-100 dark:bg-slate-900"
+                    />
+                    <div>
+                      <div className="font-bold text-[#171717] dark:text-white text-sm">{stepData.name || '-'}</div>
+                      <div className="text-[#C62828] font-mono text-[10px]">
+                        {stepData.role} · {stepData.gender === 'M' ? 'Putra' : 'Putri'}
+                      </div>
+                      <div className="text-[10px] text-[#6B7280] dark:text-slate-400">
+                        Status Foto: {stepData.photoUrl ? '✓ Terunggah' : 'Belum Ada Foto'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex justify-between"><span className="text-[#6B7280] dark:text-slate-400">Gugus Depan:</span><span className="text-[#C62828] font-semibold">{selectedGudep?.gudep_name || '-'}</span></div>
+                  <div className="flex justify-between"><span className="text-[#6B7280] dark:text-slate-400">Regu:</span><span className="text-[#171717] dark:text-white">{selectedRegu?.regu_name || '-'}</span></div>
+                  <div className="flex justify-between"><span className="text-[#6B7280] dark:text-slate-400">Pangkalan:</span><span className="text-[#171717] dark:text-white">{stepData.schoolPangkalan}</span></div>
+                  <div className="flex justify-between"><span className="text-[#6B7280] dark:text-slate-400">Gol. Darah:</span><span className="text-[#171717] dark:text-white">{stepData.bloodType}</span></div>
+                  <div className="flex justify-between"><span className="text-[#6B7280] dark:text-slate-400">NTA / KTA:</span><span className="text-[#171717] dark:text-white font-mono">{stepData.membershipNumber || '-'}</span></div>
+                  <div className="flex justify-between"><span className="text-[#6B7280] dark:text-slate-400">Berkas:</span><span className="text-emerald-600 dark:text-emerald-300 font-semibold">Lengkap (3 Berkas)</span></div>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 6: SUBMIT CONFIRMATION */}
+            {regStep === 6 && (
+              <div className="space-y-3 text-xs text-center animate-in fade-in py-3">
+                <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 flex items-center justify-center mx-auto border border-emerald-200 dark:border-emerald-500/30">
+                  <Check className="w-6 h-6 stroke-[3]" />
+                </div>
+                <h4 className="text-sm font-bold text-[#171717] dark:text-white">Siap Mengirimkan Pendaftaran?</h4>
+                <p className="text-[#6B7280] dark:text-slate-400 max-w-xs mx-auto">
+                  Data peserta akan dikirim ke antrean verifikasi panitia dan diterbitkan kode tiket peserta resmi.
+                </p>
+              </div>
+            )}
+
+            {/* Stepper Navigation Buttons */}
+            <div className="pt-3 border-t border-[#ECECEF] dark:border-white/10 flex items-center justify-between">
+              {regStep > 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setRegStep(regStep - 1)}
+                  className="px-4 py-2 bg-[#FAFAFA] hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 text-[#6B7280] dark:text-slate-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-[#ECECEF] dark:border-white/10 cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Sebelumnya</span>
+                </button>
+              ) : (
+                <div />
+              )}
+
+              {regStep < 6 ? (
+                <button
+                  type="button"
+                  disabled={(regStep === 1 && !stepData.name.trim()) || (regStep === 2 && (!selectedGudep || !selectedRegu || reguLoading || gudepLoading))}
+                  onClick={() => setRegStep(regStep + 1)}
+                  className="px-5 py-2.5 bg-[#C62828] hover:bg-[#E78B3C] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
+                >
+                  <span>Lanjutkan</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={isSubmittingRegistration}
+                  aria-busy={isSubmittingRegistration}
+                  className="px-6 py-2.5 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+                  style={{
+                    background: 'linear-gradient(135deg, #833AB4 0%, #C13584 30%, #E1306C 52%, #F77737 78%, #FCAF45 100%)',
+                  }}
+                >
+                  {isSubmittingRegistration ? 'Menyimpan ke GAS…' : 'Kirim & Daftarkan Peserta'}
+                </button>
+              )}
             </div>
           </form>
         </div>
@@ -1643,19 +1412,19 @@ export const ParticipantList: React.FC = () => {
             {importStep === 'upload' && (
               <div className="space-y-3 text-xs">
                 <p className="text-[#6B7280] dark:text-slate-300">
-                  Tempelkan baris data CSV dengan kolom: <code className="text-[#F47743] font-mono bg-pink-50 dark:bg-pink-950/40 px-1 py-0.5 rounded">Nama Lengkap, Jenis Kelamin, Tingkatan, NTA, Kontingen, Telepon</code>.
+                  Tempelkan baris data CSV dengan kolom: <code className="text-[#C62828] font-mono bg-pink-50 dark:bg-pink-950/40 px-1 py-0.5 rounded">Nama Lengkap, Jenis Kelamin, Tingkatan, NTA, Kontingen, Telepon</code>.
                 </p>
                 <textarea
                   rows={6}
                   value={rawCsvText}
                   onChange={e => setRawCsvText(e.target.value)}
-                  className="w-full p-3 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-2xl text-[#171717] dark:text-white font-mono text-[11px] focus:outline-none focus:border-[#F47743]"
+                  className="w-full p-3 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-2xl text-[#171717] dark:text-white font-mono text-[11px] focus:outline-none focus:border-[#C62828]"
                 />
                 <div className="flex justify-end gap-2 pt-2">
                   <button onClick={() => setShowImportModal(false)} className="px-4 py-2 bg-[#FAFAFA] hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 rounded-xl text-[#6B7280] dark:text-slate-300 cursor-pointer border border-[#ECECEF] dark:border-white/10">Batal</button>
                   <button
                     onClick={handleProcessImport}
-                    className="px-5 py-2.5 bg-[#F47743] hover:bg-[#E78B3C] text-white font-bold rounded-xl shadow-xs cursor-pointer"
+                    className="px-5 py-2.5 bg-[#C62828] hover:bg-[#E78B3C] text-white font-bold rounded-xl shadow-xs cursor-pointer"
                   >
                     Validasi & Impor
                   </button>
@@ -1693,7 +1462,7 @@ export const ParticipantList: React.FC = () => {
                       setShowImportModal(false);
                       setImportStep('upload');
                     }}
-                    className="px-5 py-2 bg-[#F47743] hover:bg-[#E78B3C] text-white rounded-xl font-bold cursor-pointer"
+                    className="px-5 py-2 bg-[#C62828] hover:bg-[#E78B3C] text-white rounded-xl font-bold cursor-pointer"
                   >
                     Selesai & Lihat Database
                   </button>
@@ -1749,7 +1518,7 @@ export const ParticipantList: React.FC = () => {
                       value={r}
                       checked={photoRejectReason === r}
                       onChange={() => setPhotoRejectReason(r)}
-                      className="accent-[#F47743]"
+                      className="accent-[#C62828]"
                     />
                     <span>{r}</span>
                   </label>
@@ -1789,7 +1558,7 @@ export const ParticipantList: React.FC = () => {
           <div className="w-full max-w-md bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-[#ECECEF] dark:border-white/10">
               <div className="text-sm font-bold text-[#171717] dark:text-white flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-[#F47743]" />
+                <Sliders className="w-4 h-4 text-[#C62828]" />
                 <span>Pengaturan Kebijakan Foto Profil</span>
               </div>
               <button
@@ -1867,7 +1636,7 @@ export const ParticipantList: React.FC = () => {
                       key={pol.key}
                       className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer ${
                         photoPolicy === pol.key
-                          ? 'bg-pink-50 border-pink-200 text-[#171717] dark:bg-pink-950/40 dark:border-[#F47743]/40 dark:text-white'
+                          ? 'bg-pink-50 border-pink-200 text-[#171717] dark:bg-pink-950/40 dark:border-[#C62828]/40 dark:text-white'
                           : 'bg-[#FAFAFA] border-[#ECECEF] text-[#6B7280] hover:text-[#171717] dark:bg-white/5 dark:border-white/5 dark:text-slate-300'
                       }`}
                     >
@@ -1880,7 +1649,7 @@ export const ParticipantList: React.FC = () => {
                           setPhotoPolicy(pol.key as any);
                           profilePhotoService.setReplacementPolicy(pol.key as any);
                         }}
-                        className="accent-[#F47743] mt-0.5"
+                        className="accent-[#C62828] mt-0.5"
                       />
                       <div>
                         <div className="font-bold text-xs">{pol.label}</div>
@@ -1898,7 +1667,7 @@ export const ParticipantList: React.FC = () => {
                     setShowPhotoConfigModal(false);
                     showToast('✓ Pengaturan kebijakan foto berhasil disimpan.');
                   }}
-                  className="px-5 py-2.5 bg-[#F47743] hover:bg-[#E78B3C] text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
+                  className="px-5 py-2.5 bg-[#C62828] hover:bg-[#E78B3C] text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
                 >
                   Tutup & Simpan
                 </button>
@@ -1918,11 +1687,11 @@ export const ParticipantList: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-4">
-              <img src={selectedDetail.photoUrl || profilePhotoService.getPlaceholderUrl(selectedDetail.name)} onError={e => { const fallback = profilePhotoService.getPlaceholderUrl(selectedDetail.name); if (e.currentTarget.src !== fallback) e.currentTarget.src = fallback; }} alt={selectedDetail.name} className="w-16 h-16 rounded-2xl object-cover border-2 border-pink-200 dark:border-[#F47743]/30" />
+              <img src={selectedDetail.photoUrl || profilePhotoService.getPlaceholderUrl(selectedDetail.name)} onError={e => { const fallback = profilePhotoService.getPlaceholderUrl(selectedDetail.name); if (e.currentTarget.src !== fallback) e.currentTarget.src = fallback; }} alt={selectedDetail.name} className="w-16 h-16 rounded-2xl object-cover border-2 border-pink-200 dark:border-[#C62828]/30" />
               <div>
                 <h3 className="text-base font-bold text-[#171717] dark:text-white">{selectedDetail.name}</h3>
                 <p className="text-xs text-[#6B7280] dark:text-slate-400">{selectedDetail.role} · {selectedDetail.contingentName}</p>
-                <p className="text-xs font-mono text-[#F47743] mt-0.5">{selectedDetail.code}</p>
+                <p className="text-xs font-mono text-[#C62828] mt-0.5">{selectedDetail.code}</p>
               </div>
             </div>
 
