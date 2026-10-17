@@ -572,10 +572,10 @@ export const CampsiteManager: React.FC = () => {
         </div>
 
         {/* Sub-Tab Navigation */}
-        <div className="flex flex-wrap p-1 rounded-2xl bg-[#F7F7F8] dark:bg-black/40 border border-[#ECECEF] dark:border-white/5 gap-1">
+        <div className="flex flex-nowrap overflow-x-auto p-1 rounded-2xl bg-[#FFF1F1] dark:bg-black/40 border border-red-100 dark:border-white/5 gap-1">
           <button
             onClick={() => { setActiveTab('generator'); void loadStructure(); }}
-            className={`flex-1 min-w-[140px] py-2 rounded-xl text-xs font-semibold transition-all ${activeTab === 'generator' ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
+            className={`flex-none min-w-[140px] px-3 py-2 rounded-xl text-xs font-semibold transition-all ${activeTab === 'generator' ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
           >
             🏕️ Generator Kavling
           </button>
@@ -597,7 +597,7 @@ export const CampsiteManager: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('assignment')}
-            className={`flex-1 min-w-[140px] py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            className={`flex-none min-w-[140px] px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               activeTab === 'assignment' ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
