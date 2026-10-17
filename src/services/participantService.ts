@@ -7,7 +7,6 @@ import { Participant, Contingent, ParticipantStatus } from '../types';
 import { syncQueue } from '../offline/syncQueue';
 import { eventService } from './eventService';
 import { apiTransport } from './apiTransport';
-import { adminPersistenceService } from './adminPersistenceService';
 
 /**
  * Resolve legacy Drive photo URLs without changing source records.
@@ -85,10 +84,7 @@ class ParticipantService {
   /** Load daftar peserta dari GAS; jangan menganggap array lokal sebagai sumber data utama. */
   public loadParticipants(): Promise<void> {
     if (this.participantsLoadInFlight) return this.participantsLoadInFlight;
-    const pending = Promise.all([
-      this.fetchParticipantsFromGas(),
-      this.loadContingents(),
-    ]).then(() => undefined);
+    const pending = this.fetchParticipantsFromGas();
     this.participantsLoadInFlight = pending;
     void pending.finally(() => {
       if (this.participantsLoadInFlight === pending) this.participantsLoadInFlight = null;
@@ -184,104 +180,103 @@ class ParticipantService {
     return this.participants.find(p => p.code.toLowerCase() === code.toLowerCase().trim());
   }
 
-  public getContingents(): Contingent[] { return [...this.contingents]; }
+  public getContingents(): Contingent[] {
+    return this.contingents;
+  }
 
   public getContingentById(id: string): Contingent | undefined {
     return this.contingents.find(c => c.id === id || c.contingent_id === id);
   }
 
-  /** Load real contingent rows from the canonical Contingents sheet through GAS. */
-  public async loadContingents(): Promise<Contingent[]> {
-    const rows = await adminPersistenceService.list<any>('contingents', {});
-    this.contingents = rows.map((r: any) => ({
-      id: String(r.id || r.contingent_id || ''), contingent_id: String(r.contingent_id || r.id || ''),
-      name: String(r.name || r.contingent_name || ''), contingent_name: String(r.contingent_name || r.name || ''),
-      region: String(r.region || ''), leaderName: String(r.leader_name || r.leaderName || r.leader || ''),
-      leader: String(r.leader || r.leader_name || ''), leaderPhone: String(r.leader_phone || r.leaderPhone || r.contact || ''),
-      contact: String(r.contact || r.leader_phone || ''), participantCount: Number(r.participant_count || r.participantCount || 0),
-      participant_count: Number(r.participant_count || r.participantCount || 0), quota: Number(r.quota || 0),
-      maleCount: Number(r.male_count || r.maleCount || 0), femaleCount: Number(r.female_count || r.femaleCount || 0),
-      advisorCount: Number(r.advisor_count || r.advisorCount || 0), verifiedCount: Number(r.verified_count || r.verifiedCount || 0),
-      checkedInCount: Number(r.checked_in_count || r.checkedInCount || 0), campZone: String(r.camp_zone || r.campZone || ''),
-      subCamp: String(r.subcamp || r.subCamp || ''), campsite_assignment: String(r.campsite_assignment || ''),
-      verification_status: String(r.verification_status || ''), totalXp: Number(r.total_xp || r.totalXp || 0),
-      organization_id: String(r.organization_id || ''), contingent_level: r.contingent_level,
-    }));
-    this.notify(); return this.getContingents();
+  public createContingent(data: Partial<Contingent>): Contingent {
+    const id = data.id || `ctg_${Date.now()}`;
+    const newContingent: Contingent = {
+      id,
+      contingent_id: id,
+      name: data.name || 'Kontingen Baru',
+      contingent_name: data.name || 'Kontingen Baru',
+      region: data.region || 'Wilayah Penyelenggara',
+      leaderName: data.leaderName || data.leader || 'Pembina Kontingen',
+      leader: data.leaderName || data.leader || 'Pembina Kontingen',
+      leaderPhone: data.leaderPhone || data.contact || '0812-0000-0000',
+      contact: data.leaderPhone || data.contact || '0812-0000-0000',
+      participantCount: 0,
+      participant_count: 0,
+      quota: data.quota || 32,
+      maleCount: 0,
+      femaleCount: 0,
+      advisorCount: 2,
+      verifiedCount: 0,
+      checkedInCount: 0,
+      campZone: data.campZone || 'Zona A',
+      subCamp: data.subCamp || 'Kavling A-01',
+      campsite_assignment: data.campsite_assignment || 'Kavling A-01',
+      verification_status: 'VERIFIED',
+      totalXp: 0,
+      organization_id: data.organization_id || 'org_kwarran_glagah',
+      contingent_level: data.contingent_level || 'KWARRAN',
+    };
+    this.contingents.push(newContingent);
+    this.notify();
+    return newContingent;
   }
 
-  /** Create only after GAS confirms a canonical Contingents sheet write. */
-  public async createContingent(data: Partial<Contingent>): Promise<Contingent> {
-    if (!String(data.name || data.contingent_name || '').trim()) throw new Error('Nama kontingen wajib diisi.');
-    if (!String(data.organization_id || '').trim()) throw new Error('Pangkalan/Gudep wajib dipilih dari data terdaftar.');
-    const saved = await adminPersistenceService.upsert<any>('contingents', {
-      name: String(data.name || data.contingent_name).trim(), contingent_name: String(data.name || data.contingent_name).trim(),
-      organization_id: data.organization_id, region: data.region || '', leader_name: data.leaderName || data.leader || '',
-      leader_phone: data.leaderPhone || data.contact || '', quota: data.quota, contingent_level: data.contingent_level,
-    });
-    await this.loadContingents();
-    const row = this.contingents.find(c => c.id === String(saved.id || saved.contingent_id || ''));
-    if (!row) throw new Error('GAS menyimpan kontingen tetapi data hasil tidak ditemukan saat dibaca ulang.');
-    return row;
-  }
-
-  public async updateContingent(id: string, updates: Partial<Contingent>): Promise<Contingent> {
-    if (!id) throw new Error('ID kontingen wajib diisi.');
-    const current = this.getContingentById(id);
-    if (!current) throw new Error('Kontingen belum dimuat dari GAS. Muat ulang data sebelum mengubah.');
-    const saved = await adminPersistenceService.upsert<any>('contingents', { ...current, ...updates, id });
-    await this.loadContingents();
-    const row = this.contingents.find(c => c.id === String(saved.id || id));
-    if (!row) throw new Error('GAS belum mengonfirmasi kontingen setelah perubahan.');
-    return row;
+  public updateContingent(id: string, updates: Partial<Contingent>): Contingent {
+    const ctg = this.contingents.find(c => c.id === id || c.contingent_id === id);
+    if (!ctg) throw new Error(`Kontingen '${id}' tidak ditemukan`);
+    Object.assign(ctg, updates);
+    this.notify();
+    return ctg;
   }
 
   // ==================== VERIFICATION & STATUS HISTORY ====================
 
-  public verifyParticipant(participantId: string, verifiedBy: string): Participant {
-    const p = this.participants.find(part => part.id === participantId);
-    if (!p) throw new Error('Peserta tidak ditemukan');
-
-    const prev = p.status;
-    p.status = 'verified';
-    this.recordStatusHistory(p, prev, 'verified', verifiedBy, 'Dokumen KTA, asuransi, dan izin orang tua lengkap.');
-    this.notify();
-    return p;
+  // Verification status is authoritative in GAS/Spreadsheet. Never mutate the
+  // in-memory participant record before the server confirms the write.
+  private async persistParticipantVerification(
+    participantId: string,
+    decision: 'VERIFIED' | 'APPROVED' | 'REVISION' | 'REJECTED',
+    actorName: string,
+    reason = ''
+  ): Promise<Participant> {
+    if (!participantId.trim()) throw new Error('ID peserta wajib diisi.');
+    if ((decision === 'REVISION' || decision === 'REJECTED') && !reason.trim()) {
+      throw new Error('Alasan revisi atau penolakan wajib diisi.');
+    }
+    const response = await apiTransport.send<any>('participants.admin.setVerificationStatus', {
+      participant_id: participantId,
+      decision,
+      notes: reason.trim(),
+      actor_name: actorName,
+    });
+    if (!response.ok) throw new Error(response.error?.message || 'GAS gagal menyimpan status verifikasi peserta.');
+    // Read back from Spreadsheet so UI reflects the canonical value, not an optimistic local change.
+    await this.loadParticipants();
+    const saved = this.participants.find(part => part.id === participantId);
+    if (!saved) throw new Error('Status tersimpan, tetapi peserta tidak ditemukan saat membaca ulang dari GAS.');
+    const expected: Record<typeof decision, ParticipantStatus> = {
+      VERIFIED: 'verified', APPROVED: 'approved', REVISION: 'revision', REJECTED: 'rejected'
+    };
+    if (saved.status !== expected[decision]) {
+      throw new Error('GAS menerima perubahan, tetapi status hasil baca ulang belum sesuai. Periksa kolom verification_status di Spreadsheet.');
+    }
+    return saved;
   }
 
-  public approveParticipant(participantId: string, approvedBy: string): Participant {
-    const p = this.participants.find(part => part.id === participantId);
-    if (!p) throw new Error('Peserta tidak ditemukan');
-
-    const prev = p.status;
-    p.status = 'approved';
-    this.recordStatusHistory(p, prev, 'approved', approvedBy, 'Persetujuan akhir kepesertaan perkemahan.');
-    this.notify();
-    return p;
+  public verifyParticipant(participantId: string, verifiedBy: string): Promise<Participant> {
+    return this.persistParticipantVerification(participantId, 'VERIFIED', verifiedBy);
   }
 
-  public requestRevision(participantId: string, reason: string, officerName: string): Participant {
-    const p = this.participants.find(part => part.id === participantId);
-    if (!p) throw new Error('Peserta tidak ditemukan');
-
-    const prev = p.status;
-    p.status = 'revision';
-    p.revisionReason = reason;
-    this.recordStatusHistory(p, prev, 'revision', officerName, reason);
-    this.notify();
-    return p;
+  public approveParticipant(participantId: string, approvedBy: string): Promise<Participant> {
+    return this.persistParticipantVerification(participantId, 'APPROVED', approvedBy);
   }
 
-  public rejectParticipant(participantId: string, reason: string, officerName: string): Participant {
-    const p = this.participants.find(part => part.id === participantId);
-    if (!p) throw new Error('Peserta tidak ditemukan');
+  public requestRevision(participantId: string, reason: string, officerName: string): Promise<Participant> {
+    return this.persistParticipantVerification(participantId, 'REVISION', officerName, reason);
+  }
 
-    const prev = p.status;
-    p.status = 'rejected';
-    p.revisionReason = reason;
-    this.recordStatusHistory(p, prev, 'rejected', officerName, reason);
-    this.notify();
-    return p;
+  public rejectParticipant(participantId: string, reason: string, officerName: string): Promise<Participant> {
+    return this.persistParticipantVerification(participantId, 'REJECTED', officerName, reason);
   }
 
   private recordStatusHistory(
