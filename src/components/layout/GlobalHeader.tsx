@@ -73,6 +73,7 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showAppearanceMenu, setShowAppearanceMenu] = useState(false);
   const [showDevicesModal, setShowDevicesModal] = useState(false);
+  const [appLogoFailed, setAppLogoFailed] = useState(false);
 
   useEffect(() => {
     const unsubBranding = brandingService.subscribe((mode, resolved) => {
@@ -123,6 +124,10 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
     return `${hours}j ${mins}m`;
   };
 
+
+  useEffect(() => {
+    setAppLogoFailed(false);
+  }, [effectiveBranding.appLogoUrl, effectiveBranding.version]);
 
   const localStatus = syncService.getLocalCampStatus();
   const effectiveBranding = customerBrandingDriveService.getEffectiveBranding(
@@ -192,17 +197,20 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-gradient-to-tr from-[#A61B1B] via-[#C62828] to-[#E34848] p-[1.5px] shadow-sm flex items-center justify-center shrink-0">
             <div className="w-full h-full rounded-[10px] bg-white dark:bg-[#121215] flex items-center justify-center font-bold text-xs overflow-hidden">
-              {effectiveBranding.appLogoUrl ? (
+              {effectiveBranding.appLogoUrl && !appLogoFailed ? (
                 <img
-                  src={`${effectiveBranding.appLogoUrl}?v=${effectiveBranding.version}`}
+                  src={(() => {
+                    const rawUrl = String(effectiveBranding.appLogoUrl).trim();
+                    const separator = rawUrl.includes('?') ? '&' : '?';
+                    return `${rawUrl}${separator}v=${encodeURIComponent(String(effectiveBranding.version ?? '1'))}`;
+                  })()}
                   alt="Logo kegiatan"
                   className="w-full h-full object-contain p-0.5"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLElement).style.display = 'none';
-                  }}
+                  referrerPolicy="no-referrer"
+                  onError={() => setAppLogoFailed(true)}
                 />
               ) : (
-                '⚜️'
+                <span className="text-lg leading-none" role="img" aria-label="Lambang Pramuka" title="Logo kegiatan tidak tersedia">⚜️</span>
               )}
             </div>
           </div>
