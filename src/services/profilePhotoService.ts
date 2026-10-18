@@ -166,6 +166,7 @@ export class ProfilePhotoService {
     height?: number;
     file_size_bytes?: number;
     uploader_name?: string;
+    auto_approve?: boolean;
   }): Promise<ProfilePhotoRecord> {
     const { entity_type, entity_id, entity_name, data_url } = params;
     if (!/^data:image\/(webp|jpeg|png);base64,/.test(data_url)) {
@@ -181,12 +182,13 @@ export class ProfilePhotoService {
       width: params.width || 512,
       height: params.height || 512,
       file_size_bytes: params.file_size_bytes || Math.round(data_url.length * .75),
+      ...(params.auto_approve ? { auto_approve: true } : {}),
     }, { timeoutMs: 60000 });
     if (!response.ok) throw new Error(response.error?.message || 'Upload ke Google Drive gagal.');
-    // GAS can return the photo record directly in `data`, or wrap it as `data.record`.
-    // Accept both response shapes so a successful upload is not rejected by the frontend.
-    const remote = response.data?.record ?? response.data;
-    const url = String(remote?.public_render_url || remote?.profile_photo_url || '');
+    // GAS currently returns the saved profile-photo record as response.data directly.
+    // Accept the wrapped { record } shape as well for transport/backward compatibility.
+    const remote = response.data?.record || response.data;
+    const url = String(remote?.public_render_url || remote?.profile_photo_url || remote?.drive_url || '');
     const fileId = String(remote?.drive_file_id || remote?.profile_photo_file_id || '');
     if (!url.startsWith('https://') || !fileId) {
       throw new Error('GAS belum mengembalikan URL HTTPS dan ID file Google Drive yang valid.');
@@ -199,7 +201,7 @@ export class ProfilePhotoService {
       profile_photo_thumbnail_file_id: String(remote.profile_photo_thumbnail_file_id || ''),
       profile_photo_url: url,
       profile_photo_thumbnail_url: String(remote.thumbnail_url || url),
-      profile_photo_status: 'UPLOADED',
+      profile_photo_status: String(remote.profile_photo_status || remote.verification_status || 'UPLOADED') as ProfilePhotoRecord['profile_photo_status'],
       customer_drive_path: String(remote.customer_drive_path || ''),
       width: params.width || 512, height: params.height || 512,
       file_size_bytes: params.file_size_bytes || 0,
@@ -279,8 +281,9 @@ export class ProfilePhotoService {
 
     recipients.forEach(r => {
       // Check attached profile photo record or photoUrl
-      const record = this.records.find(rec => rec.entity_id === r.id);
-      const hasValidPhoto = (record && record.profile_photo_status === 'VALID') || (r.photoUrl && r.photoUrl.trim().length > 0);
+      const record = this.records.find(rec => rec.entity_id === r.id && rec.entity_type === 'PARTICIPANT');
+      // A populated URL alone is not proof of approval. Only a verified canonical record qualifies.
+      const hasValidPhoto = !!record && record.profile_photo_status === 'VALID' && !!record.profile_photo_file_id;
       if (!hasValidPhoto) {
         missing.push({ id: r.id, name: r.name });
       }
