@@ -298,13 +298,14 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
       ctx.translate(256, 256);
       ctx.rotate((rotation * Math.PI) / 180);
 
-      // Render image centered with offset and zoom
+      // Render image centered with offset and zoom.
+      // Scale the shorter source dimension to the full 512px canvas so the
+      // saved square photo fills the crop frame instead of leaving large white margins.
       const containerSize = 240; // Reference preview square size
-      const scaleFactor = (512 / containerSize) * zoom;
-
-      // Draw image
-      const renderW = img.naturalWidth * (containerSize / Math.min(img.naturalWidth, img.naturalHeight)) * (scaleFactor / (512 / containerSize));
-      const renderH = img.naturalHeight * (containerSize / Math.min(img.naturalWidth, img.naturalHeight)) * (scaleFactor / (512 / containerSize));
+      const outputSize = 512;
+      const baseScale = outputSize / Math.min(img.naturalWidth, img.naturalHeight);
+      const renderW = img.naturalWidth * baseScale * zoom;
+      const renderH = img.naturalHeight * baseScale * zoom;
 
       ctx.drawImage(
         img,
@@ -643,8 +644,16 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
                       alt="Crop target"
                       className="max-w-none object-contain"
                       style={{
-                        width: '100%',
-                        height: '100%',
+                        // Match the saved crop: cover the square viewport while
+                        // preserving the source aspect ratio; overflow is cropped.
+                        width: naturalDimensions.width >= naturalDimensions.height
+                          ? `${(naturalDimensions.width / naturalDimensions.height) * 100}%`
+                          : '100%',
+                        height: naturalDimensions.height >= naturalDimensions.width
+                          ? `${(naturalDimensions.height / naturalDimensions.width) * 100}%`
+                          : '100%',
+                        objectFit: 'fill',
+                        flex: 'none',
                       }}
                     />
                   </div>
