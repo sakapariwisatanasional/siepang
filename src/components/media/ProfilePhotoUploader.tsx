@@ -47,6 +47,8 @@ interface ProfilePhotoUploaderProps {
   onPhotoRemoved?: () => void;
   required?: boolean;
   className?: string;
+  /** Enables GAS-side auto-approval only for an authorized edit-photo workflow. */
+  autoApproveOnUpload?: boolean;
 }
 
 export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
@@ -58,6 +60,7 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
   onPhotoRemoved,
   required = false,
   className = '',
+  autoApproveOnUpload = false,
 }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -341,6 +344,7 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
         thumbnail_url: thumbUrl,
         width: 512,
         height: 512,
+        auto_approve: autoApproveOnUpload,
       });
 
       setPhotoUrl(saved.profile_photo_url);
