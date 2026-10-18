@@ -79,11 +79,12 @@ export const ParticipantAdminDialog: React.FC<Props> = ({mode, participants, onC
           <h4 className="text-sm font-bold">Foto Profil Peserta</h4>
           <p className="text-xs text-slate-400">Ganti atau unggah foto resmi peserta. Foto akan dihubungkan ke ID peserta ini melalui GAS.</p>
           <ProfilePhotoUploader
-            entityType={(participants[0]?.role === 'Pembina Pendamping' || participants[0]?.role === 'Pimpinan Kontingen') ? 'OFFICIAL' : 'PARTICIPANT'}
+            entityType="PARTICIPANT"
             entityId={participants[0]?.id || ''}
             entityName={participants[0]?.name || name || 'Peserta'}
-            currentPhotoUrl={participants[0]?.photoUrl || undefined}
+            currentPhotoUrl={participants[0]?.profile_photo_url || participants[0]?.photoUrl || undefined}
             required
+            autoApproveOnUpload
             onPhotoSaved={() => {
               void participantService.loadParticipants()
                 .then(() => onSaved('Foto profil peserta berhasil diperbarui dari GAS.'))
