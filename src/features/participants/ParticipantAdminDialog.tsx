@@ -3,6 +3,7 @@ import { Participant } from '../../types';
 import { gudepRegistrationService, GudepRecord, GudepRegu } from '../../services/gudepRegistrationService';
 import { participantAdminService } from '../../services/participantAdminService';
 import { participantService } from '../../services/participantService';
+import { ProfilePhotoUploader } from '../../components/media/ProfilePhotoUploader';
 
 type Props = {
   mode: 'assign' | 'edit' | 'archive';
@@ -72,7 +73,26 @@ export const ParticipantAdminDialog: React.FC<Props> = ({mode, participants, onC
         {genders.length>1&&<p className="text-amber-400 text-xs">Pilihan peserta campuran Putra/Putri. Pilih peserta satu jenis kelamin terlebih dahulu.</p>}
         <p className="text-xs text-slate-400">GAS akan memastikan Regu aktif, jenis kelamin sesuai, dan kuota masih mencukupi. QR dan XP peserta tetap memakai ID yang sama.</p>
       </>}
-      {mode==='edit' && <div className="grid gap-3">{([['Nama Peserta',name,setName],['Nomor Pramuka / NTA',nta,setNta],['Email',email,setEmail],['Telepon',phone,setPhone]] as const).map(([label,value,setValue])=><label key={label} className="text-xs">{label}<input value={value} onChange={e=>setValue(e.target.value)} className="mt-1 w-full rounded-xl p-3 bg-[#24242A] border border-white/20 text-white"/></label>)}<p className="text-xs text-slate-400">Pemindahan Gudep/Regu dilakukan melalui menu Alokasikan. ID peserta, saldo XP, dan riwayat QR tidak berubah.</p></div>}
+      {mode==='edit' && <div className="grid gap-4">
+        {([['Nama Peserta',name,setName],['Nomor Pramuka / NTA',nta,setNta],['Email',email,setEmail],['Telepon',phone,setPhone]] as const).map(([label,value,setValue])=><label key={label} className="text-xs">{label}<input value={value} onChange={e=>setValue(e.target.value)} className="mt-1 w-full rounded-xl p-3 bg-[#24242A] border border-white/20 text-white"/></label>)}
+        <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 space-y-2">
+          <h4 className="text-sm font-bold">Foto Profil Peserta</h4>
+          <p className="text-xs text-slate-400">Ganti atau unggah foto resmi peserta. Foto akan dihubungkan ke ID peserta ini melalui GAS.</p>
+          <ProfilePhotoUploader
+            entityType={(participants[0]?.role === 'Pembina Pendamping' || participants[0]?.role === 'Pimpinan Kontingen') ? 'OFFICIAL' : 'PARTICIPANT'}
+            entityId={participants[0]?.id || ''}
+            entityName={participants[0]?.name || name || 'Peserta'}
+            currentPhotoUrl={participants[0]?.photoUrl || undefined}
+            required
+            onPhotoSaved={() => {
+              void participantService.loadParticipants()
+                .then(() => onSaved('Foto profil peserta berhasil diperbarui dari GAS.'))
+                .catch((e: any) => setError(e?.message || 'Foto tersimpan, tetapi daftar peserta gagal dimuat ulang.'));
+            }}
+          />
+        </section>
+        <p className="text-xs text-slate-400">Pemindahan Gudep/Regu dilakukan melalui menu Alokasikan. ID peserta, saldo XP, dan riwayat QR tidak berubah.</p>
+      </div>}
       {mode==='archive' && <><p className="text-sm text-amber-300">Peserta akan dinonaktifkan dan hubungan Regu aktifnya diarsipkan. Data utama, QR, dan catatan XP tidak dihapus secara fisik.</p><label className="text-xs">Ketik ARSIP untuk mengonfirmasi<input value={confirmText} onChange={e=>setConfirmText(e.target.value)} className="mt-1 w-full rounded-xl p-3 bg-[#24242A] border border-white/20 text-white" placeholder="ARSIP"/></label></>}
       {loading&&<p className="text-slate-400 text-xs">Memuat data Gudep/Regu…</p>}
       {error&&<p role="alert" className="text-red-300 bg-red-900/25 rounded-xl p-3 text-sm">{error}</p>}
