@@ -9,7 +9,7 @@ import { featureControlService } from '../../services/featureControlService';
 import { MobileMoreMenuSheet } from './MobileMoreMenuSheet';
 
 export type NavTab =
-  | 'home' | 'schedule' | 'leaderboard' | 'profile' | 'participants'
+  | 'home' | 'schedule' | 'leaderboard' | 'profile' | 'participants' | 'contingent_regus'
   | 'competitions' | 'admin_dashboard' | 'superadmin' | 'organizations'
   | 'users' | 'judge' | 'attendance' | 'health' | 'logistics'
   | 'templates' | 'event_studio' | 'branding_settings'
