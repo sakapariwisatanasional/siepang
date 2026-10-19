@@ -713,7 +713,14 @@ export interface Competition {
   title: string;
   name?: string;
   level?: string;
+  /** Existing competition-type name; retained for backward compatibility and judge assignment. */
   category: string;
+  /** Parent category stored in metadata_json by GAS; optional for legacy records. */
+  categoryGroup?: string;
+  /** Participation format stored in metadata_json; optional for legacy records. */
+  participantMode?: 'INDIVIDUAL' | 'TEAM' | 'CONTINGENT';
+  /** Competition scoring path stored in metadata_json; optional for legacy records. */
+  judgingMode?: 'JURY' | 'PUBLIC_VOTE' | 'HYBRID' | 'PARTICIPATION';
   type: 'field' | 'digital';
   scheduleTime: string;
   location: string;
