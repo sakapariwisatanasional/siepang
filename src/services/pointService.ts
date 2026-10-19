@@ -19,6 +19,7 @@ export const PEER_APPRECIATIONS: { type: PeerAppreciationType; xp: number; icon:
 
 class PointService {
   private transactions: XPTransaction[] = [];
+  private leaderboardEntries: LeaderboardEntry[] = [];
   private badges: Badge[] = [];
   private listeners: Set<() => void> = new Set();
   private inFlight = new Set<string>();
@@ -43,20 +44,31 @@ class PointService {
       .reduce((sum, t) => sum + t.amount, 0);
   }
 
+  /** Leaderboard cache is populated only by the authenticated GAS ledger endpoint. */
   public getLeaderboard(): LeaderboardEntry[] {
-    const participants = participantService.getParticipants();
-    const sorted = [...participants].sort((a, b) => (b.xp || 0) - (a.xp || 0));
-    return sorted.map((p, index) => ({
-      rank: index + 1,
-      id: p.id,
-      name: p.name,
-      contingentName: p.contingentName,
-      avatar: p.photoUrl,
-      role: p.role,
-      xp: p.xp || 0,
-      level: Math.floor((p.xp || 0) / 200) + 1,
-      isCurrentUser: false,
+    return [...this.leaderboardEntries];
+  }
+
+  public async refreshLeaderboard(): Promise<LeaderboardEntry[]> {
+    const res = await apiTransport.send<{ entries: any[] }>('points.leaderboard', {});
+    if (!res.ok || !Array.isArray(res.data?.entries)) {
+      throw new Error(res.error?.message || 'Gagal memuat leaderboard dari GAS.');
+    }
+    const currentUser = authService.getCurrentUser();
+    const currentCode = String(currentUser?.participantCode || '');
+    this.leaderboardEntries = res.data.entries.map((entry: any, index: number): LeaderboardEntry => ({
+      rank: Number(entry.rank || index + 1),
+      id: String(entry.id || ''),
+      name: String(entry.name || 'Peserta'),
+      contingentName: String(entry.contingentName || ''),
+      avatar: String(entry.avatar || ''),
+      role: String(entry.role || 'Peserta'),
+      xp: Number(entry.xp || 0),
+      level: Number(entry.level || (Math.floor(Number(entry.xp || 0) / 200) + 1)),
+      isCurrentUser: !!currentCode && String(entry.code || '') === currentCode,
     }));
+    this.notify();
+    return this.getLeaderboard();
   }
 
   /** Refresh the point ledger from GAS, rather than treating local XP as proof. */
