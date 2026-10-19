@@ -128,6 +128,8 @@ export const CampsiteManager: React.FC = () => {
   const [showAddFacilityModal, setShowAddFacilityModal] = useState(false);
 
   const contingents = participantService.getContingents();
+  // Define eventId before any hook dependency array reads it (avoids temporal-dead-zone crash).
+  const eventId = String(eventStudioService.getEvent()?.id || 'unassigned');
   const [campsiteAssignmentOptions, setCampsiteAssignmentOptions] = useState<CampsiteAssignmentOptions>({ lots: [], regus: [] });
   const [assignmentOptionsLoading, setAssignmentOptionsLoading] = useState(false);
   const [assignmentLotBusy, setAssignmentLotBusy] = useState<string | null>(null);
@@ -195,7 +197,6 @@ export const CampsiteManager: React.FC = () => {
   });
 
   const [toast, setToast] = useState<string | null>(null);
-  const eventId = String(eventStudioService.getEvent()?.id || 'unassigned');
   const [mapImage, setMapImage] = useState<string>('');
   const [mapEditing, setMapEditing] = useState(false);
   const [savingPosition, setSavingPosition] = useState(false);
