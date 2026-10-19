@@ -20,6 +20,11 @@ export type GudepAdvisor = {
   advisor_id: string; gudep_id: string; full_name: string; gender?: string;
   verification_status?: string; activation_status?: 'ACTIVE' | 'INACTIVE';
 };
+export type ContingentRecord = {
+  id: string; event_id: string; name: string; region?: string; leader_name?: string; leader_phone?: string;
+  participant_count?: number; checked_in_count?: number; camp_zone?: string; verification_status?: string;
+};
+export type GudepListResult = { gudep: GudepRecord[]; contingents?: ContingentRecord[] };
 export type GudepDetail = {
   gudep: GudepRecord; regu: GudepRegu[]; advisors: GudepAdvisor[];
   participantLinks: Array<{ id: string; participant_id: string; regu_id: string; gudep_id: string; status: string }>;
@@ -33,7 +38,7 @@ const send = async <T>(action: string, payload: Record<string, unknown>): Promis
 };
 
 export const gudepRegistrationService = {
-  list: () => send<{ gudep: GudepRecord[] }>('gudep.registration.list', {}),
+  list: () => send<GudepListResult>('gudep.registration.list', {}),
   detail: (gudep_id: string) => send<GudepDetail>('gudep.registration.detail', { gudep_id }),
   syncContingent: (gudep_id: string) => send<{ gudep_id: string; contingent_id: string; created: boolean; participant_count: number }>('gudep.registration.syncContingent', { gudep_id }),
   create: (data: {
