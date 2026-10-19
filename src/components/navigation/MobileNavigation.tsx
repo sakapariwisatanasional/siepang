@@ -9,7 +9,7 @@ import { featureControlService } from '../../services/featureControlService';
 import { MobileMoreMenuSheet } from './MobileMoreMenuSheet';
 
 export type NavTab =
-  | 'home' | 'schedule' | 'leaderboard' | 'profile' | 'participants' | 'contingent_regus'
+  | 'home' | 'schedule' | 'leaderboard' | 'profile' | 'participants'
   | 'competitions' | 'admin_dashboard' | 'superadmin' | 'organizations'
   | 'users' | 'judge' | 'attendance' | 'health' | 'logistics'
   | 'templates' | 'event_studio' | 'branding_settings'
@@ -57,9 +57,10 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
 
   const available: NavItem[] = [
     ...(enabled('SCHEDULE') ? [{ id: 'schedule' as NavTab, label: 'Jadwal', icon: CalendarDays }] : []),
-    ...(enabled('COMPETITION') ? [{ id: 'competitions' as NavTab, label: 'Lomba', icon: Trophy }] : []),
-    ...(enabled('PUBLIC_DOCUMENTATION') ? [{ id: 'public_gallery' as NavTab, label: 'Galeri', icon: Images }] : []),
+    // Bottom-navigation shortcut: replace Lomba with Peringkat / Points.
+    // Lomba remains available in MobileMoreMenuSheet.
     ...(enabled('POINTS_XP') ? [{ id: 'leaderboard' as NavTab, label: 'Peringkat', icon: Medal }] : []),
+    ...(enabled('PUBLIC_DOCUMENTATION') ? [{ id: 'public_gallery' as NavTab, label: 'Galeri', icon: Images }] : []),
     ...(!isParticipant && enabled('PARTICIPANT_MANAGEMENT')
       ? [{ id: 'participants' as NavTab, label: 'Peserta', icon: ClipboardList }] : []),
   ];
