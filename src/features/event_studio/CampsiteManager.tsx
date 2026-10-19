@@ -32,6 +32,10 @@ type PlotZone = { id: string; name: string; gender: 'male' | 'female'; points: {
 const DEFAULT_PLOT: PlotShape = { width: 5, height: 5, rotation: 0, locked: false };
 const clampPct = (n:number) => Math.max(1, Math.min(99, n));
 
+type CampsiteAssignmentRegu = { regu_id: string; regu_name: string; gudep_id: string; gudep_name: string; gender: string; quota: number; member_count: number };
+type CampsiteAssignmentLot = { id: string; lot_code: string; subcamp_name: string; capacity: number; gender: string; status: string; assigned_regu_id: string; assigned_regu_name: string; assigned_gudep_id: string };
+type CampsiteAssignmentOptions = { lots: CampsiteAssignmentLot[]; regus: CampsiteAssignmentRegu[] };
+
 export const CampsiteManager: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'map' | 'lots' | 'assignment' | 'facilities' | 'generator'>('map');
   const [lots, setLots] = useState<CampsiteLot[]>(eventStudioService.getCampsiteLots());
@@ -124,6 +128,46 @@ export const CampsiteManager: React.FC = () => {
   const [showAddFacilityModal, setShowAddFacilityModal] = useState(false);
 
   const contingents = participantService.getContingents();
+  const [campsiteAssignmentOptions, setCampsiteAssignmentOptions] = useState<CampsiteAssignmentOptions>({ lots: [], regus: [] });
+  const [assignmentOptionsLoading, setAssignmentOptionsLoading] = useState(false);
+  const [assignmentLotBusy, setAssignmentLotBusy] = useState<string | null>(null);
+  const [assignmentError, setAssignmentError] = useState('');
+  const [assignmentNotice, setAssignmentNotice] = useState('');
+
+  const loadCampsiteAssignmentOptions = async () => {
+    setAssignmentOptionsLoading(true);
+    setAssignmentError('');
+    try {
+      const response = await apiTransport.send<CampsiteAssignmentOptions>('participants.admin.campsiteOptions', {}, { timeoutMs: 45000 });
+      if (!response.ok || !response.data) throw new Error(response.error?.message || 'Gagal memuat pilihan Gudep dan regu dari GAS.');
+      setCampsiteAssignmentOptions({ lots: response.data.lots || [], regus: response.data.regus || [] });
+    } catch (error: any) {
+      setAssignmentError(error?.message || 'Gagal memuat pilihan regu.');
+    } finally { setAssignmentOptionsLoading(false); }
+  };
+
+  useEffect(() => { void loadCampsiteAssignmentOptions(); }, [eventId]);
+
+  const handleAssignReguToLot = async (lotId: string, reguId: string) => {
+    if (!reguId) return;
+    const regu = campsiteAssignmentOptions.regus.find(r => r.regu_id === reguId);
+    const lot = campsiteAssignmentOptions.lots.find(l => l.id === lotId);
+    if (!regu || !lot) { setAssignmentError('Data kavling atau regu tidak ditemukan. Muat ulang daftar lalu coba kembali.'); return; }
+    if (lot.assigned_regu_id && lot.assigned_regu_id !== reguId) { setAssignmentError('Kavling ini sudah ditempati regu lain. Kosongkan atau pindahkan penugasan sebelumnya melalui alur backend terlebih dahulu.'); return; }
+    if (!window.confirm(`Tempatkan regu ${regu.regu_name} dari ${regu.gudep_name} pada kavling ${lot.lot_code || lotId}? Peserta aktif dalam regu akan mengikuti penempatan ini.`)) return;
+    setAssignmentLotBusy(lotId); setAssignmentError(''); setAssignmentNotice('');
+    try {
+      const response = await apiTransport.send<{lot_id:string; lot_code:string; regu_id:string; gudep_id:string; assigned_count:number}>('participants.admin.assignCampsite', { lot_id: lotId, regu_id: reguId }, { timeoutMs: 60000 });
+      if (!response.ok || !response.data) throw new Error(response.error?.message || 'GAS tidak mengonfirmasi penempatan kavling.');
+      await loadCampsiteAssignmentOptions();
+      await eventStudioService.initialSync();
+      setLots([...eventStudioService.listLots()]);
+      setAssignmentNotice(`Berhasil menempatkan ${regu.regu_name} (${regu.gudep_name}) di ${response.data.lot_code || lot.lot_code}. ${response.data.assigned_count} data peserta diperbarui.`);
+      showToast('Penempatan regu berhasil disimpan oleh GAS.');
+    } catch (error: any) {
+      setAssignmentError(error?.message || 'Penempatan regu gagal. Periksa status regu, kapasitas, sektor, dan data peserta aktif.');
+    } finally { setAssignmentLotBusy(null); }
+  };
 
   const [lotForm, setLotForm] = useState<Omit<CampsiteLot, 'id'>>({
     subCamp: '',
@@ -572,10 +616,10 @@ export const CampsiteManager: React.FC = () => {
         </div>
 
         {/* Sub-Tab Navigation */}
-        <div className="flex flex-nowrap overflow-x-auto p-1 rounded-2xl bg-[#FFF1F1] dark:bg-black/40 border border-red-100 dark:border-white/5 gap-1">
+        <div className="flex flex-wrap p-1 rounded-2xl bg-[#F7F7F8] dark:bg-black/40 border border-[#ECECEF] dark:border-white/5 gap-1">
           <button
             onClick={() => { setActiveTab('generator'); void loadStructure(); }}
-            className={`flex-none min-w-[140px] px-3 py-2 rounded-xl text-xs font-semibold transition-all ${activeTab === 'generator' ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
+            className={`flex-1 min-w-[140px] py-2 rounded-xl text-xs font-semibold transition-all ${activeTab === 'generator' ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
           >
             🏕️ Generator Kavling
           </button>
@@ -597,7 +641,7 @@ export const CampsiteManager: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('assignment')}
-            className={`flex-none min-w-[140px] px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            className={`flex-1 min-w-[140px] py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               activeTab === 'assignment' ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
@@ -805,10 +849,36 @@ export const CampsiteManager: React.FC = () => {
                   </span>
                 </div>
 
-                <div className="text-xs text-slate-600 dark:text-slate-300">
-                  <span className="text-slate-500 dark:text-slate-400">Kontingen: </span>
-                  <span className="font-semibold text-[#171717] dark:text-white">{lot.contingentName || 'Belum dialokasikan'}</span>
-                </div>
+                {(() => {
+                  const assignmentLot = campsiteAssignmentOptions.lots.find(item => item.id === lot.id);
+                  const assignedRegu = campsiteAssignmentOptions.regus.find(item => item.regu_id === assignmentLot?.assigned_regu_id);
+                  const choices = campsiteAssignmentOptions.regus.filter(item => {
+                    const lotGender = String(assignmentLot?.gender || (lot.gender === 'male' ? 'PUTRA' : 'PUTRI')).toUpperCase();
+                    const reguGender = String(item.gender || '').toUpperCase();
+                    const lotIsMale = ['M','MALE','PUTRA'].includes(lotGender);
+                    const reguIsMale = ['M','MALE','PUTRA'].includes(reguGender);
+                    return lotIsMale === reguIsMale && (item.member_count > 0 || item.regu_id === assignmentLot?.assigned_regu_id) && (!assignmentLot?.assigned_regu_id || item.regu_id === assignmentLot.assigned_regu_id);
+                  });
+                  return <div className="space-y-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <span className="font-semibold text-slate-700 dark:text-slate-200">Penempatan Kontingen / Pangkalan / Regu</span>
+                      <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${assignedRegu ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{assignedRegu ? 'SUDAH DITEMPATKAN' : 'BELUM DITEMPATKAN'}</span>
+                    </div>
+                    {assignedRegu ? <div className="text-xs text-slate-600 dark:text-slate-300">
+                      <div><span className="text-slate-500">Regu:</span> <strong className="text-slate-900 dark:text-white">{assignedRegu.regu_name}</strong></div>
+                      <div><span className="text-slate-500">Gudep / Sekolah:</span> <strong className="text-slate-900 dark:text-white">{assignedRegu.gudep_name}</strong></div>
+                      <div><span className="text-slate-500">Anggota aktif:</span> {assignedRegu.member_count} peserta</div>
+                    </div> : <p className="text-[11px] text-slate-500 dark:text-slate-400">Pilih regu terverifikasi dan aktif. Nama Gudep/sekolah akan mengikuti data regu dari GAS.</p>}
+                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300">Pilih regu untuk kavling ini</label>
+                    <select value={assignmentLot?.assigned_regu_id || ''} disabled={assignmentOptionsLoading || assignmentLotBusy === lot.id || choices.length === 0} onChange={e => void handleAssignReguToLot(lot.id, e.target.value)} className="min-h-10 w-full rounded-xl border border-slate-300 dark:border-white/15 bg-white dark:bg-[#202027] px-3 py-2 text-xs text-slate-800 dark:text-white disabled:opacity-50">
+                      <option value="">{assignmentOptionsLoading ? 'Memuat pilihan regu...' : choices.length ? '-- Pilih regu (Gudep / sekolah ditampilkan) --' : 'Tidak ada regu aktif yang cocok'}</option>
+                      {choices.map(item => <option key={item.regu_id} value={item.regu_id}>{item.regu_name} — {item.gudep_name} ({item.gender}, {item.member_count} peserta)</option>)}
+                    </select>
+                    {assignmentLotBusy === lot.id && <p className="text-[11px] text-blue-700 dark:text-blue-300">Menyimpan penempatan melalui GAS...</p>}
+                  </div>;
+                })()}
+                {assignmentError && <p role="alert" className="text-[11px] text-rose-700 dark:text-rose-300">{assignmentError}</p>}
+                {assignmentNotice && <p role="status" className="text-[11px] text-emerald-700 dark:text-emerald-300">{assignmentNotice}</p>}
 
                 <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500 dark:text-slate-400 pt-2 border-t border-[#ECECEF] dark:border-white/5">
                   <div>Sub Camp: <span className="text-slate-800 dark:text-white font-medium">{lot.subCamp}</span></div>
