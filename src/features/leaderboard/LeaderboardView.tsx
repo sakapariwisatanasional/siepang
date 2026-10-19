@@ -6,7 +6,7 @@
  * Standardized to Light-First, Instagram-inspired accent system, and 44px touch targets.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Trophy, Medal, Zap, Users, Flame, ChevronRight, Calculator, SlidersHorizontal } from 'lucide-react';
 import { pointService } from '../../services/pointService';
 import { participantService } from '../../services/participantService';
@@ -15,8 +15,19 @@ import { LeaderboardEntry } from '../../types';
 export const LeaderboardView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'individual' | 'contingent'>('individual');
   const [contingentRankingMethod, setContingentRankingMethod] = useState<'normalized' | 'total'>('normalized');
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(pointService.getLeaderboard());
+  const [loadingLeaderboard, setLoadingLeaderboard] = useState(true);
+  const [leaderboardError, setLeaderboardError] = useState('');
 
-  const leaderboard = pointService.getLeaderboard();
+  useEffect(() => {
+    let mounted = true;
+    pointService.refreshLeaderboard()
+      .then(entries => { if (mounted) { setLeaderboard(entries); setLeaderboardError(''); } })
+      .catch(error => { if (mounted) setLeaderboardError(error instanceof Error ? error.message : 'Leaderboard gagal dimuat.'); })
+      .finally(() => { if (mounted) setLoadingLeaderboard(false); });
+    return () => { mounted = false; };
+  }, []);
+
   const contingents = participantService.getContingents();
 
   // Top 3 Podium
@@ -58,10 +69,10 @@ export const LeaderboardView: React.FC = () => {
             Peringkat & XP
           </h1>
           <p className="mt-2 text-sm text-[#6B7280] dark:text-slate-400">
-            Belum ada data peringkat peserta.
+            {loadingLeaderboard ? 'Memuat peringkat peserta…' : 'Belum ada data peringkat peserta.'}
           </p>
           <p className="mt-1 text-xs text-[#9CA3AF] dark:text-slate-500">
-            Peringkat akan tampil setelah data peserta dan perolehan XP tersedia.
+            {leaderboardError || 'Peringkat dihitung dari akumulasi transaksi XP yang tercatat di backend.'}
           </p>
         </div>
       </div>
@@ -122,7 +133,7 @@ export const LeaderboardView: React.FC = () => {
                 <div className="flex flex-col items-center space-y-2">
                   <div className="relative">
                     <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-slate-300 shadow-md">
-                      <img src={rank2.avatar} alt={rank2.name} className="w-full h-full object-cover" />
+                      {rank2.avatar ? <img src={rank2.avatar} alt={rank2.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-sky-100 text-sky-800 font-black">{rank2.name.trim().split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase()}</div>}
                     </div>
                     <span className="absolute -top-2.5 -right-2 text-xl drop-shadow">🥈</span>
                   </div>
@@ -145,7 +156,7 @@ export const LeaderboardView: React.FC = () => {
                 <div className="flex flex-col items-center space-y-2 -mt-4">
                   <div className="relative">
                     <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-amber-400 shadow-lg ring-4 ring-amber-400/20">
-                      <img src={rank1.avatar} alt={rank1.name} className="w-full h-full object-cover" />
+                      {rank1.avatar ? <img src={rank1.avatar} alt={rank1.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-amber-100 text-amber-800 font-black">{rank1.name.trim().split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase()}</div>}
                     </div>
                     <span className="absolute -top-3.5 -right-2.5 text-2xl drop-shadow">🥇</span>
                   </div>
@@ -166,7 +177,7 @@ export const LeaderboardView: React.FC = () => {
                 <div className="flex flex-col items-center space-y-2">
                   <div className="relative">
                     <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-amber-600/60 shadow-md">
-                      <img src={rank3.avatar} alt={rank3.name} className="w-full h-full object-cover" />
+                      {rank3.avatar ? <img src={rank3.avatar} alt={rank3.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-orange-100 text-orange-800 font-black">{rank3.name.trim().split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase()}</div>}
                     </div>
                     <span className="absolute -top-2.5 -right-2 text-xl drop-shadow">🥉</span>
                   </div>
@@ -192,11 +203,11 @@ export const LeaderboardView: React.FC = () => {
               <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#208C60] to-[#F47743] text-white flex items-center justify-center font-black text-xs font-mono shadow-xs">
                 #{currentUserEntry.rank}
               </div>
-              <img
-                src={currentUserEntry.avatar}
-                alt={currentUserEntry.name}
-                className="w-10 h-10 rounded-xl object-cover border border-[#ECECEF] dark:border-white/20"
-              />
+              {currentUserEntry.avatar ? (
+                <img src={currentUserEntry.avatar} alt={currentUserEntry.name} className="w-10 h-10 rounded-xl object-cover border border-[#ECECEF] dark:border-white/20" />
+              ) : (
+                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold border border-[#ECECEF] dark:border-white/20">{currentUserEntry.name.trim().split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase()}</div>
+              )}
               <div>
                 <div className="text-xs font-bold text-[#171717] dark:text-white flex items-center gap-1.5">
                   <span>{currentUserEntry.name}</span>
@@ -228,11 +239,11 @@ export const LeaderboardView: React.FC = () => {
                   <span className="w-6 text-center font-mono font-bold text-[#6B7280] dark:text-slate-400">
                     {entry.rank}
                   </span>
-                  <img
-                    src={entry.avatar}
-                    alt={entry.name}
-                    className="w-9 h-9 rounded-xl object-cover border border-[#ECECEF] dark:border-white/10 shrink-0"
-                  />
+                  {entry.avatar ? (
+                    <img src={entry.avatar} alt={entry.name} className="w-9 h-9 rounded-xl object-cover border border-[#ECECEF] dark:border-white/10 shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-800 flex items-center justify-center font-bold border border-[#ECECEF] dark:border-white/10 shrink-0">{entry.name.trim().split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase()}</div>
+                  )}
                   <div className="min-w-0">
                     <div className="font-bold text-[#171717] dark:text-white truncate">{entry.name}</div>
                     <div className="text-[11px] text-[#6B7280] dark:text-slate-400 truncate">{entry.contingentName}</div>
