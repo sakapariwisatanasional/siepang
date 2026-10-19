@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { CalendarDays, ClipboardList, Globe2, Map, ShieldCheck, UserRound, UsersRound, Trophy, Images, LayoutGrid, ArrowUpRight } from 'lucide-react';
+import { CalendarDays, ClipboardList, Globe2, Map, ShieldCheck, UserRound, UsersRound, Trophy, Images, LayoutGrid, ArrowUpRight, ContactRound } from 'lucide-react';
 import { featureControlService } from '../../services/featureControlService';
 import { GlobalHeader } from '../../components/layout/GlobalHeader';
 import { DesktopSidebar } from '../../components/navigation/DesktopSidebar';
@@ -66,6 +66,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     { id: 'public_home' as NavTab, group: 'Kegiatan & informasi', label: 'Portal Kegiatan', description: 'Informasi publik', icon: Globe2, roles: null, feature: 'PUBLIC_EVENT_PAGE' as const },
     { id: 'public_gallery' as NavTab, group: 'Kegiatan & informasi', label: 'Galeri', description: 'Dokumentasi acara', icon: Images, roles: null, feature: 'PUBLIC_DOCUMENTATION' as const },
     { id: 'participants' as NavTab, group: 'Operasional perkemahan', label: 'Data Peserta', description: 'Registrasi & verifikasi', icon: UsersRound, roles: registrationRoles, feature: 'PARTICIPANT_MANAGEMENT' as const },
+    { id: 'contingent_regus' as NavTab, group: 'Operasional perkemahan', label: 'Data Kontingen per Regu', description: 'Foto & daftar anggota', icon: ContactRound, roles: [...allRoles, 'registration_officer'], feature: null },
     { id: 'attendance' as NavTab, group: 'Operasional perkemahan', label: 'Presensi', description: 'Kehadiran peserta', icon: ClipboardList, roles: [...allRoles, 'committee', 'attendance_officer'], feature: 'ATTENDANCE' as const },
     { id: 'event_studio' as NavTab, group: 'Operasional perkemahan', label: 'Kelola Event', description: 'Denah, kavling & fasilitas', icon: Map, roles: allRoles, feature: null },
     { id: 'users' as NavTab, group: 'Akun & akses', label: 'Akses Panitia', description: 'Peran & izin akses', icon: ShieldCheck, roles: ['superadmin', 'workspace_admin'], feature: null },
