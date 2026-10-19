@@ -6,6 +6,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, RefreshCw, School, Users, AlertCircle, QrCode, X } from 'lucide-react';
 import { gudepRegistrationService, GudepRecord, GudepRegu } from '../../services/gudepRegistrationService';
+import { userManagementService, ManagedUser } from '../../services/userManagementService';
+import { authService } from '../../services/authService';
 import { GudepQrPanel } from './GudepQrPanel';
 
 const newKey = (): string => `form_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
@@ -18,6 +20,9 @@ export const GudepReguManager: React.FC = () => {
   const [gudep, setGudep] = useState<GudepRecord[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [regu, setRegu] = useState<GudepRegu[]>([]);
+  const [availableUsers, setAvailableUsers] = useState<ManagedUser[]>([]);
+  const [assignUserId, setAssignUserId] = useState('');
+  const [usersLoading, setUsersLoading] = useState(false);
   const [gForm, setGForm] = useState(blankGudep());
   const [rForm, setRForm] = useState(blankRegu());
   const [addGudep, setAddGudep] = useState(false);
@@ -34,6 +39,9 @@ export const GudepReguManager: React.FC = () => {
   const gudepKey = useRef(newKey());
   const reguKey = useRef(newKey());
   const detailRequest = useRef(0);
+  const authState = authService.getAuthState();
+  const roles = (authState.effectiveRoles || [authState.role]).map((role: unknown) => String(role || '').toLowerCase());
+  const canAssignOperator = roles.includes('superadmin') || roles.includes('workspace_admin');
 
   const load = useCallback(async (preferredId?: string) => {
     setLoading(true); setError('');
@@ -50,6 +58,36 @@ export const GudepReguManager: React.FC = () => {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (!canAssignOperator) return;
+    let active = true;
+    setUsersLoading(true);
+    userManagementService.refreshUsers()
+      .then(rows => { if (active) setAvailableUsers(rows.filter(user => user.status === 'active')); })
+      .catch((e: any) => { if (active) setError(e?.message || 'Gagal memuat akun pengguna dari GAS.'); })
+      .finally(() => { if (active) setUsersLoading(false); });
+    return () => { active = false; };
+  }, [canAssignOperator]);
+
+  const assignOperator = async () => {
+    if (!selectedId || !assignUserId || busy || !canAssignOperator) return;
+    const target = availableUsers.find(user => user.id === assignUserId);
+    if (!target) { setError('Pilih akun aktif yang tersedia.'); return; }
+    if (!window.confirm(`Tugaskan ${target.name || target.email} untuk mengelola ${selected?.gudep_name || 'Gudep ini'}?`)) return;
+    setBusy(true); setError(''); setMessage('');
+    try {
+      await gudepRegistrationService.assignExistingUser({ gudep_id: selectedId, user_id: assignUserId });
+      // The Gudep assignment limits the data scope; registration_officer exposes the existing participant menu.
+      // This is an additive role grant and does not revoke any existing role.
+      await userManagementService.grantAdditionalRoles(assignUserId, ['registration_officer'], 'EVENT');
+      setAvailableUsers(await userManagementService.refreshUsers());
+      setMessage(`Akun ${target.name || target.email} berhasil ditugaskan ke ${selected?.gudep_name || 'Gudep'} dan diberi akses menu Data Peserta. Backend tetap membatasi pendaftaran ke Gudep yang ditugaskan.`);
+      setAssignUserId('');
+    } catch (e: any) {
+      setError(`Penugasan mungkin sudah tersimpan di GudepOperatorAssignments, tetapi akses menu belum terkonfirmasi. Periksa penugasan akun sebelum mencoba ulang. Detail: ${e?.message || 'Kesalahan tidak diketahui.'}`);
+    } finally { setBusy(false); }
+  };
   useEffect(() => {
     const current = ++detailRequest.current;
     if (!selectedId) { setRegu([]); setDetailLoading(false); return; }
@@ -239,6 +277,11 @@ export const GudepReguManager: React.FC = () => {
         </article>;
       })}</div>}
     </div>
+    {selected && canAssignOperator && <section className="rounded-2xl border border-indigo-200 bg-white p-4 dark:border-indigo-500/20 dark:bg-[#141418] space-y-3" aria-label="Penugasan operator Gudep">
+      <div className="flex items-start gap-3"><div className="rounded-xl bg-indigo-100 p-2 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200"><Users className="h-5 w-5" /></div><div className="min-w-0 flex-1"><h3 className="text-sm font-bold text-slate-900 dark:text-white">Tugaskan Pengelola Gudep</h3><p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">Pilih akun yang sudah terdaftar untuk mengelola Gudep ini. Penugasan disimpan oleh backend pada GudepOperatorAssignments; pengguna hanya mendapat akses ke Gudep yang ditugaskan.</p></div></div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end"><div><label className={labelClass}>Akun pengguna aktif</label><select className={inputClass} value={assignUserId} onChange={e => setAssignUserId(e.target.value)} disabled={busy || usersLoading}><option value="">{usersLoading ? 'Memuat akun pengguna…' : availableUsers.length ? 'Pilih pengguna…' : 'Tidak ada akun aktif'}</option>{availableUsers.map(user => <option key={user.id} value={user.id}>{user.name || user.email} — {user.email}</option>)}</select></div><button type="button" onClick={() => void assignOperator()} disabled={busy || usersLoading || !assignUserId} className="min-h-11 rounded-xl bg-indigo-700 px-4 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">{busy ? 'Menyimpan…' : 'Tugaskan ke Gudep'}</button></div>
+      <p className="text-[11px] text-slate-500">Untuk menugaskan pengguna ke Gudep lain, pilih kartu Gudep tersebut dan ulangi proses ini. Pengguna yang sama dapat ditugaskan ke beberapa Gudep.</p>
+    </section>}
     {selected && <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#141418] space-y-3" aria-label="Persetujuan pendaftaran Gudep">
       <h3 className="text-sm font-bold text-slate-900 dark:text-white">Pengajuan & Persetujuan Gudep</h3>
       <p className="text-xs text-slate-600 dark:text-slate-300">Status pengajuan: <strong>{selected.registration_status}</strong> · Verifikasi: <strong>{selected.verification_status}</strong></p>
