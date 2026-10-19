@@ -8,7 +8,7 @@
 import { apiTransport } from './apiTransport';
 
 export type GudepRecord = {
-  gudep_id: string; event_id: string; gudep_name: string; gudep_number: string;
+  gudep_id: string; event_id: string; gudep_name: string; gudep_number: string; contingent_id?: string;
   institution_name?: string; registration_status: string; verification_status: string; activation_status?: 'ACTIVE' | 'INACTIVE';
   contingent_verification_status?: string; contingent_verification_notes?: string;
 };
@@ -40,6 +40,7 @@ export type ContingentReconciliationResult = {
 export type GudepDetail = {
   gudep: GudepRecord; regu: GudepRegu[]; advisors: GudepAdvisor[];
   participantLinks: Array<{ id: string; participant_id: string; regu_id: string; gudep_id: string; status: string }>;
+  participants?: Array<{ id: string; name: string; gender: string; regu_id: string; gudep_id: string; membership_number?: string; profile_photo_url?: string; profile_photo_file_id?: string; profile_photo_status?: string; status?: string }>;
   advisorRegu: unknown[];
 };
 
