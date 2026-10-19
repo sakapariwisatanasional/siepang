@@ -36,7 +36,8 @@ import {
 } from 'lucide-react';
 import { eventStudioService } from '../../services/eventStudioService';
 import { participantService } from '../../services/participantService';
-import { gudepRegistrationService } from '../../services/gudepRegistrationService';
+import { gudepRegistrationService, ContingentReconciliationResult } from '../../services/gudepRegistrationService';
+import { authService } from '../../services/authService';
 import { GudepReguManager } from './GudepReguManager';
 import {
   RegistrationFieldConfig,
@@ -51,6 +52,13 @@ export const RegistrationContingentEditor: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'config' | 'fields' | 'contingents' | 'gudep'>('config');
   const [contingentLoading, setContingentLoading] = useState(false);
   const [contingentLoadError, setContingentLoadError] = useState<string | null>(null);
+  const [reconcileBusy, setReconcileBusy] = useState(false);
+  const [reconcileResult, setReconcileResult] = useState<ContingentReconciliationResult | null>(null);
+  const [reconcileError, setReconcileError] = useState<string | null>(null);
+  const [reconcileApplied, setReconcileApplied] = useState(false);
+  const authState = authService.getAuthState();
+  const currentRoles = (authState.effectiveRoles || [authState.role]).map(role => String(role).toLowerCase());
+  const canReconcileContingents = currentRoles.includes('superadmin') || currentRoles.includes('super_admin') || currentRoles.includes('workspace_admin');
 
   // Registration Configuration state
   const [settings, setSettings] = useState<RegistrationSettings>(eventStudioService.getRegistrationSettings());
@@ -131,6 +139,26 @@ export const RegistrationContingentEditor: React.FC = () => {
   }, []);
 
   useEffect(() => { void loadContingents(); }, [loadContingents]);
+
+  const runContingentReconciliation = async (apply: boolean) => {
+    if (reconcileBusy) return;
+    if (apply && !window.confirm('Terapkan hanya relasi kontingen yang memiliki satu kecocokan nama persis pada event yang sama? Data yang ambigu atau tidak cocok tidak akan diubah.')) return;
+    setReconcileBusy(true);
+    setReconcileError(null);
+    try {
+      const result = await gudepRegistrationService.reconcileContingents({ apply, create_missing: false });
+      setReconcileResult(result);
+      setReconcileApplied(apply);
+      if (apply) {
+        await loadContingents();
+        showToast(`Rekonsiliasi selesai. Relasi diperbaiki: ${result.linked}. Data ambigu/tidak cocok tidak diubah.`);
+      }
+    } catch (error: any) {
+      setReconcileError(error?.message || 'Rekonsiliasi gagal. Tidak ada hasil yang dapat ditampilkan.');
+    } finally {
+      setReconcileBusy(false);
+    }
+  };
 
   // Default suggested representation level based on event level
   const defaultSuggestedLevel: OrganizationLevel =
@@ -561,6 +589,38 @@ export const RegistrationContingentEditor: React.FC = () => {
 
       {activeTab === 'contingents' && (
         <div className="space-y-4">
+          {canReconcileContingents && <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 space-y-3 dark:border-amber-500/30 dark:bg-amber-950/15" aria-labelledby="contingent-reconcile-title">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-amber-100 p-2 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"><Layers className="h-5 w-5" /></div>
+              <div className="min-w-0 flex-1">
+                <h3 id="contingent-reconcile-title" className="text-sm font-bold text-amber-950 dark:text-amber-100">Rekonsiliasi Kontingen</h3>
+                <p className="mt-1 text-xs leading-5 text-amber-900 dark:text-amber-200">Periksa kecocokan Gudep dan kontingen berdasarkan event aktif serta nama. Simulasi tidak mengubah spreadsheet. Hanya satu kecocokan nama persis yang dapat diterapkan; data ambigu dibiarkan untuk pemeriksaan manual.</p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <button type="button" disabled={reconcileBusy} onClick={() => void runContingentReconciliation(false)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-amber-700 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">
+                <Search className={`h-4 w-4 ${reconcileBusy ? 'animate-pulse' : ''}`} /> {reconcileBusy ? 'Memeriksa…' : '1. Periksa Data (Simulasi)'}
+              </button>
+              <button type="button" disabled={reconcileBusy || !reconcileResult || reconcileResult.mode !== 'PREVIEW' || reconcileResult.would_link_by_name < 1 || reconcileResult.ambiguous > 0 || reconcileResult.conflicts > 0} onClick={() => void runContingentReconciliation(true)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">
+                <CheckCircle2 className="h-4 w-4" /> 2. Terapkan Relasi yang Cocok
+              </button>
+            </div>
+            {reconcileError && <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-800 dark:border-rose-500/30 dark:bg-rose-950/30 dark:text-rose-200">{reconcileError}</div>}
+            {reconcileResult && <div className="space-y-3 rounded-xl border border-amber-200 bg-white p-3 dark:border-white/10 dark:bg-[#141418]">
+              <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="text-xs font-bold text-slate-900 dark:text-white">{reconcileApplied ? 'Hasil penerapan' : 'Hasil simulasi'} · Event {reconcileResult.event_id}</h4><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${reconcileApplied ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>{reconcileApplied ? 'SUDAH DITERAPKAN' : 'BELUM MENGUBAH DATA'}</span></div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {[['Gudep diperiksa', reconcileResult.scanned], [reconcileApplied ? 'Relasi diperbaiki' : 'Cocok nama persis', reconcileApplied ? reconcileResult.linked : reconcileResult.would_link_by_name], ['Ambigu', reconcileResult.ambiguous], ['Belum cocok', reconcileResult.unresolved]].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-slate-50 p-2 dark:bg-white/5"><div className="text-[10px] text-slate-500">{label}</div><div className="mt-1 text-lg font-bold text-slate-900 dark:text-white">{value}</div></div>)}
+              </div>
+              {reconcileResult.ambiguous > 0 && <p className="rounded-lg bg-rose-50 p-2 text-xs font-semibold text-rose-800 dark:bg-rose-950/20 dark:text-rose-200">Ada nama dengan beberapa kandidat. Relasi tidak akan diterapkan otomatis sampai ditinjau.</p>}
+              {reconcileResult.changes.length > 0 && <div className="max-h-72 space-y-2 overflow-y-auto">{reconcileResult.changes.map((change, index) => <div key={`${change.gudep_id}-${index}`} className="rounded-lg border border-slate-200 p-3 text-xs dark:border-white/10">
+                <div className="flex flex-wrap items-start justify-between gap-2"><div className="min-w-0"><div className="font-bold text-slate-900 dark:text-white">{change.gudep_name || '(Nama Gudep kosong)'}</div><div className="mt-0.5 break-all font-mono text-[10px] text-slate-500">{change.gudep_id}</div></div><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${String(change.reason || '').includes('MULTIPLE') || String(change.reason || '').includes('CONFLICT') ? 'bg-rose-100 text-rose-800' : change.action.includes('WOULD') ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}`}>{change.action}</span></div>
+                {change.candidate_id && <p className="mt-1 break-all text-slate-600 dark:text-slate-300">Kandidat ID: <span className="font-mono">{change.candidate_id}</span></p>}
+                {change.candidate_ids && <p className="mt-1 break-all text-rose-700 dark:text-rose-300">Beberapa kandidat: {change.candidate_ids.join(', ')}</p>}
+                {change.reason && <p className="mt-1 text-slate-600 dark:text-slate-300">Keterangan: {change.reason}</p>}
+              </div>)}</div>}
+              {!reconcileApplied && reconcileResult.would_link_by_name > 0 && reconcileResult.ambiguous === 0 && reconcileResult.conflicts === 0 && <p className="text-[11px] text-slate-600 dark:text-slate-300">Tinjau daftar di atas. Tombol penerapan hanya menautkan kecocokan nama persis dan tidak membuat kontingen baru.</p>}
+            </div>}
+          </section>}
           {contingentLoadError && <div role="alert" className="rounded-2xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-950/20 dark:text-rose-200">{contingentLoadError}<button type="button" onClick={() => void loadContingents()} className="ml-2 font-bold underline">Coba lagi</button></div>}
           {contingentLoading && <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-[#141418]">Memuat kontingen dari backend GAS…</div>}
           {/* Search bar */}
