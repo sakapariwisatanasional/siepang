@@ -7,7 +7,7 @@
  * - Requirement 14 & 15: Contingent Creation, Management & Detail Inspector (identity, leadership, roster, verification, campsite, XP)
  */
 
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Users,
   Shield,
@@ -32,9 +32,12 @@ import {
   Check,
   Building2,
   Phone,
+  RefreshCw,
 } from 'lucide-react';
 import { eventStudioService } from '../../services/eventStudioService';
 import { participantService } from '../../services/participantService';
+import { gudepRegistrationService } from '../../services/gudepRegistrationService';
+import { GudepReguManager } from './GudepReguManager';
 import {
   RegistrationFieldConfig,
   OrganizationLevel,
@@ -45,7 +48,9 @@ import {
 
 export const RegistrationContingentEditor: React.FC = () => {
   const event = eventStudioService.getEvent();
-  const [activeTab, setActiveTab] = useState<'config' | 'fields' | 'contingents'>('config');
+  const [activeTab, setActiveTab] = useState<'config' | 'fields' | 'contingents' | 'gudep'>('config');
+  const [contingentLoading, setContingentLoading] = useState(false);
+  const [contingentLoadError, setContingentLoadError] = useState<string | null>(null);
 
   // Registration Configuration state
   const [settings, setSettings] = useState<RegistrationSettings>(eventStudioService.getRegistrationSettings());
@@ -85,7 +90,7 @@ export const RegistrationContingentEditor: React.FC = () => {
   });
 
   // Contingents state
-  const [contingents, setContingents] = useState<Contingent[]>(participantService.getContingents());
+  const [contingents, setContingents] = useState<Contingent[]>([]);
   const [contingentSearch, setContingentSearch] = useState('');
   const [selectedContingentDetail, setSelectedContingentDetail] = useState<Contingent | null>(null);
   const [showAddContingentModal, setShowAddContingentModal] = useState(false);
@@ -105,6 +110,27 @@ export const RegistrationContingentEditor: React.FC = () => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
   };
+
+  const loadContingents = useCallback(async () => {
+    setContingentLoading(true);
+    setContingentLoadError(null);
+    try {
+      const result = await gudepRegistrationService.list();
+      const rows = (result.contingents || []).map((c): Contingent => ({
+        id: c.id, contingent_id: c.id, name: c.name || '(Tanpa nama)', contingent_name: c.name || '',
+        region: c.region || '', leaderName: c.leader_name || '', leaderPhone: c.leader_phone || '',
+        participantCount: Number(c.participant_count || 0), participant_count: Number(c.participant_count || 0),
+        maleCount: 0, femaleCount: 0, advisorCount: 0, verifiedCount: 0, checkedInCount: Number(c.checked_in_count || 0),
+        campZone: c.camp_zone || '', subCamp: '', campsite_assignment: '', quota: undefined, totalXp: 0,
+        verification_status: c.verification_status || 'PENDING'
+      }));
+      setContingents(rows);
+    } catch (error: any) {
+      setContingentLoadError(error?.message || 'Gagal memuat kontingen dari backend.');
+    } finally { setContingentLoading(false); }
+  }, []);
+
+  useEffect(() => { void loadContingents(); }, [loadContingents]);
 
   // Default suggested representation level based on event level
   const defaultSuggestedLevel: OrganizationLevel =
@@ -224,19 +250,17 @@ export const RegistrationContingentEditor: React.FC = () => {
               </button>
             )}
             {activeTab === 'contingents' && (
-              <button
-                onClick={() => setShowAddContingentModal(true)}
-                className="px-4 py-2 bg-[#C62828] hover:bg-[#A61B1B] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
-              >
-                <Plus className="w-4 h-4 stroke-[3]" />
-                <span>+ Buat Kontingen Baru</span>
+              <button type="button" onClick={() => void loadContingents()} disabled={contingentLoading}
+                className="px-4 py-2 bg-[#C62828] hover:bg-[#A61B1B] disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs">
+                <RefreshCw className={`w-4 h-4 ${contingentLoading ? 'animate-spin' : ''}`} />
+                <span>{contingentLoading ? 'Memuat…' : 'Muat Ulang'}</span>
               </button>
             )}
           </div>
         </div>
 
         {/* Tab Switcher */}
-        <div className="grid grid-cols-3 gap-1.5 p-1 bg-[#F7F7F8] dark:bg-black/40 rounded-2xl border border-[#ECECEF] dark:border-white/5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-[#F7F7F8] dark:bg-black/40 rounded-2xl border border-[#ECECEF] dark:border-white/5">
           <button
             onClick={() => setActiveTab('config')}
             className={`py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
@@ -259,7 +283,13 @@ export const RegistrationContingentEditor: React.FC = () => {
               activeTab === 'contingents' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            🚩 Kelola Kontingen ({contingents.length})
+            🚩 Kontingen ({contingents.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('gudep')}
+            className={`py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer ${activeTab === 'gudep' ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
+          >
+            🏕️ Gudep & Regu
           </button>
         </div>
       </div>
@@ -527,8 +557,12 @@ export const RegistrationContingentEditor: React.FC = () => {
       )}
 
       {/* TAB 3: CONTINGENTS MANAGEMENT & DETAIL (Requirement 14 & 15) */}
+      {activeTab === 'gudep' && <GudepReguManager />}
+
       {activeTab === 'contingents' && (
         <div className="space-y-4">
+          {contingentLoadError && <div role="alert" className="rounded-2xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-950/20 dark:text-rose-200">{contingentLoadError}<button type="button" onClick={() => void loadContingents()} className="ml-2 font-bold underline">Coba lagi</button></div>}
+          {contingentLoading && <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-[#141418]">Memuat kontingen dari backend GAS…</div>}
           {/* Search bar */}
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -541,7 +575,8 @@ export const RegistrationContingentEditor: React.FC = () => {
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          {!contingentLoading && !contingentLoadError && contingents.length === 0 && <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center dark:border-white/15"><p className="font-semibold text-slate-800 dark:text-white">Belum ada data kontingen untuk event ini.</p><p className="mt-1 text-xs text-slate-500">Kontingen yang terhubung dengan Gudep akan muncul setelah data tersimpan di spreadsheet.</p><button type="button" onClick={() => setActiveTab('gudep')} className="mt-3 rounded-xl bg-[#C62828] px-4 py-2 text-xs font-bold text-white">Buka Gudep & Regu</button></div>}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
             {contingents
               .filter(c =>
                 contingentSearch
@@ -591,11 +626,11 @@ export const RegistrationContingentEditor: React.FC = () => {
                     </span>
 
                     <button
-                      onClick={() => setSelectedContingentDetail(ctg)}
+                      onClick={() => setActiveTab('gudep')}
                       className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-emerald-600/30 text-emerald-300 hover:text-white border border-white/10 text-xs font-semibold flex items-center gap-1.5 transition-colors"
                     >
                       <Eye className="w-3.5 h-3.5" />
-                      <span>Roster & Detail</span>
+                      <span>Kelola Gudep & Regu</span>
                     </button>
                   </div>
                 </div>
@@ -763,7 +798,7 @@ export const RegistrationContingentEditor: React.FC = () => {
       )}
 
       {/* CREATE CONTINGENT MODAL */}
-      {showAddContingentModal && (
+      {false && showAddContingentModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="w-full max-w-md bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
