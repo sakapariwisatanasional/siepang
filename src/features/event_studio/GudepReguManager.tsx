@@ -5,7 +5,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, RefreshCw, School, Users, AlertCircle, QrCode, X } from 'lucide-react';
-import { gudepRegistrationService, GudepRecord, GudepRegu } from '../../services/gudepRegistrationService';
+import { gudepRegistrationService, GudepRecord, GudepRegu, GudepAdvisor } from '../../services/gudepRegistrationService';
 import { userManagementService, ManagedUser } from '../../services/userManagementService';
 import { authService } from '../../services/authService';
 import { GudepQrPanel } from './GudepQrPanel';
@@ -20,6 +20,7 @@ export const GudepReguManager: React.FC = () => {
   const [gudep, setGudep] = useState<GudepRecord[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [regu, setRegu] = useState<GudepRegu[]>([]);
+  const [advisors, setAdvisors] = useState<GudepAdvisor[]>([]);
   const [availableUsers, setAvailableUsers] = useState<ManagedUser[]>([]);
   const [assignUserId, setAssignUserId] = useState('');
   const [usersLoading, setUsersLoading] = useState(false);
@@ -42,6 +43,7 @@ export const GudepReguManager: React.FC = () => {
   const authState = authService.getAuthState();
   const roles = (authState.effectiveRoles || [authState.role]).map((role: unknown) => String(role || '').toLowerCase());
   const canAssignOperator = roles.includes('superadmin') || roles.includes('workspace_admin');
+  const canVerify = roles.some((role: string) => ['superadmin', 'workspace_admin', 'event_admin', 'registration_officer'].includes(role));
 
   const load = useCallback(async (preferredId?: string) => {
     setLoading(true); setError('');
@@ -90,10 +92,10 @@ export const GudepReguManager: React.FC = () => {
   };
   useEffect(() => {
     const current = ++detailRequest.current;
-    if (!selectedId) { setRegu([]); setDetailLoading(false); return; }
-    setDetailLoading(true); setRegu([]);
+    if (!selectedId) { setRegu([]); setAdvisors([]); setDetailLoading(false); return; }
+    setDetailLoading(true); setRegu([]); setAdvisors([]);
     gudepRegistrationService.detail(selectedId).then(data => {
-      if (current === detailRequest.current) setRegu(data.regu || []);
+      if (current === detailRequest.current) { setRegu(data.regu || []); setAdvisors(data.advisors || []); }
     }).catch((e: any) => {
       if (current === detailRequest.current) setError(e?.message || 'Gagal membaca regu.');
     }).finally(() => { if (current === detailRequest.current) setDetailLoading(false); });
@@ -119,7 +121,7 @@ export const GudepReguManager: React.FC = () => {
       setMessage(`Regu ${result.regu.regu_name} berhasil disimpan di GAS.`);
       reguKey.current = newKey(); setRForm(blankRegu()); setAddRegu(false);
       const updated = await gudepRegistrationService.detail(selectedId);
-      setRegu(updated.regu || []);
+      setRegu(updated.regu || []); setAdvisors(updated.advisors || []);
     } catch (err: any) { setError(err?.message || 'Penyimpanan regu gagal.'); }
     finally { setBusy(false); }
   };
@@ -147,7 +149,7 @@ export const GudepReguManager: React.FC = () => {
       setDecisionNotes('');
       await load(selectedId);
       const fresh = await gudepRegistrationService.detail(selectedId);
-      setRegu(fresh.regu || []);
+      setRegu(fresh.regu || []); setAdvisors(fresh.advisors || []);
       setMessage(`Keputusan verifikasi Gudep ${decision} berhasil disimpan ke GAS. Verifikasi Regu dilakukan secara terpisah.`);
     } catch (e: any) { setError(e?.message || 'Gagal menyimpan keputusan verifikasi.'); }
     finally { setBusy(false); }
@@ -176,7 +178,7 @@ export const GudepReguManager: React.FC = () => {
     try {
       await gudepRegistrationService.submitRegu(selectedId, reguId);
       const fresh = await gudepRegistrationService.detail(selectedId);
-      setRegu(fresh.regu || []);
+      setRegu(fresh.regu || []); setAdvisors(fresh.advisors || []);
       setMessage(`Pengajuan Regu ${reguName} berhasil dikirim ke GAS.`);
     } catch (e: any) { setError(e?.message || 'Gagal mengajukan Regu.'); }
     finally { setBusy(false); }
@@ -193,7 +195,7 @@ export const GudepReguManager: React.FC = () => {
       await gudepRegistrationService.verifyRegu(selectedId, reguId, decision, note);
       setReguNotes(prev => ({ ...prev, [reguId]: '' }));
       const fresh = await gudepRegistrationService.detail(selectedId);
-      setRegu(fresh.regu || []);
+      setRegu(fresh.regu || []); setAdvisors(fresh.advisors || []);
       setMessage(`Keputusan verifikasi Regu ${reguName}: ${decision} berhasil disimpan ke GAS.`);
     } catch (e: any) { setError(e?.message || `Gagal memverifikasi Regu ${reguName}.`); }
     finally { setBusy(false); }
@@ -207,7 +209,7 @@ export const GudepReguManager: React.FC = () => {
       await gudepRegistrationService.activateGudep(selectedId,status);
       await load(selectedId);
       const result = await gudepRegistrationService.detail(selectedId);
-      setRegu(result.regu || []);
+      setRegu(result.regu || []); setAdvisors(result.advisors || []);
       setMessage(`Gudep beserta Regu berhasil ${status === 'ACTIVE' ? 'diaktifkan' : 'dinonaktifkan'} di GAS.`);
     } catch (e: any) { setError(e?.message || 'Aktivasi Gudep gagal.'); }
     finally { setBusy(false); }
@@ -218,7 +220,7 @@ export const GudepReguManager: React.FC = () => {
     try {
       await gudepRegistrationService.activateRegu(selectedId,id,status);
       const result = await gudepRegistrationService.detail(selectedId);
-      setRegu(result.regu || []);
+      setRegu(result.regu || []); setAdvisors(result.advisors || []);
       setMessage('Status aktivasi Regu berhasil disimpan di GAS.');
     } catch (e: any) { setError(e?.message || 'Aktivasi Regu gagal.'); }
     finally { setBusy(false); }
@@ -273,6 +275,22 @@ export const GudepReguManager: React.FC = () => {
               </div>
             </> : <p className={`rounded-lg p-2 text-xs ${contingentStatus === 'VERIFIED' ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-200' : 'bg-rose-50 text-rose-800 dark:bg-rose-950/20 dark:text-rose-200'}`}>{contingentStatus === 'VERIFIED' ? 'Kontingen sudah diverifikasi.' : 'Kontingen ditolak. Data tetap tersimpan.'}</p>}
             {contingentStatus === 'REVISION' && <p className="text-xs text-amber-700 dark:text-amber-300">Kontingen perlu diperbaiki sebelum diajukan kembali.</p>}
+            <div className="border-t border-slate-200 pt-3 dark:border-white/10 space-y-3">
+              <h4 className="text-xs font-extrabold uppercase tracking-wide text-slate-700 dark:text-slate-200">Ringkasan Pangkalan & Kontingen</h4>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="rounded-lg bg-white p-2 dark:bg-white/5"><p className="text-[10px] font-bold uppercase text-slate-500">Data Pangkalan</p><p className="mt-1 text-xs font-semibold text-slate-900 dark:text-white">{g.institution_name || 'Nama pangkalan belum diisi'}</p><p className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">{g.address || 'Alamat belum diisi'}</p><p className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">Kontak: {g.contact_name || '—'} · {g.contact_phone || 'No. HP belum diisi'}</p><p className="break-all text-[11px] text-slate-600 dark:text-slate-300">{g.contact_email || 'Email belum diisi'}</p></div>
+                <div className="rounded-lg bg-white p-2 dark:bg-white/5"><p className="text-[10px] font-bold uppercase text-slate-500">Pembina / Pendamping / Pimpinan</p>{advisors.length ? <ul className="mt-1 space-y-1">{advisors.map((a: any, index: number) => <li key={a.advisor_id || a.id || `${a.full_name || a.name || 'pembina'}-${index}`} className="text-xs text-slate-800 dark:text-slate-100"><span className="font-semibold">{a.full_name || a.name || 'Nama belum tersedia'}</span><span className="block text-[11px] text-slate-500">{a.email || 'Email —'} · {a.phone || a.contact_phone || 'HP —'}</span></li>)}</ul> : <p className="mt-1 text-xs text-slate-500">Data pembina/pendamping belum tercatat.</p>}<p className="mt-2 text-[10px] text-slate-500">Data akun operator aktif ditetapkan melalui penugasan di bawah.</p></div>
+              </div>
+              <div className="rounded-lg border border-slate-200 p-2 dark:border-white/10"><div className="mb-2 flex items-center justify-between gap-2"><h4 className="text-xs font-bold text-slate-800 dark:text-white">Data Regu ({isSelected ? regu.length : 0})</h4>{detailLoading && <span className="text-[10px] text-slate-500">Memuat…</span>}</div>
+                {!detailLoading && regu.length === 0 ? <p className="text-xs text-slate-500">Belum ada data regu.</p> : <div className="space-y-2">{regu.map(r => { const rv = String(r.verification_status || 'PENDING').toUpperCase(); const rs = String(r.registration_status || 'DRAFT').toUpperCase(); return <div key={r.regu_id} className="rounded-lg bg-white p-2 dark:bg-white/5"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-bold text-slate-900 dark:text-white">{r.regu_name}</p><p className="text-[10px] text-slate-500">{r.gender === 'PUTRA' ? 'Putra' : 'Putri'} · Kuota {r.quota} · Pengajuan {rs}</p></div><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${rv === 'VERIFIED' ? 'bg-emerald-100 text-emerald-800' : rv === 'REJECTED' ? 'bg-rose-100 text-rose-800' : rv === 'REVISION' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}`}>{rv}</span></div>
+                  {canVerify && rs === 'SUBMITTED' && rv !== 'VERIFIED' && rv !== 'REJECTED' && <div className="mt-2 space-y-2"><textarea rows={1} maxLength={1000} className={inputClass} value={reguNotes[r.regu_id] || ''} onChange={e => setReguNotes(prev => ({...prev, [r.regu_id]: e.target.value}))} placeholder="Catatan wajib untuk revisi/tolak"/><div className="grid grid-cols-3 gap-1"><button type="button" disabled={busy} onClick={() => void decideRegu(r.regu_id, r.regu_name, 'VERIFIED')} className="rounded-lg bg-emerald-600 px-2 py-2 text-[10px] font-bold text-white disabled:opacity-40">Verifikasi</button><button type="button" disabled={busy || !(reguNotes[r.regu_id] || '').trim()} onClick={() => void decideRegu(r.regu_id, r.regu_name, 'REVISION')} className="rounded-lg bg-amber-500 px-2 py-2 text-[10px] font-bold text-slate-950 disabled:opacity-40">Revisi</button><button type="button" disabled={busy || !(reguNotes[r.regu_id] || '').trim()} onClick={() => void decideRegu(r.regu_id, r.regu_name, 'REJECTED')} className="rounded-lg bg-rose-600 px-2 py-2 text-[10px] font-bold text-white disabled:opacity-40">Tolak</button></div></div>}
+                </div>; })}</div>}
+              </div>
+              {canVerify && <div className="rounded-lg border border-slate-200 p-2 dark:border-white/10 space-y-2"><div className="flex flex-wrap items-center justify-between gap-2"><h4 className="text-xs font-bold text-slate-800 dark:text-white">Verifikasi Pangkalan / Gudep</h4><span className="text-[10px] text-slate-500">{g.registration_status} · {g.verification_status}</span></div>
+                {g.registration_status === 'SUBMITTED' && g.verification_status !== 'VERIFIED' && g.verification_status !== 'REJECTED' ? <><textarea rows={1} maxLength={1000} className={inputClass} value={isSelected ? decisionNotes : ''} onChange={e => setDecisionNotes(e.target.value)} placeholder="Catatan wajib untuk revisi/tolak"/><div className="grid grid-cols-3 gap-1"><button type="button" disabled={busy} onClick={() => void decideGudep('VERIFIED')} className="rounded-lg bg-emerald-600 px-2 py-2 text-[10px] font-bold text-white disabled:opacity-40">Verifikasi</button><button type="button" disabled={busy || !decisionNotes.trim()} onClick={() => void decideGudep('REVISION')} className="rounded-lg bg-amber-500 px-2 py-2 text-[10px] font-bold text-slate-950 disabled:opacity-40">Revisi</button><button type="button" disabled={busy || !decisionNotes.trim()} onClick={() => void decideGudep('REJECTED')} className="rounded-lg bg-rose-600 px-2 py-2 text-[10px] font-bold text-white disabled:opacity-40">Tolak</button></div></> : <p className="text-xs text-slate-600 dark:text-slate-300">Status Gudep: <strong>{g.verification_status}</strong>{g.verification_status === 'VERIFIED' ? ' — sudah diverifikasi.' : g.verification_status === 'REJECTED' ? ' — ditolak.' : ' — menunggu pengajuan/verifikasi.'}</p>}
+              </div>}
+              {canAssignOperator && <div className="rounded-lg border border-indigo-200 p-2 dark:border-indigo-500/20 space-y-2"><h4 className="text-xs font-bold text-slate-800 dark:text-white">Penugasan Akun Pembina / Pengelola</h4><div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]"><select aria-label="Pilih akun pengelola Gudep" className={inputClass} value={assignUserId} onChange={e => setAssignUserId(e.target.value)} disabled={busy || usersLoading}><option value="">{usersLoading ? 'Memuat akun…' : 'Pilih akun pengguna aktif…'}</option>{availableUsers.map(user => <option key={user.id} value={user.id}>{user.name || user.email} — {user.email}</option>)}</select><button type="button" onClick={() => void assignOperator()} disabled={busy || usersLoading || !assignUserId} className="rounded-lg bg-indigo-700 px-3 py-2 text-[11px] font-bold text-white disabled:opacity-40">Tugaskan Akun</button></div></div>}
+            </div>
           </div>}
         </article>;
       })}</div>}
