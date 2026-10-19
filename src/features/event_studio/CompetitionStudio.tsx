@@ -82,6 +82,9 @@ export const CompetitionStudio: React.FC = () => {
   const [compForm, setCompForm] = useState<Omit<Competition, 'id' | 'registeredEntries'>>({
     title: '',
     category: competitionTypes[0]?.name || '',
+    categoryGroup: competitionTypes.find(t => t.name === (competitionTypes[0]?.name || ''))?.category || 'scout_skills',
+    participantMode: 'TEAM',
+    judgingMode: 'JURY',
     type: 'field',
     scheduleTime: '',
     location: '',
@@ -190,10 +193,20 @@ export const CompetitionStudio: React.FC = () => {
   const handleSaveComp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!compForm.title.trim() || savingRecord) return;
+    if (compForm.judgingMode === 'HYBRID' && Number(compForm.juryWeight) + Number(compForm.publicWeight) !== 100) {
+      showToast('❌ Total bobot juri dan voting publik harus tepat 100%.');
+      return;
+    }
+    const savePayload = {
+      ...compForm,
+      votingEnabled: compForm.judgingMode === 'PUBLIC_VOTE' || compForm.judgingMode === 'HYBRID',
+      juryWeight: compForm.judgingMode === 'PARTICIPATION' || compForm.judgingMode === 'PUBLIC_VOTE' ? 0 : compForm.judgingMode === 'JURY' ? 100 : compForm.juryWeight,
+      publicWeight: compForm.judgingMode === 'PARTICIPATION' || compForm.judgingMode === 'JURY' ? 0 : compForm.judgingMode === 'PUBLIC_VOTE' ? 100 : compForm.publicWeight,
+    };
     setSavingRecord(true);
     try {
-      if (editingCompetitionId) await eventStudioService.updateCompetition(editingCompetitionId, compForm);
-      else await eventStudioService.createCompetition(compForm);
+      if (editingCompetitionId) await eventStudioService.updateCompetition(editingCompetitionId, savePayload);
+      else await eventStudioService.createCompetition(savePayload);
       await refreshLists();
       setShowAddCompModal(false);
       setEditingCompetitionId(null);
@@ -276,7 +289,7 @@ export const CompetitionStudio: React.FC = () => {
       const created = await eventStudioService.createCompetitionType(newCompTypeForm);
       const updated = eventStudioService.listCompetitionTypes();
       setCompetitionTypes([...updated]);
-      setCompForm(prev => ({ ...prev, category: created.name }));
+      setCompForm(prev => ({ ...prev, category: created.name, categoryGroup: created.category }));
       setShowAddCompTypeModal(false);
       setNewCompTypeForm({ name: '', category: 'scout_skills', description: '', defaultJuryWeight: 100, defaultPublicWeight: 0 });
       showToast(`✅ Tipe lomba '${created.name}' berhasil ditambahkan!`);
@@ -284,6 +297,10 @@ export const CompetitionStudio: React.FC = () => {
       showToast(`❌ Gagal: ${err.message}`);
     }
   };
+
+  const availableCompetitionTypes = compForm.categoryGroup
+    ? competitionTypes.filter(type => type.category === compForm.categoryGroup)
+    : competitionTypes;
 
   return (
     <div className="space-y-6">
@@ -309,7 +326,16 @@ export const CompetitionStudio: React.FC = () => {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => { setEditingCompetitionId(null); setShowAddCompModal(true); }}
+              onClick={() => {
+                setEditingCompetitionId(null);
+                setCompForm({
+                  title: '', category: competitionTypes[0]?.name || '',
+                  categoryGroup: competitionTypes.find(t => t.name === (competitionTypes[0]?.name || ''))?.category || 'scout_skills',
+                  participantMode: 'TEAM', judgingMode: 'JURY', type: 'field', scheduleTime: '', location: '',
+                  maxEntriesPerContingent: 1, votingEnabled: false, juryWeight: 100, publicWeight: 0, status: 'registration'
+                });
+                setShowAddCompModal(true);
+              }}
               className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-amber-500 hover:from-emerald-500 hover:to-amber-400 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
@@ -377,9 +403,16 @@ export const CompetitionStudio: React.FC = () => {
           {competitions.map(comp => (
             <div key={comp.id} className="p-4 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/8 space-y-3 shadow-xs">
               <div className="flex items-center justify-between">
-                <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 text-[10px] font-bold border border-amber-500/30">
-                  {comp.category}
-                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {comp.categoryGroup && (
+                    <span className="px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-700 dark:text-rose-300 text-[10px] font-bold border border-rose-500/20">
+                      {({scout_skills:'Keterampilan Kepramukaan',creative:'Kreativitas & Seni',discipline:'Ketangkasan & Kedisiplinan',quiz:'Pengetahuan',survival:'Survival & Rimba'} as Record<string,string>)[comp.categoryGroup] || comp.categoryGroup}
+                    </span>
+                  )}
+                  <span className="px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 text-[10px] font-bold border border-amber-500/30">
+                    {competitionTypes.find(t => t.name === comp.category)?.name || comp.category || 'Tanpa cabang'}
+                  </span>
+                </div>
                 <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 text-[10px] uppercase font-semibold">
                   {comp.status}
                 </span>
@@ -387,7 +420,15 @@ export const CompetitionStudio: React.FC = () => {
 
               <div>
                 <h3 className="text-sm font-bold text-[#171717] dark:text-white">{comp.title}</h3>
-                <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-1">
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  <span className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 text-[10px] font-semibold">
+                    {({INDIVIDUAL:'Individu',TEAM:'Regu / Tim',CONTINGENT:'Kontingen'} as Record<string,string>)[comp.participantMode || 'TEAM']}
+                  </span>
+                  <span className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 text-[10px] font-semibold">
+                    {({JURY:'Penilaian juri',PUBLIC_VOTE:'Voting publik',HYBRID:'Juri + publik',PARTICIPATION:'Partisipasi'} as Record<string,string>)[comp.judgingMode || (comp.votingEnabled ? 'HYBRID' : 'JURY')]}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-2">
                   <span>📍 {comp.location}</span>
                   <span>·</span>
                   <span>⏰ {comp.scheduleTime}</span>
@@ -402,7 +443,15 @@ export const CompetitionStudio: React.FC = () => {
                 )}
                 <button type="button" disabled={savingRecord || (comp as Competition & {publicationStatus?:string}).publicationStatus === 'OFFICIAL'} onClick={() => {
                   setEditingCompetitionId(comp.id);
-                  setCompForm({ title: comp.title, category: comp.category, type: comp.type, scheduleTime: comp.scheduleTime, location: comp.location, maxEntriesPerContingent: comp.maxEntriesPerContingent, votingEnabled: comp.votingEnabled, juryWeight: comp.juryWeight, publicWeight: comp.publicWeight, status: comp.status });
+                  setCompForm({
+                    title: comp.title, category: comp.category,
+                    categoryGroup: comp.categoryGroup || competitionTypes.find(t => t.name === comp.category)?.category || '',
+                    participantMode: comp.participantMode || 'TEAM',
+                    judgingMode: comp.judgingMode || (comp.votingEnabled ? (comp.juryWeight > 0 ? 'HYBRID' : 'PUBLIC_VOTE') : 'JURY'),
+                    type: comp.type, scheduleTime: comp.scheduleTime, location: comp.location,
+                    maxEntriesPerContingent: comp.maxEntriesPerContingent, votingEnabled: comp.votingEnabled,
+                    juryWeight: comp.juryWeight, publicWeight: comp.publicWeight, status: comp.status
+                  });
                   setShowAddCompModal(true);
                 }} className="px-3 py-2 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 text-xs font-bold flex items-center gap-1"><Edit2 className="w-3.5 h-3.5"/> Edit</button>
                 <button type="button" disabled={savingRecord} onClick={() => void handleArchiveCompetition(comp)} className="px-3 py-2 rounded-lg bg-rose-500/15 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center gap-1"><Trash2 className="w-3.5 h-3.5"/> Arsipkan</button>
@@ -1046,7 +1095,7 @@ export const CompetitionStudio: React.FC = () => {
       {/* ADD COMPETITION MODAL */}
       {showAddCompModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="w-full max-w-lg bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-[28px] p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-xl bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 rounded-2xl sm:rounded-[28px] p-4 sm:p-6 shadow-2xl space-y-4 max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-[#171717] dark:text-white">{editingCompetitionId ? "Edit Cabang Lomba" : "+ Buat Cabang Lomba Baru"}</h3>
               <button onClick={() => setShowAddCompModal(false)} className="w-7 h-7 rounded-full bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 flex items-center justify-center">✕</button>
@@ -1065,41 +1114,85 @@ export const CompetitionStudio: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-slate-700 dark:text-slate-300 font-semibold block">Kategori Lomba:</label>
-                    <button
-                      type="button"
-                      onClick={() => setShowAddCompTypeModal(true)}
-                      className="text-[10px] text-amber-600 dark:text-amber-400 hover:underline font-bold"
-                    >
-                      + Buat Tipe
-                    </button>
+                  <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Kategori induk (opsional):</label>
+                  <select
+                    value={compForm.categoryGroup || ''}
+                    onChange={e => {
+                      const group = e.target.value;
+                      const firstType = competitionTypes.find(t => t.category === group);
+                      setCompForm({ ...compForm, categoryGroup: group, category: group ? (firstType?.name || '') : compForm.category });
+                    }}
+                    className="w-full min-h-11 px-3 py-2 bg-slate-50 dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-medium"
+                  >
+                    <option value="">Tidak perlu kategori / lainnya</option>
+                    <option value="scout_skills">Keterampilan Kepramukaan</option>
+                    <option value="creative">Kreativitas & Seni</option>
+                    <option value="discipline">Ketangkasan & Kedisiplinan</option>
+                    <option value="quiz">Pengetahuan</option>
+                    <option value="survival">Survival & Rimba</option>
+                  </select>
+                  <p className="mt-1 text-[10px] text-slate-500">Kategori untuk mengelompokkan lomba, bukan nama cabang.</p>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1 gap-2">
+                    <label className="text-slate-700 dark:text-slate-300 font-semibold block">Cabang / jenis lomba:</label>
+                    <button type="button" onClick={() => setShowAddCompTypeModal(true)} className="text-[10px] text-rose-600 dark:text-rose-400 font-bold whitespace-nowrap">+ Tambah cabang</button>
                   </div>
                   <select
                     value={compForm.category}
-                    onChange={e => setCompForm({ ...compForm, category: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-medium"
+                    onChange={e => {
+                      const selectedType = competitionTypes.find(t => t.name === e.target.value);
+                      setCompForm({ ...compForm, category: e.target.value });
+                    }}
+                    className="w-full min-h-11 px-3 py-2 bg-slate-50 dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-medium"
+                    required
                   >
-                    {competitionTypes.map(c => (
-                      <option key={c.id} value={c.name}>
-                        {c.name}
-                      </option>
+                    <option value="">-- Pilih cabang lomba --</option>
+                    {availableCompetitionTypes.map(c => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
                     ))}
                   </select>
+                  {compForm.categoryGroup && availableCompetitionTypes.length === 0 && <p className="mt-1 text-[10px] text-amber-600">Belum ada cabang pada kategori ini. Tambahkan cabang terlebih dahulu.</p>}
+                  <p className="mt-1 text-[10px] text-slate-500">Nama cabang dipertahankan untuk kompatibilitas penugasan juri lama.</p>
                 </div>
+              </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Jenis Media Lomba:</label>
-                  <select
-                    value={compForm.type}
-                    onChange={e => setCompForm({ ...compForm, type: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white"
-                  >
-                    <option value="field">Lapangan (Fisik di Buper)</option>
-                    <option value="digital">Karya Digital (Galeri Online)</option>
+                  <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Peserta lomba:</label>
+                  <select value={compForm.participantMode || 'TEAM'} onChange={e => setCompForm({ ...compForm, participantMode: e.target.value as any })} className="w-full min-h-11 px-3 py-2 bg-slate-50 dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white">
+                    <option value="INDIVIDUAL">Individu</option>
+                    <option value="TEAM">Regu / Tim</option>
+                    <option value="CONTINGENT">Kontingen</option>
                   </select>
+                </div>
+                <div>
+                  <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Metode penilaian:</label>
+                  <select value={compForm.judgingMode || 'JURY'} onChange={e => {
+                    const mode = e.target.value as 'JURY' | 'PUBLIC_VOTE' | 'HYBRID' | 'PARTICIPATION';
+                    setCompForm({ ...compForm, judgingMode: mode, votingEnabled: mode === 'PUBLIC_VOTE' || mode === 'HYBRID', juryWeight: mode === 'PUBLIC_VOTE' || mode === 'PARTICIPATION' ? 0 : (mode === 'JURY' ? 100 : compForm.juryWeight), publicWeight: mode === 'JURY' || mode === 'PARTICIPATION' ? 0 : (mode === 'PUBLIC_VOTE' ? 100 : compForm.publicWeight) });
+                  }} className="w-full min-h-11 px-3 py-2 bg-slate-50 dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white">
+                    <option value="JURY">Penilaian dewan juri</option>
+                    <option value="PUBLIC_VOTE">Voting publik</option>
+                    <option value="HYBRID">Juri + voting publik</option>
+                    <option value="PARTICIPATION">Partisipasi saja (tanpa penilaian)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Jenis pelaksanaan:</label>
+                  <select value={compForm.type} onChange={e => setCompForm({ ...compForm, type: e.target.value as any })} className="w-full min-h-11 px-3 py-2 bg-slate-50 dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white">
+                    <option value="field">Lapangan / tatap muka</option>
+                    <option value="digital">Karya digital / galeri online</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Maks. entri per kontingen:</label>
+                  <input type="number" min="1" value={compForm.maxEntriesPerContingent} onChange={e => setCompForm({ ...compForm, maxEntriesPerContingent: Math.max(1, Number(e.target.value) || 1) })} className="w-full min-h-11 px-3 py-2 bg-slate-50 dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white"/>
                 </div>
               </div>
 
@@ -1127,26 +1220,29 @@ export const CompetitionStudio: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Bobot Juri (%):</label>
-                  <input
-                    type="number"
-                    value={compForm.juryWeight}
-                    onChange={e => setCompForm({ ...compForm, juryWeight: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono"
-                  />
+              {compForm.judgingMode !== 'PARTICIPATION' && (
+                <div className="rounded-xl border border-[#ECECEF] dark:border-white/10 p-3 space-y-2">
+                  <div className="font-bold text-slate-700 dark:text-slate-200">Komposisi penilaian</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {(compForm.judgingMode === 'JURY' || compForm.judgingMode === 'HYBRID') && (
+                      <div>
+                        <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Bobot dewan juri (%):</label>
+                        <input type="number" min="0" max="100" value={compForm.juryWeight} onChange={e => { const juryWeight = Math.max(0, Math.min(100, Number(e.target.value) || 0)); setCompForm({ ...compForm, juryWeight, ...(compForm.judgingMode === 'HYBRID' ? { publicWeight: 100 - juryWeight } : {}) }); }} className="w-full min-h-11 px-3 py-2 bg-slate-50 dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono" />
+                      </div>
+                    )}
+                    {(compForm.judgingMode === 'PUBLIC_VOTE' || compForm.judgingMode === 'HYBRID') && (
+                      <div>
+                        <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Bobot voting publik (%):</label>
+                        <input type="number" min="0" max="100" value={compForm.publicWeight} onChange={e => { const publicWeight = Math.max(0, Math.min(100, Number(e.target.value) || 0)); setCompForm({ ...compForm, publicWeight, ...(compForm.judgingMode === 'HYBRID' ? { juryWeight: 100 - publicWeight } : {}) }); }} className="w-full min-h-11 px-3 py-2 bg-slate-50 dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono" />
+                      </div>
+                    )}
+                    {compForm.judgingMode === 'JURY' && <p className="text-[11px] text-slate-500 self-center">Penilaian sepenuhnya dilakukan oleh dewan juri.</p>}
+                    {compForm.judgingMode === 'PUBLIC_VOTE' && <p className="text-[11px] text-slate-500 self-center">Penilaian sepenuhnya berdasarkan voting publik.</p>}
+                  </div>
+                  {compForm.judgingMode === 'HYBRID' && <p className={`text-[11px] font-semibold ${compForm.juryWeight + compForm.publicWeight === 100 ? 'text-emerald-600' : 'text-rose-600'}`}>Total bobot: {compForm.juryWeight + compForm.publicWeight}% (harus 100%).</p>}
                 </div>
-                <div>
-                  <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Bobot Voting Publik (%):</label>
-                  <input
-                    type="number"
-                    value={compForm.publicWeight}
-                    onChange={e => setCompForm({ ...compForm, publicWeight: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono"
-                  />
-                </div>
-              </div>
+              )}
+              {compForm.judgingMode === 'PARTICIPATION' && <p className="rounded-xl bg-sky-50 dark:bg-sky-950/30 p-3 text-[11px] text-sky-800 dark:text-sky-200">Mode partisipasi tidak menggunakan bobot juri atau voting. Hasil lomba tidak dihitung melalui rubrik penilaian.</p>}
 
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setShowAddCompModal(false)} className="px-4 py-2 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 rounded-xl font-semibold">Batal</button>
@@ -1221,7 +1317,7 @@ export const CompetitionStudio: React.FC = () => {
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-[#171717] dark:text-white flex items-center gap-2">
                 <Trophy className="w-4 h-4 text-amber-500" />
-                <span>+ Buat Tipe Kompetisi Baru</span>
+                <span>+ Tambah Cabang Lomba</span>
               </h3>
               <button
                 type="button"
@@ -1234,12 +1330,12 @@ export const CompetitionStudio: React.FC = () => {
 
             <form onSubmit={handleSaveCompType} className="space-y-3 text-xs">
               <div>
-                <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Nama Tipe / Kategori Kompetisi:</label>
+                <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Nama Cabang Lomba:</label>
                 <input
                   type="text"
                   value={newCompTypeForm.name}
                   onChange={e => setNewCompTypeForm({ ...newCompTypeForm, name: e.target.value })}
-                  placeholder="Contoh: Menara Pandang, Morse Digital..."
+                  placeholder="Contoh: Pioneering, Morse, LKBB..."
                   className="w-full px-3 py-2 bg-[#FAFAFA] dark:bg-black/50 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white focus:border-amber-500 focus:outline-none"
                   required
                 />
@@ -1278,7 +1374,7 @@ export const CompetitionStudio: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Deskripsi & Rubrik Standar:</label>
+                <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Deskripsi Cabang / Catatan Penilaian:</label>
                 <textarea
                   rows={2}
                   value={newCompTypeForm.description}
@@ -1301,7 +1397,7 @@ export const CompetitionStudio: React.FC = () => {
                   className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold flex items-center gap-1.5 shadow-xs"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Simpan Tipe Lomba</span>
+                  <span>Simpan Cabang Lomba</span>
                 </button>
               </div>
             </form>
