@@ -25,6 +25,18 @@ export type ContingentRecord = {
   participant_count?: number; checked_in_count?: number; camp_zone?: string; verification_status?: string;
 };
 export type GudepListResult = { gudep: GudepRecord[]; contingents?: ContingentRecord[] };
+
+export type ContingentReconciliationChange = {
+  gudep_id: string; gudep_name: string; action: string; reason?: string;
+  old_contingent_id?: string; candidate_id?: string; candidate_ids?: string[];
+  suggested_contingent_id?: string;
+};
+export type ContingentReconciliationResult = {
+  ok: boolean; mode: 'PREVIEW' | 'APPLY'; event_id: string; scanned: number;
+  linked: number; already_linked: number; would_link_by_name: number;
+  would_create: number; ambiguous: number; conflicts: number; unresolved: number;
+  changes: ContingentReconciliationChange[];
+};
 export type GudepDetail = {
   gudep: GudepRecord; regu: GudepRegu[]; advisors: GudepAdvisor[];
   participantLinks: Array<{ id: string; participant_id: string; regu_id: string; gudep_id: string; status: string }>;
@@ -41,6 +53,7 @@ export const gudepRegistrationService = {
   list: () => send<GudepListResult>('gudep.registration.list', {}),
   detail: (gudep_id: string) => send<GudepDetail>('gudep.registration.detail', { gudep_id }),
   syncContingent: (gudep_id: string) => send<{ gudep_id: string; contingent_id: string; created: boolean; participant_count: number }>('gudep.registration.syncContingent', { gudep_id }),
+  reconcileContingents: (options: { apply: boolean; create_missing?: boolean }) => send<ContingentReconciliationResult>('gudep.registration.reconcileContingents', options),
   create: (data: {
     request_key: string; gudep_number: string; gudep_name: string;
     institution_name?: string; address?: string; contact_name?: string;
