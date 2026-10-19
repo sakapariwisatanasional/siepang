@@ -29,6 +29,8 @@ export const GudepReguManager: React.FC = () => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [decisionNotes, setDecisionNotes] = useState('');
+  const [contingentNotes, setContingentNotes] = useState('');
+  const [reguNotes, setReguNotes] = useState<Record<string, string>>({});
   const gudepKey = useRef(newKey());
   const reguKey = useRef(newKey());
   const detailRequest = useRef(0);
@@ -108,24 +110,57 @@ export const GudepReguManager: React.FC = () => {
       await load(selectedId);
       const fresh = await gudepRegistrationService.detail(selectedId);
       setRegu(fresh.regu || []);
-      setMessage(`Keputusan ${decision} berhasil disimpan ke GAS, termasuk status seluruh Regu.`);
+      setMessage(`Keputusan verifikasi Gudep ${decision} berhasil disimpan ke GAS. Verifikasi Regu dilakukan secara terpisah.`);
     } catch (e: any) { setError(e?.message || 'Gagal menyimpan keputusan verifikasi.'); }
     finally { setBusy(false); }
   };
 
-  const syncVerifiedRegu = async () => {
+  const decideContingent = async (decision: 'VERIFIED' | 'REVISION' | 'REJECTED') => {
     if (busy || !selectedId) return;
-    if (!window.confirm('Samakan status Regu PENDING menjadi VERIFIED mengikuti Gudep yang sudah disetujui?')) return;
+    const note = contingentNotes.trim();
+    if (decision !== 'VERIFIED' && !note) { setError('Alasan revisi atau penolakan kontingen wajib diisi.'); return; }
+    const label = decision === 'VERIFIED' ? 'Verifikasi' : decision === 'REVISION' ? 'Minta revisi' : 'Tolak';
+    if (!window.confirm(`${label} kontingen ${selected?.gudep_name || ''}?`)) return;
     setBusy(true); setError(''); setMessage('');
     try {
-      const result = await gudepRegistrationService.syncReguVerification(selectedId);
-      const fresh = await gudepRegistrationService.detail(selectedId);
-      setRegu(fresh.regu || []);
-      setMessage(`${result.regu_updated} Regu berhasil disinkronkan menjadi VERIFIED di GAS.`);
+      await gudepRegistrationService.verifyContingent(selectedId, decision, note);
+      setContingentNotes('');
       await load(selectedId);
-    } catch (e: any) { setError(e?.message || 'Gagal menyinkronkan status regu.'); }
+      setMessage(`Keputusan verifikasi kontingen ${decision} berhasil disimpan ke GAS.`);
+    } catch (e: any) { setError(e?.message || 'Gagal menyimpan keputusan verifikasi kontingen.'); }
     finally { setBusy(false); }
   };
+
+  const submitRegu = async (reguId: string, reguName: string) => {
+    if (busy || !selectedId) return;
+    if (!window.confirm(`Ajukan Regu ${reguName} untuk verifikasi Admin?`)) return;
+    setBusy(true); setError(''); setMessage('');
+    try {
+      await gudepRegistrationService.submitRegu(selectedId, reguId);
+      const fresh = await gudepRegistrationService.detail(selectedId);
+      setRegu(fresh.regu || []);
+      setMessage(`Pengajuan Regu ${reguName} berhasil dikirim ke GAS.`);
+    } catch (e: any) { setError(e?.message || 'Gagal mengajukan Regu.'); }
+    finally { setBusy(false); }
+  };
+
+  const decideRegu = async (reguId: string, reguName: string, decision: 'VERIFIED' | 'REVISION' | 'REJECTED') => {
+    if (busy || !selectedId) return;
+    const note = (reguNotes[reguId] || '').trim();
+    if (decision !== 'VERIFIED' && !note) { setError(`Alasan revisi atau penolakan Regu ${reguName} wajib diisi.`); return; }
+    const label = decision === 'VERIFIED' ? 'Verifikasi' : decision === 'REVISION' ? 'Minta revisi' : 'Tolak';
+    if (!window.confirm(`${label} Regu ${reguName}?`)) return;
+    setBusy(true); setError(''); setMessage('');
+    try {
+      await gudepRegistrationService.verifyRegu(selectedId, reguId, decision, note);
+      setReguNotes(prev => ({ ...prev, [reguId]: '' }));
+      const fresh = await gudepRegistrationService.detail(selectedId);
+      setRegu(fresh.regu || []);
+      setMessage(`Keputusan verifikasi Regu ${reguName}: ${decision} berhasil disimpan ke GAS.`);
+    } catch (e: any) { setError(e?.message || `Gagal memverifikasi Regu ${reguName}.`); }
+    finally { setBusy(false); }
+  };
+
 
   const changeActivation = async (status: 'ACTIVE' | 'INACTIVE') => {
     if (!selectedId || busy || !window.confirm(status === 'ACTIVE' ? 'Aktifkan Gudep dan seluruh Regu yang telah diverifikasi?' : 'Nonaktifkan Gudep beserta seluruh Regunya?')) return;
@@ -181,6 +216,17 @@ export const GudepReguManager: React.FC = () => {
       </form>}
       {loading ? <p className="text-sm text-slate-500">Memuat Gugus Depan dari GAS…</p> : gudep.length === 0 ? <p className="text-sm text-slate-500">Belum ada Gudep yang dapat diakses akun ini. Buat Gudep sebagai Admin berwenang.</p> : <div className="grid gap-2 sm:grid-cols-2">{gudep.map(g => <button key={g.gudep_id} type="button" onClick={() => {setSelectedId(g.gudep_id);setAddRegu(false);setShowGudepQr(false);}} className={`rounded-xl border p-3 text-left transition ${selectedId === g.gudep_id ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/20' : 'border-slate-200 dark:border-white/10'}`}><span className="block font-bold text-sm text-slate-900 dark:text-white">{g.gudep_name}</span><span className="block text-xs text-slate-600 dark:text-slate-300">{g.gudep_number} · {g.institution_name || 'Pangkalan belum diisi'}</span><span className="block text-[11px] text-slate-500 mt-1">{g.registration_status} · {g.verification_status}</span></button>)}</div>}
     </div>
+    {selected && <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#141418] space-y-3" aria-label="Verifikasi kontingen">
+      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-bold text-slate-900 dark:text-white">Verifikasi Kontingen</h3><span className="rounded-full border px-3 py-1 text-[11px] font-bold">{selected.contingent_verification_status || 'PENDING'}</span></div>
+      <p className="text-xs text-slate-600 dark:text-slate-300">Keputusan ini disimpan pada sheet <strong>Contingents</strong> dan terpisah dari verifikasi Gudep maupun Regu.</p>
+      {(selected.contingent_verification_status || 'PENDING') !== 'VERIFIED' && (selected.contingent_verification_status || 'PENDING') !== 'REJECTED' && <>
+        <div><label className={labelClass}>Catatan kontingen (wajib untuk Revisi/Tolak)</label><textarea rows={2} maxLength={1000} className={inputClass} value={contingentNotes} onChange={e => setContingentNotes(e.target.value)} placeholder="Catatan untuk kontingen ini" /></div>
+        <div className="flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => void decideContingent('VERIFIED')} className="min-h-10 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-40">Verifikasi Kontingen</button><button type="button" disabled={busy || !contingentNotes.trim()} onClick={() => void decideContingent('REVISION')} className="min-h-10 rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-slate-950 disabled:opacity-40">Minta Revisi</button><button type="button" disabled={busy || !contingentNotes.trim()} onClick={() => void decideContingent('REJECTED')} className="min-h-10 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-40">Tolak Kontingen</button></div>
+      </>}
+      {selected.contingent_verification_status === 'VERIFIED' && <p className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-200">Kontingen sudah diverifikasi.</p>}
+      {selected.contingent_verification_status === 'REVISION' && <p className="text-xs text-amber-700 dark:text-amber-300">Kontingen perlu diperbaiki sebelum diajukan kembali.</p>}
+      {selected.contingent_verification_status === 'REJECTED' && <p className="text-xs text-rose-700 dark:text-rose-300">Kontingen ditolak. Data tetap tersimpan.</p>}
+    </section>}
     {selected && <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#141418] space-y-3" aria-label="Persetujuan pendaftaran Gudep">
       <h3 className="text-sm font-bold text-slate-900 dark:text-white">Pengajuan & Persetujuan Gudep</h3>
       <p className="text-xs text-slate-600 dark:text-slate-300">Status pengajuan: <strong>{selected.registration_status}</strong> · Verifikasi: <strong>{selected.verification_status}</strong></p>
@@ -198,15 +244,12 @@ export const GudepReguManager: React.FC = () => {
         </div>
       </div>}
       {selected.verification_status === 'VERIFIED' && <div className="space-y-2">
-        <p className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-200">Gudep telah diverifikasi. Verifikasi Gudep mencakup semua Regu yang diajukan. Aktivasi operasional terpisah dari persetujuan. Hanya Admin berwenang dapat mengaktifkan Gudep dan seluruh Regu yang VERIFIED.</p>
+        <p className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-200">Gudep telah diverifikasi. Setiap Regu harus diajukan dan diverifikasi secara terpisah. Aktivasi operasional terpisah dari persetujuan dan hanya dapat dilakukan Admin berwenang.</p>
         <p className="text-xs text-slate-700 dark:text-slate-200">Status aktivasi: <strong>{selected.activation_status || 'INACTIVE'}</strong></p>
         <div className="flex flex-wrap gap-2">
           {selected.activation_status !== 'ACTIVE' ? <button type="button" disabled={busy || detailLoading || regu.length === 0 || regu.some(r => r.verification_status !== 'VERIFIED')} onClick={() => void changeActivation('ACTIVE')} className="rounded-xl bg-[#C62828] px-4 py-2 text-xs font-bold text-white disabled:opacity-40">Verifikasi selesai — Aktifkan Gudep & Regu</button> : <button type="button" disabled={busy} onClick={() => void changeActivation('INACTIVE')} className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-40">Nonaktifkan Gudep & Regu</button>}
         </div>
-        {!detailLoading && regu.some(r => r.verification_status === 'PENDING') && <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/40 p-3">
-          <span className="text-xs text-amber-600 dark:text-amber-300">Ada Regu lama berstatus PENDING walaupun Gudep sudah VERIFIED.</span>
-          <button type="button" disabled={busy} onClick={() => void syncVerifiedRegu()} className="rounded-xl bg-[#C62828] px-4 py-2 text-xs font-bold text-white disabled:opacity-40">Sinkronkan Verifikasi Regu</button>
-        </div>}
+        {!detailLoading && regu.some(r => r.verification_status !== 'VERIFIED') && <p className="rounded-xl border border-amber-500/40 p-3 text-xs text-amber-700 dark:text-amber-300">Regu yang belum diverifikasi harus diajukan dan diputuskan satu per satu. Sistem tidak menyetujui Regu secara otomatis hanya karena Gudep sudah diverifikasi.</p>}
       </div>}
       {selected.verification_status === 'REJECTED' && <p className="rounded-xl bg-rose-50 p-3 text-xs text-rose-900 dark:bg-rose-950/20 dark:text-rose-200">Pengajuan ditolak. Data tidak dihapus.</p>}
       {selected.verification_status === 'REVISION' && <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">Pengajuan dikembalikan ke DRAFT untuk perbaikan. Fungsi edit data memerlukan endpoint update GAS yang belum tersedia.</p>}
@@ -215,7 +258,20 @@ export const GudepReguManager: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white"><Users className="w-5 h-5 text-emerald-600"/> Regu pada {selected.gudep_name}</div><p className="text-xs text-slate-500">Regu terhubung dengan Gudep yang dipilih. Kuota ditentukan per regu.</p></div><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => setShowGudepQr(true)} aria-label={`Buka QR Gudep ${selected.gudep_name} untuk dicetak`} className="inline-flex items-center gap-2 rounded-xl bg-slate-700 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-600 dark:bg-white/10 dark:hover:bg-white/20"><QrCode className="h-4 w-4 text-emerald-400" aria-hidden="true"/> Cetak QR</button><button type="button" onClick={() => setAddRegu(v => !v)} disabled={busy || locked} className="rounded-xl bg-[#C62828] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"><Plus className="inline w-4 h-4 mr-1" /> Tambah Regu</button></div></div>
       {locked && <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">Gudep sudah diajukan atau diverifikasi. Perubahan regu terkunci oleh aturan backend.</p>}
       {addRegu && !locked && <form onSubmit={createRegu} className="rounded-xl border border-red-200 p-4 space-y-3 dark:border-red-500/20"><div className="grid gap-3 sm:grid-cols-3"><div><label className={labelClass}>Nama Regu *</label><input required maxLength={120} className={inputClass} value={rForm.regu_name} placeholder="Contoh: Regu Elang" onChange={e => setRForm(p=>({...p,regu_name:e.target.value}))}/></div><div><label className={labelClass}>Jenis Regu *</label><select className={inputClass} value={rForm.gender} onChange={e=>setRForm(p=>({...p,gender:e.target.value as 'PUTRA'|'PUTRI'}))}><option value="PUTRA">Putra</option><option value="PUTRI">Putri</option></select></div><div><label className={labelClass}>Kuota (1–100) *</label><input required type="number" min={1} max={100} className={inputClass} value={rForm.quota} onChange={e=>setRForm(p=>({...p,quota:Number(e.target.value)}))}/></div></div><div className="flex justify-end gap-2"><button type="button" onClick={()=>setAddRegu(false)} disabled={busy} className="rounded-xl border px-4 py-2 text-sm dark:text-white">Batal</button><button type="submit" disabled={busy} className="rounded-xl bg-[#C62828] px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{busy?'Menyimpan…':'Simpan Regu ke GAS'}</button></div></form>}
-      {detailLoading ? <p className="text-sm text-slate-500">Memuat daftar regu…</p> : regu.length === 0 ? <p className="text-sm text-slate-500">Belum ada regu. Tambahkan regu sebelum mendaftarkan peserta.</p> : <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300"><th className="py-3 pr-3">Regu</th><th className="py-3 pr-3">Jenis</th><th className="py-3 pr-3">Kuota</th><th className="py-3">Verifikasi / Aktivasi</th><th className="py-3">Aksi</th></tr></thead><tbody>{regu.map(r=><tr key={r.regu_id} className="border-b border-slate-100 dark:border-white/5 text-slate-900 dark:text-white"><td className="py-3 pr-3 font-semibold">{r.regu_name}</td><td className="py-3 pr-3">{r.gender==='PUTRA'?'Putra':'Putri'}</td><td className="py-3 pr-3">{r.quota}</td><td className="py-3">{r.verification_status||'PENDING'} · {r.activation_status||'INACTIVE'}</td><td className="py-3">{selected.activation_status === 'ACTIVE' && r.verification_status === 'VERIFIED' && <button type="button" disabled={busy} onClick={() => void changeReguActivation(r.regu_id, r.activation_status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE')} className="rounded-lg border border-emerald-400 px-2 py-1 text-emerald-700 dark:text-emerald-300 disabled:opacity-40">{r.activation_status === 'ACTIVE' ? 'Nonaktifkan' : 'Aktifkan'}</button>}</td></tr>)}</tbody></table></div>}
+      {detailLoading ? <p className="text-sm text-slate-500">Memuat daftar regu…</p> : regu.length === 0 ? <p className="text-sm text-slate-500">Belum ada regu. Tambahkan regu sebelum mendaftarkan peserta.</p> : <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{regu.map(r => {
+        const verification = String(r.verification_status || 'PENDING').toUpperCase();
+        const registration = String(r.registration_status || 'DRAFT').toUpperCase();
+        return <article key={r.regu_id} className="min-w-0 rounded-xl border border-slate-200 p-3 dark:border-white/10 space-y-3">
+          <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h4 className="break-words text-sm font-bold text-slate-900 dark:text-white">{r.regu_name}</h4><p className="mt-1 text-xs text-slate-500">{r.gender === 'PUTRA' ? 'Putra' : 'Putri'} · Kuota {r.quota}</p></div><span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700 dark:bg-white/10 dark:text-slate-200">{verification}</span></div>
+          <p className="text-[11px] text-slate-500">Pengajuan: {registration} · Aktivasi: {r.activation_status || 'INACTIVE'}</p>
+          {registration !== 'SUBMITTED' && verification !== 'VERIFIED' && verification !== 'REJECTED' && <button type="button" disabled={busy} onClick={() => void submitRegu(r.regu_id, r.regu_name)} className="min-h-10 w-full rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Ajukan Verifikasi Regu</button>}
+          {registration === 'SUBMITTED' && verification !== 'VERIFIED' && verification !== 'REJECTED' && <div className="space-y-2"><label className={labelClass}>Catatan Regu (wajib untuk revisi/tolak)</label><textarea rows={2} maxLength={1000} className={inputClass} value={reguNotes[r.regu_id] || ''} onChange={e => setReguNotes(prev => ({...prev, [r.regu_id]: e.target.value}))} placeholder="Alasan revisi atau penolakan"/><div className="grid grid-cols-1 gap-2 sm:grid-cols-3"><button type="button" disabled={busy} onClick={() => void decideRegu(r.regu_id, r.regu_name, 'VERIFIED')} className="min-h-10 rounded-lg bg-emerald-600 px-2 py-2 text-[11px] font-bold text-white disabled:opacity-40">Verifikasi</button><button type="button" disabled={busy || !(reguNotes[r.regu_id] || '').trim()} onClick={() => void decideRegu(r.regu_id, r.regu_name, 'REVISION')} className="min-h-10 rounded-lg bg-amber-500 px-2 py-2 text-[11px] font-bold text-slate-950 disabled:opacity-40">Minta Revisi</button><button type="button" disabled={busy || !(reguNotes[r.regu_id] || '').trim()} onClick={() => void decideRegu(r.regu_id, r.regu_name, 'REJECTED')} className="min-h-10 rounded-lg bg-rose-600 px-2 py-2 text-[11px] font-bold text-white disabled:opacity-40">Tolak</button></div></div>}
+          {selected.activation_status === 'ACTIVE' && verification === 'VERIFIED' && <button type="button" disabled={busy} onClick={() => void changeReguActivation(r.regu_id, r.activation_status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE')} className="min-h-10 rounded-lg border border-emerald-400 px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-300 disabled:opacity-40">{r.activation_status === 'ACTIVE' ? 'Nonaktifkan Regu' : 'Aktifkan Regu'}</button>}
+          {verification === 'VERIFIED' && <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">Regu telah diverifikasi.</p>}
+          {verification === 'REVISION' && <p className="text-xs text-amber-700 dark:text-amber-300">Regu perlu diperbaiki dan diajukan kembali.</p>}
+          {verification === 'REJECTED' && <p className="text-xs text-rose-700 dark:text-rose-300">Pengajuan Regu ditolak.</p>}
+        </article>;
+      })}</div>}
     </div>}
     {selected && showGudepQr && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-3 sm:p-6" role="presentation" onMouseDown={e => { if(e.target === e.currentTarget) setShowGudepQr(false); }}>
       <div role="dialog" aria-modal="true" aria-label={`QR Gudep ${selected.gudep_name}`} className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl dark:border-white/20 dark:bg-[#141418] sm:p-5">
