@@ -14,6 +14,7 @@ import { AdminDaerahDashboard } from './features/workspace/AdminDaerahDashboard'
 import { SuperAdminDashboard } from './features/superadmin/SuperAdminDashboard';
 import { EventSchedule } from './features/events/EventSchedule';
 import { ParticipantList } from './features/participants/ParticipantList';
+import { ContingentReguDirectory } from './features/participants/ContingentReguDirectory';
 import { CompetitionList } from './features/competitions/CompetitionList';
 import { JudgeScoringInterface } from './features/judge/JudgeScoringInterface';
 import { AttendanceScanner } from './features/attendance/AttendanceScanner';
@@ -49,11 +50,11 @@ export const PUBLIC_ROUTES: ReadonlyArray<NavTab> = [
 ];
 
 const ROLE_ALLOWED_TABS: Record<UserRole, ReadonlyArray<NavTab>> = {
-  superadmin: ['home', 'public_home', 'public_gallery', 'admin_dashboard', 'event_studio', 'superadmin', 'branding_settings', 'database_storage', 'installation', 'system_update', 'organizations', 'users', 'schedule', 'participants', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
-  workspace_admin: ['home', 'public_home', 'public_gallery', 'admin_dashboard', 'event_studio', 'branding_settings', 'database_storage', 'installation', 'system_update', 'organizations', 'users', 'schedule', 'participants', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
-  event_admin: ['home', 'public_home', 'public_gallery', 'admin_dashboard', 'event_studio', 'installation', 'organizations', 'schedule', 'participants', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
+  superadmin: ['home', 'public_home', 'public_gallery', 'admin_dashboard', 'event_studio', 'superadmin', 'branding_settings', 'database_storage', 'installation', 'system_update', 'organizations', 'users', 'schedule', 'participants', 'contingent_regus', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
+  workspace_admin: ['home', 'public_home', 'public_gallery', 'admin_dashboard', 'event_studio', 'branding_settings', 'database_storage', 'installation', 'system_update', 'organizations', 'users', 'schedule', 'participants', 'contingent_regus', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
+  event_admin: ['home', 'public_home', 'public_gallery', 'admin_dashboard', 'event_studio', 'installation', 'organizations', 'schedule', 'participants', 'contingent_regus', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
   kontingen_admin: ['home', 'public_home', 'public_gallery', 'schedule', 'participants', 'competitions', 'leaderboard', 'profile'],
-  registration_officer: ['home', 'public_home', 'public_gallery', 'schedule', 'participants', 'attendance', 'profile', 'templates'],
+  registration_officer: ['home', 'public_home', 'public_gallery', 'schedule', 'participants', 'contingent_regus', 'attendance', 'profile', 'templates'],
   attendance_officer: ['home', 'public_home', 'public_gallery', 'schedule', 'attendance', 'participants', 'profile'],
   judge: ['home', 'public_home', 'public_gallery', 'schedule', 'judge', 'competitions', 'profile'],
   health_officer: ['home', 'public_home', 'public_gallery', 'schedule', 'health', 'participants', 'profile'],
@@ -1246,6 +1247,7 @@ export default function App() {
           {activeTab === 'schedule' && <EventSchedule />}
 
           {activeTab === 'participants' && <ParticipantList />}
+          {activeTab === 'contingent_regus' && <ContingentReguDirectory />}
 
           {activeTab === 'competitions' && <CompetitionList />}
 
