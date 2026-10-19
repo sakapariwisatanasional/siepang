@@ -46,6 +46,7 @@ interface MoreMenuItem {
   icon: React.ComponentType<{ className?: string }>;
   feature?: string;
   adminOnly?: boolean;
+  roles?: string[];
 }
 
 interface MoreMenuGroup {
@@ -113,6 +114,7 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
       title: 'Kegiatan',
       items: [
         { id: 'participants', label: 'Data Peserta & Berkas', icon: Users, feature: 'PARTICIPANT_MANAGEMENT' },
+        { id: 'contingent_regus', label: 'Data Kontingen per Regu', icon: Users, roles: ['superadmin', 'workspace_admin', 'event_admin', 'registration_officer'] },
         { id: 'schedule', label: 'Jadwal & Agenda', icon: Calendar, feature: 'SCHEDULE' },
         { id: 'competitions', label: 'Lomba & Penjurian', icon: Trophy, feature: 'COMPETITION' },
       ],
@@ -159,6 +161,9 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
           return false;
         }
         if (item.adminOnly && !isStaffAdmin) {
+          return false;
+        }
+        if (item.roles && !item.roles.includes(role)) {
           return false;
         }
         if (item.feature) {
