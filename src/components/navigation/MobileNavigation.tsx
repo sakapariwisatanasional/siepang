@@ -14,7 +14,7 @@ export type NavTab =
   | 'users' | 'judge' | 'attendance' | 'health' | 'logistics'
   | 'templates' | 'event_studio' | 'branding_settings'
   | 'database_storage' | 'installation' | 'system_update'
-  | 'public_home' | 'public_gallery' | 'bootstrap';
+  | 'public_home' | 'public_gallery' | 'gallery_admin' | 'bootstrap';
 
 interface MobileNavigationProps {
   activeTab: NavTab;
