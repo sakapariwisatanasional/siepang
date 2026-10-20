@@ -360,15 +360,6 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
     return documentationService.getPublishedGalleryItems('VIDEO').slice(0, 4);
   }, [galleryRevision]);
 
-  const activeSponsors = useMemo(() => {
-    if (!isConfigured) return [];
-    try {
-      return bannerSponsorService.getSponsors('PUBLISHED').filter(s => s.status !== 'INACTIVE');
-    } catch {
-      return [];
-    }
-  }, [isConfigured]);
-
   const handleRetry = async () => {
     if (!onRetryConnection || isRetrying) return;
     setIsRetrying(true);
@@ -1346,23 +1337,10 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
   };
 
   const renderSponsorsSection = () => {
-    return (
-      <section id="section-sponsors" className="space-y-3">
-        <div className="text-center space-y-1">
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-            Mitra & Pendukung Resmi Kegiatan
-          </div>
-        </div>
-
-        {activeSponsors.length === 0 ? (
-          <div className="p-6 rounded-2xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 text-center text-xs text-slate-500 dark:text-slate-400">
-            Belum ada sponsor yang ditampilkan.
-          </div>
-        ) : (
-          <PublicSponsorStrip />
-        )}
-      </section>
-    );
+    // Always mount the strip when this portal section is enabled.
+    // PublicSponsorStrip fetches published sponsor data from GAS itself.
+    // A synchronous in-memory check here can block mounting before that fetch runs.
+    return <PublicSponsorStrip />;
   };
 
   // Section dispatcher map
