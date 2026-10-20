@@ -84,10 +84,8 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
 
   useEffect(() => {
     const unsub = bannerSponsorService.subscribe(reloadData);
-    Promise.all([
-      bannerSponsorService.refreshSettingsFromGas(),
-      bannerSponsorService.refreshSponsorsFromGas(),
-    ]).catch(err => showToast(`Gagal memuat data sponsor dari GAS: ${err.message}`));
+    Promise.all([bannerSponsorService.refreshSettingsFromGas(), bannerSponsorService.refreshSponsorsFromGas()])
+      .catch(err => showToast(`Gagal memuat data sponsor dari GAS: ${err.message}`));
     return () => unsub();
   }, []);
 
@@ -133,12 +131,26 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
   const [isValidatingLogo, setIsValidatingLogo] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null);
+  const [selectedLogoPreviewUrl, setSelectedLogoPreviewUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (!selectedLogoFile) { setSelectedLogoPreviewUrl(''); return; }
+    const objectUrl = URL.createObjectURL(selectedLogoFile);
+    setSelectedLogoPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [selectedLogoFile]);
 
   // Validate logo URL on change
   useEffect(() => {
     if (!showSponsorModal) return;
 
     const trimmedUrl = sponsorForm.logo_url.trim();
+    if (selectedLogoFile) {
+      setLogoValidationStatus(selectedLogoFile.size <= 3 * 1024 * 1024 ? 'ACCESSIBLE' : 'INVALID_URL');
+      setLogoValidationMsg(selectedLogoFile.size <= 3 * 1024 * 1024 ? `File ${selectedLogoFile.name} siap diunggah ke penyimpanan.` : 'Ukuran logo maksimal 3 MB.');
+      setIsValidatingLogo(false);
+      return;
+    }
     if (!trimmedUrl) {
       setLogoValidationStatus('INVALID_URL');
       setLogoValidationMsg('Masukkan URL logo yang valid.');
@@ -189,7 +201,7 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [sponsorForm.logo_url, showSponsorModal]);
+  }, [sponsorForm.logo_url, showSponsorModal, selectedLogoFile]);
 
   const handleOpenAddSponsor = () => {
     setEditingSponsorId(null);
@@ -199,6 +211,7 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
       sponsor_name: '',
       status: 'ACTIVE',
     });
+    setSelectedLogoFile(null);
     setLogoValidationStatus('CHECKING');
     setLogoValidationMsg('');
     setShowSponsorModal(true);
@@ -212,6 +225,7 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
       sponsor_name: sponsor.sponsor_name || '',
       status: sponsor.status || 'ACTIVE',
     });
+    setSelectedLogoFile(null);
     setShowSponsorModal(true);
   };
 
@@ -230,13 +244,8 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
         setIsUploadingLogo(true);
         if (selectedLogoFile.size > 3 * 1024 * 1024) throw new Error('Ukuran logo maksimal 3 MB.');
         if (!/^image\/(png|jpeg|webp|gif|svg\+xml)$/i.test(selectedLogoFile.type)) throw new Error('Format logo harus PNG, JPG, WEBP, GIF, atau SVG.');
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Gagal membaca file logo.'));
-          reader.onerror = () => reject(new Error('Gagal membaca file logo.'));
-          reader.readAsDataURL(selectedLogoFile);
-        });
-        finalLogoUrl = await bannerSponsorService.uploadSponsorLogo(selectedLogoFile.name, dataUrl);
+        const dataUrl = await new Promise<string>((resolve,reject)=>{ const reader=new FileReader(); reader.onload=()=>typeof reader.result==='string'?resolve(reader.result):reject(new Error('Gagal membaca file logo.')); reader.onerror=()=>reject(new Error('Gagal membaca file logo.')); reader.readAsDataURL(selectedLogoFile); });
+        finalLogoUrl = await bannerSponsorService.uploadSponsorLogo(selectedLogoFile.name,dataUrl);
       }
       if (editingSponsorId) {
         await bannerSponsorService.updateSponsorPersisted(editingSponsorId, {
@@ -261,9 +270,7 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
       setShowSponsorModal(false);
     } catch (err: any) {
       alert(err.message);
-    } finally {
-      setIsUploadingLogo(false);
-    }
+    } finally { setIsUploadingLogo(false); }
   };
 
   const handleToggleSponsor = async (id: string) => {
@@ -276,14 +283,13 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
   };
 
   const handleReorder = async (id: string, dir: 'UP' | 'DOWN') => {
-    try { await bannerSponsorService.reorderSponsorPersisted(id, dir); }
-    catch (err: any) { showToast(`Gagal mengubah urutan di GAS: ${err.message}`); }
+    try { await bannerSponsorService.reorderSponsorPersisted(id, dir); } catch (err:any) { showToast(`Gagal mengubah urutan di GAS: ${err.message}`); }
   };
 
   const handleDeleteSponsor = async (id: string) => {
-    if (confirm('Hapus logo sponsor ini dari sistem?')) {
-      await bannerSponsorService.deleteSponsorPersisted(id);
-      showToast('Logo sponsor berhasil dihapus.');
+    if (confirm('Arsipkan logo sponsor ini? Logo tidak lagi tampil di portal publik.')) {
+      try { await bannerSponsorService.deleteSponsorPersisted(id); showToast('Logo sponsor berhasil diarsipkan di GAS.'); }
+      catch (err:any) { showToast(`Gagal mengarsipkan sponsor: ${err.message}`); }
     }
   };
 
@@ -1063,41 +1069,29 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
             </div>
 
             <form onSubmit={handleSaveSponsor} className="space-y-4 text-xs">
-              {/* Upload logo langsung dari perangkat */}
+              {/* Upload logo via GAS / Google Drive */}
               <div className="rounded-xl border border-dashed border-emerald-300 bg-emerald-50/60 p-3 dark:border-emerald-500/30 dark:bg-emerald-950/10">
                 <label className="mb-2 block font-semibold text-slate-700 dark:text-slate-200">Upload logo dari perangkat (disarankan)</label>
-                <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
-                  onChange={e => {
-                    const file = e.target.files?.[0] || null;
-                    setSelectedLogoFile(file);
-                    if (file) {
-                      if (file.size > 3 * 1024 * 1024) {
-                        setLogoValidationStatus('INVALID_URL');
-                        setLogoValidationMsg('Ukuran logo maksimal 3 MB.');
-                      } else {
-                        setLogoValidationStatus('CHECKING');
-                        setLogoValidationMsg(`File ${file.name} siap diunggah saat disimpan.`);
-                      }
-                    }
-                  }}
-                  className="block w-full text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-700 file:px-3 file:py-2 file:font-bold file:text-white" />
-                <p className="mt-1 text-[10px] text-slate-500">PNG, JPG, WEBP, GIF, atau SVG; maksimal 3 MB.</p>
+                <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" onChange={e=>{const file=e.target.files?.[0]||null;setSelectedLogoFile(file);if(file){setLogoValidationStatus(file.size<=3*1024*1024?'CHECKING':'INVALID_URL');setLogoValidationMsg(file.size<=3*1024*1024?`File ${file.name} akan diunggah saat disimpan.`:'Ukuran logo maksimal 3 MB.');}}} className="block w-full text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-700 file:px-3 file:py-2 file:font-bold file:text-white" />
+                <p className="mt-1 text-[10px] text-slate-500">PNG, JPG, WEBP, GIF, atau SVG. Maksimal 3 MB.</p>
+                {selectedLogoFile && <p className="mt-1 text-[11px] font-semibold text-emerald-700">Dipilih: {selectedLogoFile.name}</p>}
               </div>
-              {/* URL Logo Input (alternatif) */}
+
+              {/* URL Logo Input */}
               <div>
                 <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                  URL Logo Gambar (alternatif) *
+                  URL Logo Gambar {selectedLogoFile ? '(diabaikan karena file upload dipilih)' : '(alternatif)'}
                 </label>
                 <input
                   type="url"
-                  required
+                  required={!selectedLogoFile}
                   placeholder="https://... atau tautan Google Drive file gambar"
                   value={sponsorForm.logo_url}
-                  onChange={e => { setSelectedLogoFile(null); setSponsorForm({ ...sponsorForm, logo_url: e.target.value }); }}
+                  onChange={e => setSponsorForm({ ...sponsorForm, logo_url: e.target.value })}
                   className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/15 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
                 />
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Mendukung URL gambar langsung (.png, .svg, .jpg, .webp) atau tautan Google Drive publik.
+                  Hanya diperlukan jika tidak mengunggah file. Jika file dipilih, file upload tetap digunakan dan kolom ini diabaikan. URL Google Drive harus mengarah ke gambar yang dapat diakses publik.
                 </p>
               </div>
 
@@ -1127,14 +1121,14 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
               </div>
 
               {/* Immediate Logo Preview Slot (Sections 6, 7 & 8) */}
-              {sponsorForm.logo_url && (
+              {(selectedLogoFile || sponsorForm.logo_url.trim()) && (
                 <div className="space-y-1.5">
                   <span className="font-semibold text-slate-700 dark:text-slate-300 block">
                     Pratinjau Tampilan Logo (Aspek Rasio Asli / object-contain):
                   </span>
                   <div className="w-full h-24 rounded-2xl bg-white border border-slate-200/90 p-3 flex items-center justify-center shadow-inner">
                     <img
-                      src={sponsorForm.logo_url}
+                      src={selectedLogoFile ? selectedLogoPreviewUrl : (mediaResolverService.resolveSource(sponsorForm.logo_url).thumbnailUrl || sponsorForm.logo_url)}
                       alt="Preview"
                       className="max-h-16 max-w-[180px] w-auto h-auto object-contain"
                       onError={() => {
@@ -1201,7 +1195,7 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={isValidatingLogo}
+                  disabled={isValidatingLogo || isUploadingLogo}
                   className="px-5 py-2 bg-gradient-to-r from-[#208C60] to-[#F47743] text-white rounded-xl font-bold shadow-xs hover:opacity-90 active:scale-98 transition-all disabled:opacity-50"
                 >
                   {isUploadingLogo ? 'Mengunggah logo…' : editingSponsorId ? 'Simpan Perubahan' : 'Tambahkan Logo'}
