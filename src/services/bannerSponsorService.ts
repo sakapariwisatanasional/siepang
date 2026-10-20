@@ -225,6 +225,138 @@ class BannerSponsorService {
     }
   }
 
+  /** Read sponsor records from the authoritative GAS entity API. */
+  public async refreshSponsorsFromGas(): Promise<void> {
+    const result = await apiTransport.send<{ records: any[] }>(
+      'admin.entity.list', { entity: 'sponsors', filters: {} });
+    if (!result.ok || !Array.isArray(result.data?.records)) {
+      throw new Error(result.error?.message || 'Daftar sponsor gagal dibaca dari GAS.');
+    }
+    this.sponsors.clear();
+    result.data.records.forEach((raw: any) => {
+      const item = this.normalizeSponsorRecord_(raw);
+      if (item.sponsor_id) this.sponsors.set(item.sponsor_id, item);
+    });
+    this.notify();
+  }
+
+  /** Public endpoint returns only active and published sponsor metadata. */
+  public async refreshPublicSponsorsFromGas(): Promise<void> {
+    const result = await apiTransport.send<{ sponsors: any[] }>(
+      'sponsor.public.list', {}, { skipAuth: true });
+    if (!result.ok || !Array.isArray(result.data?.sponsors)) {
+      throw new Error(result.error?.message || 'Logo sponsor publik gagal dimuat.');
+    }
+    this.sponsors.clear();
+    result.data.sponsors.forEach((raw: any) => {
+      const item = this.normalizeSponsorRecord_(raw);
+      if (item.sponsor_id) this.sponsors.set(item.sponsor_id, item);
+    });
+    this.notify();
+  }
+
+  private normalizeSponsorRecord_(raw: any): SponsorItem {
+    const logo = String(raw.logo_url || '').trim();
+    return {
+      sponsor_id: String(raw.sponsor_id || raw.id || ''),
+      workspace_id: String(raw.workspace_id || workspaceService.getCurrentWorkspace().id || ''),
+      event_id: String(raw.event_id || eventService.getCurrentEvent().id || ''),
+      sponsor_name: String(raw.sponsor_name || 'Mitra Sponsor'),
+      sponsor_tier: raw.sponsor_tier || 'PARTNER',
+      logo_url: logo,
+      target_url: String(raw.target_url || raw.website_url || ''),
+      website_url: String(raw.website_url || raw.target_url || ''),
+      banner_id: raw.banner_id || undefined,
+      display_order: Number(raw.display_order || 0),
+      status: String(raw.status || 'ACTIVE').toUpperCase() === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
+      publication_status: String(raw.publication_status || 'PUBLISHED').toUpperCase() as MediaPublicationStatus,
+      created_at: String(raw.created_at || new Date().toISOString()),
+      created_by: String(raw.created_by || 'Admin'),
+      updated_at: String(raw.updated_at || ''),
+      updated_by: String(raw.updated_by || ''),
+    };
+  }
+
+  public async uploadSponsorLogo(fileName: string, dataUrl: string): Promise<string> {
+    const result = await apiTransport.send<{ logo_url: string; drive_file_id: string }>(
+      'admin.sponsor.logo.upload', { file_name: fileName, data_url: dataUrl });
+    if (!result.ok || !result.data?.logo_url) {
+      throw new Error(result.error?.message || 'Upload logo sponsor gagal.');
+    }
+    return result.data.logo_url;
+  }
+
+  public async createSponsorPersisted(data: {
+    sponsor_name?: string; sponsor_tier?: SponsorTier; logo_url: string;
+    target_url?: string; website_url?: string; status?: 'ACTIVE' | 'INACTIVE';
+    banner_id?: string; publication_status?: MediaPublicationStatus; createdBy?: string;
+  }): Promise<SponsorItem> {
+    const current = this.getSponsors();
+    const active = data.status !== 'INACTIVE';
+    const record: any = {
+      sponsor_id: `sp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      workspace_id: workspaceService.getCurrentWorkspace().id || '',
+      event_id: eventService.getCurrentEvent().id || '',
+      sponsor_name: data.sponsor_name?.trim() || 'Mitra Sponsor',
+      sponsor_tier: data.sponsor_tier || 'PARTNER',
+      logo_url: data.logo_url.trim(),
+      target_url: (data.target_url || data.website_url || '').trim(),
+      website_url: (data.target_url || data.website_url || '').trim(),
+      banner_id: data.banner_id || '',
+      display_order: current.length ? Math.max(...current.map(s => Number(s.display_order) || 0)) + 1 : 1,
+      status: data.status || 'ACTIVE',
+      publication_status: data.publication_status || (active ? 'PUBLISHED' : 'ARCHIVED'),
+      created_at: new Date().toISOString(),
+      created_by: data.createdBy || 'Admin',
+    };
+    const result = await apiTransport.send<{ record: any }>('admin.entity.upsert', { entity: 'sponsors', record });
+    if (!result.ok || !result.data?.record) throw new Error(result.error?.message || 'Sponsor gagal disimpan ke GAS.');
+    const saved = this.normalizeSponsorRecord_(result.data.record);
+    this.sponsors.set(saved.sponsor_id, saved);
+    this.notify();
+    return saved;
+  }
+
+  public async updateSponsorPersisted(id: string, updates: Partial<SponsorItem>): Promise<SponsorItem> {
+    const current = this.sponsors.get(id);
+    if (!current) throw new Error('Sponsor tidak ditemukan. Muat ulang daftar sponsor.');
+    const record = { ...current, ...updates, sponsor_id: id, updated_at: new Date().toISOString() };
+    const result = await apiTransport.send<{ record: any }>('admin.entity.upsert', { entity: 'sponsors', record });
+    if (!result.ok || !result.data?.record) throw new Error(result.error?.message || 'Perubahan sponsor gagal disimpan ke GAS.');
+    const saved = this.normalizeSponsorRecord_(result.data.record);
+    this.sponsors.set(id, saved);
+    this.notify();
+    return saved;
+  }
+
+  public async deleteSponsorPersisted(id: string): Promise<void> {
+    const current = this.sponsors.get(id);
+    if (!current) return;
+    await this.updateSponsorPersisted(id, { status: 'INACTIVE', publication_status: 'ARCHIVED', updated_at: new Date().toISOString() });
+  }
+
+  public async reorderSponsorPersisted(id: string, direction: 'UP' | 'DOWN'): Promise<void> {
+    const list = this.getSponsors().filter(s => s.publication_status !== 'ARCHIVED');
+    const index = list.findIndex(s => s.sponsor_id === id);
+    const otherIndex = direction === 'UP' ? index - 1 : index + 1;
+    if (index < 0 || otherIndex < 0 || otherIndex >= list.length) return;
+    const current = list[index], other = list[otherIndex];
+    const oldOrder = current.display_order, otherOrder = other.display_order;
+    await this.updateSponsorPersisted(current.sponsor_id, { display_order: otherOrder });
+    await this.updateSponsorPersisted(other.sponsor_id, { display_order: oldOrder });
+  }
+
+  public async toggleSponsorStatusPersisted(id: string): Promise<SponsorItem> {
+    const current = this.sponsors.get(id);
+    if (!current) throw new Error('Sponsor tidak ditemukan.');
+    const publish = current.publication_status !== 'PUBLISHED' || current.status === 'INACTIVE';
+    return this.updateSponsorPersisted(id, {
+      status: publish ? 'ACTIVE' : 'INACTIVE',
+      publication_status: publish ? 'PUBLISHED' : 'ARCHIVED',
+      updated_at: new Date().toISOString(),
+    });
+  }
+
   // ==================== SPONSOR OPERATIONS ====================
 
   public getSponsors(filterStatus?: MediaPublicationStatus): SponsorItem[] {
