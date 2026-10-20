@@ -105,7 +105,7 @@ export const PublicSponsorStrip: React.FC = () => {
 
         {carouselConfig.enabled ? (
           <div
-            className={`animate-marquee ${isPaused ? 'animate-marquee-paused' : ''}`}
+            className={`animate-marquee flex w-max items-center ${isPaused ? 'animate-marquee-paused' : ''}`}
             style={{ '--marquee-duration': `${duration}s` } as React.CSSProperties}
           >
             {/* Track A */}
