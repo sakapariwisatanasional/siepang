@@ -30,6 +30,7 @@ import { AdminPublicGalleryManager } from './features/documentation/AdminPublicG
 import { OrganizationManagement } from './features/organizations/OrganizationManagement';
 import { UserManagementView } from './features/users/UserManagementView';
 import { AdminBrandingManager } from './features/branding/AdminBrandingManager';
+import { BannerSponsorManager } from './features/event_studio/BannerSponsorManager';
 import { DatabaseStorageManager } from './features/database/DatabaseStorageManager';
 import { AdminInstallationCenter } from './features/installation/AdminInstallationCenter';
 import { FirstBootstrapScreen } from './features/installation/FirstBootstrapScreen';
@@ -94,6 +95,61 @@ import { eventService } from './services/eventService';
 import { workspaceService } from './services/workspaceService';
 import { customerInstallationService } from './services/customerInstallationService';
 import { InstallationState } from './features/public/PublicEventHomepage';
+
+/**
+ * Admin hub untuk pengaturan portal publik.
+ * Sponsor ditampilkan lebih dahulu agar mudah ditemukan, sementara
+ * pengaturan branding lama tetap tersedia dan tidak dihapus.
+ */
+const AdminBrandingSponsorHub: React.FC = () => {
+  const [section, setSection] = useState<'sponsors' | 'branding'>('sponsors');
+
+  const tabClass = (active: boolean) =>
+    `min-h-10 rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-colors ${
+      active
+        ? 'bg-white text-emerald-700 shadow-sm dark:bg-[#121215] dark:text-emerald-300'
+        : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+    }`;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-[#141418]">
+        <div className="mb-2 px-1">
+          <h2 className="text-sm font-black text-slate-900 dark:text-white">
+            Pengaturan Portal Publik
+          </h2>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Kelola logo sponsor yang tampil di halaman depan atau pengaturan tampilan umum.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-2 rounded-2xl bg-slate-100 p-1.5 dark:bg-white/5 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setSection('sponsors')}
+            aria-pressed={section === 'sponsors'}
+            className={tabClass(section === 'sponsors')}
+          >
+            Banner & Logo Sponsor
+          </button>
+          <button
+            type="button"
+            onClick={() => setSection('branding')}
+            aria-pressed={section === 'branding'}
+            className={tabClass(section === 'branding')}
+          >
+            Branding & Tampilan Umum
+          </button>
+        </div>
+      </div>
+
+      {section === 'sponsors' ? (
+        <BannerSponsorManager initialTab="sponsors" />
+      ) : (
+        <AdminBrandingManager />
+      )}
+    </div>
+  );
+};
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>(() => {
@@ -1217,7 +1273,7 @@ export default function App() {
 
           {activeTab === 'superadmin' && <SuperAdminDashboard />}
 
-          {activeTab === 'branding_settings' && <AdminBrandingManager />}
+          {activeTab === 'branding_settings' && <AdminBrandingSponsorHub />}
 
           {activeTab === 'database_storage' && <DatabaseStorageManager />}
 
