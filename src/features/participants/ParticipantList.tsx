@@ -173,7 +173,9 @@ export const ParticipantList: React.FC = () => {
     let active = true;
     setGudepLoading(true);
     setGudepLoadError('');
-    gudepRegistrationService.list().then(({ gudep }) => {
+    // Endpoint khusus formulir pendaftaran: operator yang ditugaskan hanya menerima Gudep
+    // sesuai assignment aktif. Menu pengelolaan Gudep tetap memakai list() biasa.
+    gudepRegistrationService.listForParticipantRegistration().then(({ gudep }) => {
       if (active) setGudepOptions((gudep || []).filter(g => {
         const verification = String(g.verification_status || '').trim().toUpperCase();
         const registration = String(g.registration_status || '').trim().toUpperCase();
