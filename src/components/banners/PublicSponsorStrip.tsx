@@ -11,10 +11,9 @@
  * - Auto-hidden if SPONSOR_DISPLAY feature is disabled
  */
 
-import React, { useState, useEffect, useRef } from 'react';
-import { ExternalLink, Award } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Award } from 'lucide-react';
 import { bannerSponsorService } from '../../services/bannerSponsorService';
-import { featureControlService } from '../../services/featureControlService';
 import { SponsorItem, SponsorCarouselConfig } from '../../types';
 
 export const PublicSponsorStrip: React.FC = () => {
@@ -22,39 +21,37 @@ export const PublicSponsorStrip: React.FC = () => {
   const [carouselConfig, setCarouselConfig] = useState<SponsorCarouselConfig>(
     bannerSponsorService.getCarouselConfig()
   );
-  const [isFeatureEnabled, setIsFeatureEnabled] = useState<boolean>(true);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [brokenLogoIds, setBrokenLogoIds] = useState<Set<string>>(new Set());
   const [sponsorsLoaded, setSponsorsLoaded] = useState(false);
+  const [sponsorLoadError, setSponsorLoadError] = useState(false);
 
   useEffect(() => {
     const updateData = () => {
-      // Check feature control (Section 32)
-      const featureActive = featureControlService.isFeatureEnabled('SPONSOR_DISPLAY');
-      setIsFeatureEnabled(featureActive);
-
-      // Load active published sponsors (Section 3 & 4)
+      // Read the canonical in-memory cache. The public GAS refresh below is authoritative.
       const list = bannerSponsorService.getSponsors('PUBLISHED').filter(s => s.status !== 'INACTIVE');
       setSponsors(list);
-      setSponsorsLoaded(true);
       setCarouselConfig(bannerSponsorService.getCarouselConfig());
     };
 
     updateData();
-    bannerSponsorService.refreshPublicSponsorsFromGas().catch(() => {
-      // Keep currently loaded sponsor data if public endpoint is temporarily unavailable.
-    });
-    const unsubSponsor = bannerSponsorService.subscribe(updateData);
-    const unsubFeature = featureControlService.subscribe(updateData);
+    // Do not treat an empty pre-fetch cache as the final result. In the previous version,
+    // sponsorsLoaded was set before this request finished and SPONSOR_DISPLAY could hide
+    // the whole component based on an unhydrated feature flag. Both caused a blank area.
+    bannerSponsorService.refreshPublicSponsorsFromGas()
+      .then(() => {
+        updateData();
+        setSponsorsLoaded(true);
+      })
+      .catch(() => {
+        setSponsorsLoaded(true);
+      });
 
+    const unsubSponsor = bannerSponsorService.subscribe(updateData);
     return () => {
       unsubSponsor();
-      unsubFeature();
     };
   }, []);
-
-  // If feature is disabled or no valid sponsors, hide section completely (Section 18 & 32)
-  if (!isFeatureEnabled) return null;
 
   const validSponsors = sponsors.filter(s => !brokenLogoIds.has(s.sponsor_id) && s.logo_url);
   if (validSponsors.length === 0) {
@@ -66,7 +63,14 @@ export const PublicSponsorStrip: React.FC = () => {
         </section>
       );
     }
-    return null;
+    return (
+      <section aria-label="Sponsor & Partner Resmi" className="block w-full min-w-0 rounded-[24px] border border-slate-200/80 bg-white p-4 text-center shadow-sm">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Sponsor & Partner</p>
+        <p className="mt-1 text-xs text-slate-500">
+          {sponsorsLoaded ? 'Belum ada logo sponsor berstatus Terbit yang dapat ditampilkan.' : 'Memuat logo mitra kegiatan…'}
+        </p>
+      </section>
+    );
   }
 
   // Build seamless loop tracks (Section 10 & 17)
@@ -117,7 +121,7 @@ export const PublicSponsorStrip: React.FC = () => {
 
         {carouselConfig.enabled ? (
           <div
-            className={`animate-marquee flex w-max items-center ${isPaused ? 'animate-marquee-paused' : ''}`}
+            className={`animate-marquee flex w-max min-w-max items-center ${isPaused ? 'animate-marquee-paused' : ''}`}
             style={{ '--marquee-duration': `${duration}s` } as React.CSSProperties}
           >
             {/* Track A */}
