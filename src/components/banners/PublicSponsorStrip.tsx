@@ -25,6 +25,7 @@ export const PublicSponsorStrip: React.FC = () => {
   const [isFeatureEnabled, setIsFeatureEnabled] = useState<boolean>(true);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [brokenLogoIds, setBrokenLogoIds] = useState<Set<string>>(new Set());
+  const [sponsorsLoaded, setSponsorsLoaded] = useState(false);
 
   useEffect(() => {
     const updateData = () => {
@@ -35,6 +36,7 @@ export const PublicSponsorStrip: React.FC = () => {
       // Load active published sponsors (Section 3 & 4)
       const list = bannerSponsorService.getSponsors('PUBLISHED').filter(s => s.status !== 'INACTIVE');
       setSponsors(list);
+      setSponsorsLoaded(true);
       setCarouselConfig(bannerSponsorService.getCarouselConfig());
     };
 
@@ -55,7 +57,17 @@ export const PublicSponsorStrip: React.FC = () => {
   if (!isFeatureEnabled) return null;
 
   const validSponsors = sponsors.filter(s => !brokenLogoIds.has(s.sponsor_id) && s.logo_url);
-  if (validSponsors.length === 0) return null;
+  if (validSponsors.length === 0) {
+    if (!sponsorsLoaded) {
+      return (
+        <section aria-label="Sponsor & Partner Resmi" className="block w-full min-w-0 rounded-[24px] border border-slate-200/80 bg-white p-4 text-center">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Sponsor & Partner</p>
+          <p className="mt-1 text-xs text-slate-500">Memuat logo mitra kegiatan…</p>
+        </section>
+      );
+    }
+    return null;
+  }
 
   // Build seamless loop tracks (Section 10 & 17)
   // Ensure enough items to smoothly fill any screen width
@@ -77,7 +89,7 @@ export const PublicSponsorStrip: React.FC = () => {
   return (
     <section
       aria-label="Sponsor & Partner Resmi"
-      className="rounded-[28px] bg-white border border-slate-200/80 p-5 sm:p-7 shadow-xs space-y-4 overflow-hidden select-none transition-colors"
+      className="block w-full min-w-0 rounded-[24px] sm:rounded-[28px] bg-white border border-slate-200/80 p-3.5 sm:p-7 shadow-xs space-y-3 sm:space-y-4 overflow-hidden select-none transition-colors"
     >
       {/* Title Header - Clean, Minimal */}
       <div className="text-center space-y-1">
@@ -93,7 +105,7 @@ export const PublicSponsorStrip: React.FC = () => {
       {/* Marquee Carousel Container (Section 7, 8, 9, 10, 20) */}
       {/* Background is STRICTLY clean white (Section 8) */}
       <div
-        className="relative w-full overflow-hidden bg-white py-2"
+        className="relative block w-full min-w-0 overflow-hidden bg-white py-2"
         onMouseEnter={() => carouselConfig.pauseOnHover && setIsPaused(true)}
         onMouseLeave={() => carouselConfig.pauseOnHover && setIsPaused(false)}
         onTouchStart={() => carouselConfig.pauseOnTouch && setIsPaused(true)}
@@ -113,13 +125,13 @@ export const PublicSponsorStrip: React.FC = () => {
               {trackItems.map((sponsor, index) => {
                 const targetLink = sponsor.target_url || sponsor.website_url;
                 const logoSlot = (
-                  <div className="h-11 sm:h-14 w-28 sm:w-40 flex items-center justify-center p-1 group shrink-0">
+                  <div className="h-10 w-24 sm:h-14 sm:w-40 flex items-center justify-center p-1 group shrink-0">
                     <img
                       src={sponsor.logo_url}
                       alt={sponsor.sponsor_name || 'Sponsor'}
                       loading="lazy"
                       onError={() => handleImageError(sponsor.sponsor_id)}
-                      className="max-h-10 sm:max-h-13 max-w-[110px] sm:max-w-[150px] w-auto h-auto object-contain transition-transform duration-200 group-hover:scale-105"
+                      className="max-h-9 sm:max-h-13 max-w-[92px] sm:max-w-[150px] w-auto h-auto object-contain transition-transform duration-200 group-hover:scale-105"
                     />
                   </div>
                 );
@@ -152,13 +164,13 @@ export const PublicSponsorStrip: React.FC = () => {
               {trackItems.map((sponsor, index) => {
                 const targetLink = sponsor.target_url || sponsor.website_url;
                 const logoSlot = (
-                  <div className="h-11 sm:h-14 w-28 sm:w-40 flex items-center justify-center p-1 group shrink-0">
+                  <div className="h-10 w-24 sm:h-14 sm:w-40 flex items-center justify-center p-1 group shrink-0">
                     <img
                       src={sponsor.logo_url}
                       alt={sponsor.sponsor_name || 'Sponsor'}
                       loading="lazy"
                       onError={() => handleImageError(sponsor.sponsor_id)}
-                      className="max-h-10 sm:max-h-13 max-w-[110px] sm:max-w-[150px] w-auto h-auto object-contain transition-transform duration-200 group-hover:scale-105"
+                      className="max-h-9 sm:max-h-13 max-w-[92px] sm:max-w-[150px] w-auto h-auto object-contain transition-transform duration-200 group-hover:scale-105"
                     />
                   </div>
                 );
