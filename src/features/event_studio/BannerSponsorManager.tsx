@@ -84,7 +84,10 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
 
   useEffect(() => {
     const unsub = bannerSponsorService.subscribe(reloadData);
-    bannerSponsorService.refreshSettingsFromGas().catch(err => showToast(`Gagal memuat pengaturan GAS: ${err.message}`));
+    Promise.all([
+      bannerSponsorService.refreshSettingsFromGas(),
+      bannerSponsorService.refreshSponsorsFromGas(),
+    ]).catch(err => showToast(`Gagal memuat data sponsor dari GAS: ${err.message}`));
     return () => unsub();
   }, []);
 
@@ -128,6 +131,8 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
   const [logoValidationStatus, setLogoValidationStatus] = useState<MediaAccessStatus>('CHECKING');
   const [logoValidationMsg, setLogoValidationMsg] = useState<string>('');
   const [isValidatingLogo, setIsValidatingLogo] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null);
 
   // Validate logo URL on change
   useEffect(() => {
@@ -210,19 +215,32 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
     setShowSponsorModal(true);
   };
 
-  const handleSaveSponsor = (e: React.FormEvent) => {
+  const handleSaveSponsor = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!sponsorForm.logo_url.trim()) return;
+    if (!sponsorForm.logo_url.trim() && !selectedLogoFile) return;
 
-    if (logoValidationStatus === 'INVALID_URL' || logoValidationStatus === 'BROKEN_SOURCE') {
+    if (!selectedLogoFile && (logoValidationStatus === 'INVALID_URL' || logoValidationStatus === 'BROKEN_SOURCE')) {
       alert('Logo tidak dapat dimuat. Periksa URL gambar sebelum menyimpan.');
       return;
     }
 
     try {
+      let finalLogoUrl = sponsorForm.logo_url.trim();
+      if (selectedLogoFile) {
+        setIsUploadingLogo(true);
+        if (selectedLogoFile.size > 3 * 1024 * 1024) throw new Error('Ukuran logo maksimal 3 MB.');
+        if (!/^image\/(png|jpeg|webp|gif|svg\+xml)$/i.test(selectedLogoFile.type)) throw new Error('Format logo harus PNG, JPG, WEBP, GIF, atau SVG.');
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Gagal membaca file logo.'));
+          reader.onerror = () => reject(new Error('Gagal membaca file logo.'));
+          reader.readAsDataURL(selectedLogoFile);
+        });
+        finalLogoUrl = await bannerSponsorService.uploadSponsorLogo(selectedLogoFile.name, dataUrl);
+      }
       if (editingSponsorId) {
-        bannerSponsorService.updateSponsor(editingSponsorId, {
-          logo_url: sponsorForm.logo_url.trim(),
+        await bannerSponsorService.updateSponsorPersisted(editingSponsorId, {
+          logo_url: finalLogoUrl,
           target_url: sponsorForm.target_url.trim() || undefined,
           website_url: sponsorForm.target_url.trim() || undefined,
           sponsor_name: sponsorForm.sponsor_name.trim() || undefined,
@@ -231,36 +249,40 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
         });
         showToast('✓ Logo sponsor berhasil diperbarui.');
       } else {
-        bannerSponsorService.createSponsor({
-          logo_url: sponsorForm.logo_url.trim(),
+        await bannerSponsorService.createSponsorPersisted({
+          logo_url: finalLogoUrl,
           target_url: sponsorForm.target_url.trim() || undefined,
           sponsor_name: sponsorForm.sponsor_name.trim() || undefined,
           status: sponsorForm.status,
         });
         showToast('✓ Logo sponsor baru berhasil ditambahkan.');
       }
+      setSelectedLogoFile(null);
       setShowSponsorModal(false);
     } catch (err: any) {
       alert(err.message);
+    } finally {
+      setIsUploadingLogo(false);
     }
   };
 
-  const handleToggleSponsor = (id: string) => {
+  const handleToggleSponsor = async (id: string) => {
     try {
-      const res = bannerSponsorService.toggleSponsorStatus(id);
+      const res = await bannerSponsorService.toggleSponsorStatusPersisted(id);
       showToast(`Status logo diubah menjadi ${res.status === 'ACTIVE' ? 'Aktif' : 'Nonaktif'}.`);
     } catch (err: any) {
       alert(err.message);
     }
   };
 
-  const handleReorder = (id: string, dir: 'UP' | 'DOWN') => {
-    bannerSponsorService.reorderSponsor(id, dir);
+  const handleReorder = async (id: string, dir: 'UP' | 'DOWN') => {
+    try { await bannerSponsorService.reorderSponsorPersisted(id, dir); }
+    catch (err: any) { showToast(`Gagal mengubah urutan di GAS: ${err.message}`); }
   };
 
-  const handleDeleteSponsor = (id: string) => {
+  const handleDeleteSponsor = async (id: string) => {
     if (confirm('Hapus logo sponsor ini dari sistem?')) {
-      bannerSponsorService.deleteSponsor(id);
+      await bannerSponsorService.deleteSponsorPersisted(id);
       showToast('Logo sponsor berhasil dihapus.');
     }
   };
@@ -1041,17 +1063,37 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
             </div>
 
             <form onSubmit={handleSaveSponsor} className="space-y-4 text-xs">
-              {/* URL Logo Input */}
+              {/* Upload logo langsung dari perangkat */}
+              <div className="rounded-xl border border-dashed border-emerald-300 bg-emerald-50/60 p-3 dark:border-emerald-500/30 dark:bg-emerald-950/10">
+                <label className="mb-2 block font-semibold text-slate-700 dark:text-slate-200">Upload logo dari perangkat (disarankan)</label>
+                <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                  onChange={e => {
+                    const file = e.target.files?.[0] || null;
+                    setSelectedLogoFile(file);
+                    if (file) {
+                      if (file.size > 3 * 1024 * 1024) {
+                        setLogoValidationStatus('INVALID_URL');
+                        setLogoValidationMsg('Ukuran logo maksimal 3 MB.');
+                      } else {
+                        setLogoValidationStatus('CHECKING');
+                        setLogoValidationMsg(`File ${file.name} siap diunggah saat disimpan.`);
+                      }
+                    }
+                  }}
+                  className="block w-full text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-700 file:px-3 file:py-2 file:font-bold file:text-white" />
+                <p className="mt-1 text-[10px] text-slate-500">PNG, JPG, WEBP, GIF, atau SVG; maksimal 3 MB.</p>
+              </div>
+              {/* URL Logo Input (alternatif) */}
               <div>
                 <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
-                  URL Logo Gambar *
+                  URL Logo Gambar (alternatif) *
                 </label>
                 <input
                   type="url"
                   required
                   placeholder="https://... atau tautan Google Drive file gambar"
                   value={sponsorForm.logo_url}
-                  onChange={e => setSponsorForm({ ...sponsorForm, logo_url: e.target.value })}
+                  onChange={e => { setSelectedLogoFile(null); setSponsorForm({ ...sponsorForm, logo_url: e.target.value }); }}
                   className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/15 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:border-purple-500 font-mono text-[11px]"
                 />
                 <p className="text-[10px] text-slate-400 mt-1">
@@ -1162,7 +1204,7 @@ export const BannerSponsorManager: React.FC<BannerSponsorManagerProps> = ({
                   disabled={isValidatingLogo}
                   className="px-5 py-2 bg-gradient-to-r from-[#208C60] to-[#F47743] text-white rounded-xl font-bold shadow-xs hover:opacity-90 active:scale-98 transition-all disabled:opacity-50"
                 >
-                  {editingSponsorId ? 'Simpan Perubahan' : 'Tambahkan Logo'}
+                  {isUploadingLogo ? 'Mengunggah logo…' : editingSponsorId ? 'Simpan Perubahan' : 'Tambahkan Logo'}
                 </button>
               </div>
             </form>
