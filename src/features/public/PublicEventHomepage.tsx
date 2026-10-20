@@ -701,8 +701,9 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
           })}
         </div>
 
-        {/* Sponsor logos: shown above Quick Access on the public homepage. */}
-        {renderSectionByKey('sponsors')}
+        {/* Sponsor logos: render directly above Quick Access on all screen sizes.
+            PublicSponsorStrip still respects the SPONSOR_DISPLAY feature flag. */}
+        {renderSponsorsSection()}
 
         {/* Quick menu */}
         <div className="space-y-3">
