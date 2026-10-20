@@ -26,6 +26,7 @@ import { MyProfile } from './features/profile/MyProfile';
 import { EventManagementStudio } from './features/event_studio/EventManagementStudio';
 import { PublicEventHomepage } from './features/public/PublicEventHomepage';
 import { PublicDocumentationGallery } from './features/documentation/PublicDocumentationGallery';
+import { AdminPublicGalleryManager } from './features/documentation/AdminPublicGalleryManager';
 import { OrganizationManagement } from './features/organizations/OrganizationManagement';
 import { UserManagementView } from './features/users/UserManagementView';
 import { AdminBrandingManager } from './features/branding/AdminBrandingManager';
@@ -50,9 +51,9 @@ export const PUBLIC_ROUTES: ReadonlyArray<NavTab> = [
 ];
 
 const ROLE_ALLOWED_TABS: Record<UserRole, ReadonlyArray<NavTab>> = {
-  superadmin: ['home', 'public_home', 'public_gallery', 'admin_dashboard', 'event_studio', 'superadmin', 'branding_settings', 'database_storage', 'installation', 'system_update', 'organizations', 'users', 'schedule', 'participants', 'contingent_regus', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
-  workspace_admin: ['home', 'public_home', 'public_gallery', 'admin_dashboard', 'event_studio', 'branding_settings', 'database_storage', 'installation', 'system_update', 'organizations', 'users', 'schedule', 'participants', 'contingent_regus', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
-  event_admin: ['home', 'public_home', 'public_gallery', 'admin_dashboard', 'event_studio', 'installation', 'organizations', 'schedule', 'participants', 'contingent_regus', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
+  superadmin: ['home', 'public_home', 'public_gallery', 'gallery_admin', 'admin_dashboard', 'event_studio', 'superadmin', 'branding_settings', 'database_storage', 'installation', 'system_update', 'organizations', 'users', 'schedule', 'participants', 'contingent_regus', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
+  workspace_admin: ['home', 'public_home', 'public_gallery', 'gallery_admin', 'admin_dashboard', 'event_studio', 'branding_settings', 'database_storage', 'installation', 'system_update', 'organizations', 'users', 'schedule', 'participants', 'contingent_regus', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
+  event_admin: ['home', 'public_home', 'public_gallery', 'gallery_admin', 'admin_dashboard', 'event_studio', 'installation', 'organizations', 'schedule', 'participants', 'contingent_regus', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
   kontingen_admin: ['home', 'public_home', 'public_gallery', 'schedule', 'participants', 'competitions', 'leaderboard', 'profile'],
   registration_officer: ['home', 'public_home', 'public_gallery', 'schedule', 'participants', 'contingent_regus', 'attendance', 'profile', 'templates'],
   attendance_officer: ['home', 'public_home', 'public_gallery', 'schedule', 'attendance', 'participants', 'profile'],
@@ -62,8 +63,8 @@ const ROLE_ALLOWED_TABS: Record<UserRole, ReadonlyArray<NavTab>> = {
   committee: ['home', 'public_home', 'public_gallery', 'schedule', 'attendance', 'participants', 'competitions', 'profile'],
   participant: ['home', 'public_home', 'public_gallery', 'schedule', 'competitions', 'leaderboard', 'profile'],
   ceremony_officer: ['home', 'public_home', 'public_gallery', 'schedule', 'attendance', 'profile'],
-  documentation_officer: ['home', 'public_home', 'public_gallery', 'schedule', 'profile'],
-  publication_officer: ['home', 'public_home', 'public_gallery', 'schedule', 'profile'],
+  documentation_officer: ['home', 'public_home', 'public_gallery', 'gallery_admin', 'schedule', 'profile'],
+  publication_officer: ['home', 'public_home', 'public_gallery', 'gallery_admin', 'schedule', 'profile'],
   viewer: ['home', 'public_home', 'public_gallery'],
 };
 
@@ -85,6 +86,7 @@ const TAB_FEATURE_REQUIREMENTS: Partial<Record<NavTab, SystemFeatureKey>> = {
   health: 'HEALTH',
   logistics: 'LOGISTICS',
   public_gallery: 'PUBLIC_DOCUMENTATION',
+  gallery_admin: 'PUBLIC_DOCUMENTATION',
   public_home: 'PUBLIC_EVENT_PAGE',
 };
 
@@ -1198,6 +1200,8 @@ export default function App() {
               onBackToHome={() => navigateToTab('public_home')}
             />
           )}
+
+          {activeTab === 'gallery_admin' && <AdminPublicGalleryManager />}
 
           {activeTab === 'admin_dashboard' && (
             <AdminDaerahDashboard
