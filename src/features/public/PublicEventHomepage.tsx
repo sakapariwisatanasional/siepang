@@ -176,6 +176,8 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activePublicPage, setActivePublicPage] = useState<string>('home');
   const [scheduleRevision, setScheduleRevision] = useState(0);
+  const [galleryRevision, setGalleryRevision] = useState(0);
+  const [galleryLoadError, setGalleryLoadError] = useState('');
   const [officialCompetitions, setOfficialCompetitions] = useState<Array<{id:string;title:string;category:string;scheduleTime:string;location:string}>>([]);
   const [competitionLoading, setCompetitionLoading] = useState(true);
   const [competitionError, setCompetitionError] = useState('');
@@ -260,7 +262,10 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
       updateAll();
       setScheduleRevision(n => n + 1);
     });
-    const unsubDoc = documentationService.subscribe(updateAll);
+    const unsubDoc = documentationService.subscribe(() => {
+      updateAll();
+      setGalleryRevision(revision => revision + 1);
+    });
     const unsubBanner = bannerSponsorService.subscribe(updateAll);
 
     return () => {
@@ -334,19 +339,26 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
     () => publicLeaderboard.slice(0, 10), [publicLeaderboard],
   );
 
+  // Load the authoritative gallery saved by the admin in GAS. The legacy
+  // getMediaItems() map is intentionally not used for public homepage previews.
+  useEffect(() => {
+    let active = true;
+    documentationService.loadPublicGallery()
+      .then(() => { if (active) setGalleryLoadError(''); })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setGalleryLoadError(error instanceof Error ? error.message : 'Galeri publik gagal dimuat dari server.');
+      });
+    return () => { active = false; };
+  }, []);
+
   const photoPreviews: MediaItem[] = useMemo(() => {
-    if (!isConfigured) return [];
-    return documentationService
-      .getMediaItems({ type: 'PHOTO', publicationStatus: 'PUBLISHED' })
-      .slice(0, 6);
-  }, [isConfigured]);
+    return documentationService.getPublishedGalleryItems('PHOTO').slice(0, 6);
+  }, [galleryRevision]);
 
   const videoPreviews: MediaItem[] = useMemo(() => {
-    if (!isConfigured) return [];
-    return documentationService
-      .getMediaItems({ type: 'VIDEO', publicationStatus: 'PUBLISHED' })
-      .slice(0, 4);
-  }, [isConfigured]);
+    return documentationService.getPublishedGalleryItems('VIDEO').slice(0, 4);
+  }, [galleryRevision]);
 
   const activeSponsors = useMemo(() => {
     if (!isConfigured) return [];
@@ -1023,7 +1035,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
             <p className="font-semibold text-slate-700 dark:text-slate-300">
               Belum ada foto yang dipublikasikan.
             </p>
-            <p>Album dokumentasi resmi akan dimuat otomatis dari Google Drive kegiatan.</p>
+            <p>{galleryLoadError || 'Foto yang dipublikasikan melalui dashboard akan tampil otomatis di sini.'}</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-2.5 sm:gap-3">
@@ -1039,6 +1051,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                     alt={photo.title}
                     loading="lazy"
                     referrerPolicy="no-referrer"
+                    onError={event => { event.currentTarget.style.display = 'none'; }}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                 </div>
@@ -1090,7 +1103,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
             <p className="font-semibold text-slate-700 dark:text-slate-300">
               Belum ada video dokumentasi.
             </p>
-            <p>Video resmi YouTube atau Google Drive akan ditayangkan di sini.</p>
+            <p>{galleryLoadError || 'Video yang dipublikasikan melalui dashboard akan tampil otomatis di sini.'}</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
@@ -1106,6 +1119,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                     alt={video.title}
                     loading="lazy"
                     referrerPolicy="no-referrer"
+                    onError={event => { event.currentTarget.style.display = 'none'; }}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                   <div className="absolute inset-0 bg-black/30 group-hover:bg-black/15 transition-colors flex items-center justify-center">
