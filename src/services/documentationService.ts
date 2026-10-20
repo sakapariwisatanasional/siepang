@@ -119,6 +119,27 @@ class DocumentationService {
     await this.loadPublicGallery();
   }
 
+  private deriveGalleryThumbnail(source: string, type: 'PHOTO' | 'VIDEO'): string {
+    try {
+      const u = new URL(source);
+      if (u.protocol !== 'https:') return '';
+      const host = u.hostname.toLowerCase();
+      if (type === 'VIDEO') {
+        let id = '';
+        if (host === 'youtu.be' || host === 'www.youtu.be') id = u.pathname.split('/')[1] || '';
+        else if (['youtube.com','www.youtube.com','m.youtube.com','youtube-nocookie.com','www.youtube-nocookie.com'].includes(host))
+          id = u.searchParams.get('v') || u.pathname.match(/\/(?:shorts|embed|live)\/([A-Za-z0-9_-]{11})/)?.[1] || '';
+        if (/^[A-Za-z0-9_-]{11}$/.test(id)) return `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+        if (host === 'drive.google.com') {
+          id = u.pathname.match(/\/file\/d\/([A-Za-z0-9_-]+)/)?.[1] || u.searchParams.get('id') || '';
+          if (/^[A-Za-z0-9_-]{10,}$/.test(id)) return `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w600`;
+        }
+      }
+      if (type === 'PHOTO' && /\.(?:png|jpe?g|webp|gif|avif)(?:$|\?)/i.test(source)) return source;
+    } catch {}
+    return '';
+  }
+
   private toPublicMediaItem(item: GalleryUrlRecord): MediaItem {
     if (!item || !item.id || !['PHOTO', 'VIDEO'].includes(item.type) || !/^https:\/\//i.test(item.source_url || '')) {
       throw new Error('Record media dari GAS tidak valid.');
@@ -126,6 +147,8 @@ class DocumentationService {
     const source = item.source_url.trim();
     const youtube = /(?:youtube\.com|youtu\.be)/i.test(source);
     const drive = /drive\.google\.com/i.test(source);
+    const derivedThumbnail = this.deriveGalleryThumbnail(source, item.type);
+    const thumbnail = String(item.thumbnail_url || '').trim() || derivedThumbnail;
     const provider: MediaItem['provider'] = youtube ? 'YOUTUBE' : drive ? 'GOOGLE_DRIVE' : 'EXTERNAL';
     return {
       media_id: item.id,
@@ -136,7 +159,7 @@ class DocumentationService {
       provider,
       source_type: item.type === 'PHOTO' ? 'PUBLIC_IMAGE_URL' : 'PUBLIC_VIDEO_URL',
       source_url: source,
-      thumbnail_url: item.thumbnail_url || (item.type === 'PHOTO' ? source : ''),
+      thumbnail_url: thumbnail || (item.type === 'PHOTO' ? source : ''),
       original_url: source,
       title: item.title || 'Tanpa judul',
       caption: item.caption || '',
