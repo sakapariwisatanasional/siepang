@@ -39,6 +39,9 @@ export const PublicSponsorStrip: React.FC = () => {
     };
 
     updateData();
+    bannerSponsorService.refreshPublicSponsorsFromGas().catch(() => {
+      // Keep currently loaded sponsor data if public endpoint is temporarily unavailable.
+    });
     const unsubSponsor = bannerSponsorService.subscribe(updateData);
     const unsubFeature = featureControlService.subscribe(updateData);
 
