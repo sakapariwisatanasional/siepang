@@ -64,6 +64,8 @@ export const gudepRegistrationService = {
     request_key: string; gudep_id: string; regu_name: string;
     gender: 'PUTRA' | 'PUTRI'; quota: number;
   }) => send<{ regu: GudepRegu; alreadyExists?: boolean }>('gudep.regu.create', data),
+  updateGudep: (data: { gudep_id: string; gudep_number: string; gudep_name: string; institution_name?: string }) => send<{ gudep: GudepRecord; contingent_id: string }>('gudep.registration.update', data),
+  updateRegu: (data: { gudep_id: string; regu_id: string; regu_name: string }) => send<{ regu: GudepRegu }>('gudep.regu.update', data),
   createAdvisor: (data: {
     request_key: string; gudep_id: string; full_name: string;
     gender?: string; phone?: string; email?: string;
