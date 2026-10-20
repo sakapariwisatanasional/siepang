@@ -8,7 +8,7 @@
 import { apiTransport } from './apiTransport';
 
 export type GudepRecord = {
-  gudep_id: string; event_id: string; gudep_name: string; gudep_number: string; contingent_id?: string;
+  gudep_id: string; event_id: string; gudep_name: string; gudep_number: string;
   institution_name?: string; registration_status: string; verification_status: string; activation_status?: 'ACTIVE' | 'INACTIVE';
   contingent_verification_status?: string; contingent_verification_notes?: string;
 };
@@ -20,27 +20,9 @@ export type GudepAdvisor = {
   advisor_id: string; gudep_id: string; full_name: string; gender?: string;
   verification_status?: string; activation_status?: 'ACTIVE' | 'INACTIVE';
 };
-export type ContingentRecord = {
-  id: string; event_id: string; name: string; region?: string; leader_name?: string; leader_phone?: string;
-  participant_count?: number; checked_in_count?: number; camp_zone?: string; verification_status?: string;
-};
-export type GudepListResult = { gudep: GudepRecord[]; contingents?: ContingentRecord[] };
-
-export type ContingentReconciliationChange = {
-  gudep_id: string; gudep_name: string; action: string; reason?: string;
-  old_contingent_id?: string; candidate_id?: string; candidate_ids?: string[];
-  suggested_contingent_id?: string;
-};
-export type ContingentReconciliationResult = {
-  ok: boolean; mode: 'PREVIEW' | 'APPLY'; event_id: string; scanned: number;
-  linked: number; already_linked: number; would_link_by_name: number;
-  would_create: number; ambiguous: number; conflicts: number; unresolved: number;
-  changes: ContingentReconciliationChange[];
-};
 export type GudepDetail = {
   gudep: GudepRecord; regu: GudepRegu[]; advisors: GudepAdvisor[];
   participantLinks: Array<{ id: string; participant_id: string; regu_id: string; gudep_id: string; status: string }>;
-  participants?: Array<{ id: string; name: string; gender: string; regu_id: string; gudep_id: string; membership_number?: string; profile_photo_url?: string; profile_photo_file_id?: string; profile_photo_status?: string; status?: string }>;
   advisorRegu: unknown[];
 };
 
@@ -51,10 +33,12 @@ const send = async <T>(action: string, payload: Record<string, unknown>): Promis
 };
 
 export const gudepRegistrationService = {
-  list: () => send<GudepListResult>('gudep.registration.list', {}),
+  list: () => send<{ gudep: GudepRecord[] }>('gudep.registration.list', {}),
+  // Khusus pilihan pada formulir pendaftaran peserta. Tidak mengubah daftar Gudep
+  // pada panel pengelolaan/administrasi yang tetap menggunakan list().
+  listForParticipantRegistration: () => send<{ gudep: GudepRecord[] }>('gudep.participant.registration.options', {}),
   detail: (gudep_id: string) => send<GudepDetail>('gudep.registration.detail', { gudep_id }),
   syncContingent: (gudep_id: string) => send<{ gudep_id: string; contingent_id: string; created: boolean; participant_count: number }>('gudep.registration.syncContingent', { gudep_id }),
-  reconcileContingents: (options: { apply: boolean; create_missing?: boolean }) => send<ContingentReconciliationResult>('gudep.registration.reconcileContingents', options),
   create: (data: {
     request_key: string; gudep_number: string; gudep_name: string;
     institution_name?: string; address?: string; contact_name?: string;
@@ -64,8 +48,6 @@ export const gudepRegistrationService = {
     request_key: string; gudep_id: string; regu_name: string;
     gender: 'PUTRA' | 'PUTRI'; quota: number;
   }) => send<{ regu: GudepRegu; alreadyExists?: boolean }>('gudep.regu.create', data),
-  updateGudep: (data: { gudep_id: string; gudep_number: string; gudep_name: string; institution_name?: string }) => send<{ gudep: GudepRecord; contingent_id: string }>('gudep.registration.update', data),
-  updateRegu: (data: { gudep_id: string; regu_id: string; regu_name: string }) => send<{ regu: GudepRegu }>('gudep.regu.update', data),
   createAdvisor: (data: {
     request_key: string; gudep_id: string; full_name: string;
     gender?: string; phone?: string; email?: string;
