@@ -27,7 +27,15 @@ import {
 } from 'lucide-react';
 import { eventStudioService } from '../../services/eventStudioService';
 import { customerBrandingDriveService } from '../../services/customerBrandingDriveService';
+import { mediaResolverService } from '../../services/mediaResolverService';
 import { EventCategory, EventStatus, OrganizationalLevel, ParticipationScope } from '../../types';
+
+const resolveLogoPreviewSrc = (value: string): string => {
+  const raw = String(value || '').trim();
+  if (!raw || raw.startsWith('data:image/')) return raw;
+  const resolved = mediaResolverService.resolveMedia(raw);
+  return resolved.thumbnailUrl || resolved.previewUrl || raw;
+};
 
 export const GeneralEventEditor: React.FC = () => {
   const event = eventStudioService.getEvent();
@@ -87,6 +95,7 @@ export const GeneralEventEditor: React.FC = () => {
   const [saveState, setSaveState] = useState(eventStudioService.getSaveState());
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string>(event.logoUrl || '');
+  const [logoPreviewFailed, setLogoPreviewFailed] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   useEffect(() => {
@@ -167,6 +176,7 @@ export const GeneralEventEditor: React.FC = () => {
       setFormState(buildForm(eventStudioService.getEvent()));
       setLogoFile(null);
       setLogoPreview(eventStudioService.getEvent().logoUrl || dataToSave.logoUrl || '');
+      setLogoPreviewFailed(false);
       setToast({ msg: '✅ Pengaturan umum event berhasil disimpan ke cloud database!', type: 'success' });
     } catch (err: any) {
       setToast({ msg: `❌ Gagal menyimpan: ${err.message || 'Terjadi kesalahan.'}`, type: 'error' });
@@ -470,6 +480,7 @@ export const GeneralEventEditor: React.FC = () => {
                   return;
                 }
                 setLogoFile(file);
+                setLogoPreviewFailed(false);
                 const reader = new FileReader();
                 reader.onload = () => {
                   if (typeof reader.result === 'string') setLogoPreview(reader.result);
@@ -481,14 +492,15 @@ export const GeneralEventEditor: React.FC = () => {
             />
             <p className="text-[11px] text-slate-500 dark:text-slate-400">Pilih file langsung dari komputer/HP. Format PNG, JPG/JPEG, WebP; maksimum 2 MB. Logo disimpan melalui GAS ke Google Drive dan URL hasilnya dicatat pada data event.</p>
             <div className="p-3 rounded-2xl bg-[#FAFAFA] dark:bg-black/30 border border-[#ECECEF] dark:border-white/5 flex items-center gap-3">
-              {logoPreview ? (
+              {logoPreview && !logoPreviewFailed ? (
                 <img
-                  src={logoPreview}
+                  src={resolveLogoPreviewSrc(logoPreview)}
                   alt="Pratinjau Logo Event"
+                  onError={() => setLogoPreviewFailed(true)}
                   className="w-12 h-12 rounded-xl object-contain border border-[#ECECEF] dark:border-white/10 bg-white dark:bg-black/50"
                 />
               ) : (
-                <div className="w-12 h-12 rounded-xl border border-dashed border-slate-300 flex items-center justify-center text-slate-400">
+                <div className="w-12 h-12 rounded-xl border border-dashed border-slate-300 flex items-center justify-center text-slate-400" title="Logo belum dapat dimuat">
                   <ImageIcon className="w-5 h-5" />
                 </div>
               )}
