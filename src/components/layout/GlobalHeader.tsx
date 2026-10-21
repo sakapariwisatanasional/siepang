@@ -25,6 +25,7 @@ import {
   LogOut,
   Laptop,
   ShieldCheck,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { TrustedDevicesModal } from './TrustedDevicesModal';
 import { authService, AuthState } from '../../services/authService';
@@ -54,11 +55,11 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
 }) => {
   const [user, setUser] = useState(authService.getCurrentUser());
   const activeUser = user || {
-    id: 'guest',
-    name: 'Tamu / Pengunjung',
+    id: '',
+    name: '',
     role: 'viewer' as UserRole,
-    email: 'tamu@siepang.id',
-    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
+    email: '',
+    avatar: '',
     workspaceId: workspaceService.getCurrentWorkspace().id || '',
     eventId: eventService.getCurrentEvent().id || '',
   };
@@ -212,7 +213,7 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
                   onError={() => setAppLogoFailed(true)}
                 />
               ) : (
-                <span className="text-lg leading-none" role="img" aria-label="Lambang Pramuka" title="Logo kegiatan tidak tersedia">⚜️</span>
+                <ImageIcon className="w-5 h-5 text-slate-400" aria-label="Logo kegiatan belum tersedia" />
               )}
             </div>
           </div>
@@ -297,15 +298,19 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
               aria-label="Profil Pengguna & Mode Peran"
             >
               <div className="w-8 h-8 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 border border-[#ECECEF] dark:border-white/20 shrink-0">
-                <img
-                  src={activeUser.avatar}
-                  alt={activeUser.name}
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover"
-                />
+                {activeUser.avatar ? (
+                  <img
+                    src={activeUser.avatar}
+                    alt={activeUser.name || 'Foto profil'}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <UserCheck className="w-4 h-4 m-auto text-slate-400" aria-hidden="true" />
+                )}
               </div>
               <div className="hidden lg:block text-left pr-1">
-                <div className="text-xs font-semibold text-[#171717] dark:text-white leading-none max-w-[100px] truncate">{activeUser.name.split(' ')[0]}</div>
+                <div className="text-xs font-semibold text-[#171717] dark:text-white leading-none max-w-[100px] truncate">{activeUser.name ? activeUser.name.split(' ')[0] : 'Belum masuk'}</div>
                 <div className="text-[10px] text-emerald-600 dark:text-emerald-400 capitalize">{activeUser.role.replace('_', ' ')}</div>
               </div>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden md:block" />
@@ -500,15 +505,19 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-[#ECECEF] dark:border-white/10 mb-2">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-[#ECECEF] dark:border-white/20 shrink-0">
-                  <img
-                    src={activeUser.avatar}
-                    alt={activeUser.name}
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover"
-                  />
+                  {activeUser.avatar ? (
+                    <img
+                      src={activeUser.avatar}
+                      alt={activeUser.name || 'Foto profil'}
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <UserCheck className="w-4 h-4 m-auto text-slate-400" aria-hidden="true" />
+                  )}
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-[#171717] dark:text-white leading-tight">{activeUser.name}</h3>
+                  <h3 className="text-sm font-bold text-[#171717] dark:text-white leading-tight">{activeUser.name || 'Belum masuk'}</h3>
                   <p className="text-[11px] text-emerald-600 dark:text-emerald-400 capitalize">{activeUser.role.replace('_', ' ')}</p>
                 </div>
               </div>
