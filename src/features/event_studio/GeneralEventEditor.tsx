@@ -26,6 +26,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { eventStudioService } from '../../services/eventStudioService';
+import { customerBrandingDriveService } from '../../services/customerBrandingDriveService';
 import { EventCategory, EventStatus, OrganizationalLevel, ParticipationScope } from '../../types';
 
 export const GeneralEventEditor: React.FC = () => {
@@ -84,6 +85,9 @@ export const GeneralEventEditor: React.FC = () => {
   };
 
   const [saveState, setSaveState] = useState(eventStudioService.getSaveState());
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string>(event.logoUrl || '');
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   useEffect(() => {
     const unsub = eventStudioService.subscribe(() => {
@@ -120,6 +124,7 @@ export const GeneralEventEditor: React.FC = () => {
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setIsSaving(true);
+    setIsUploadingLogo(Boolean(logoFile));
     try {
       if (!formData.name.trim() || !formData.startDate || !formData.endDate) {
         throw new Error('Nama event, tanggal mulai, dan tanggal selesai harus diisi.');
@@ -130,15 +135,45 @@ export const GeneralEventEditor: React.FC = () => {
       if (!eventStudioService.getEventLoadStatus().ready) {
         throw new Error('Pengaturan event belum berhasil dimuat dari GAS. Muat ulang data terlebih dahulu.');
       }
-      await eventStudioService.updateGeneralSettings(formData);
+
+      let dataToSave = { ...formData };
+      if (logoFile) {
+        if (!['image/png', 'image/jpeg', 'image/webp'].includes(logoFile.type)) {
+          throw new Error('Format logo harus PNG, JPG/JPEG, atau WebP.');
+        }
+        if (logoFile.size > 2 * 1024 * 1024) {
+          throw new Error('Ukuran logo maksimum 2 MB.');
+        }
+        if (!logoPreview.startsWith('data:image/')) {
+          throw new Error('Pratinjau logo belum siap. Pilih ulang file logo.');
+        }
+
+        const fileBase64 = logoPreview.slice(logoPreview.indexOf(',') + 1);
+        const uploadedAsset = await customerBrandingDriveService.uploadBrandingAsset({
+          asset_type: 'EVENT_LOGO' as any,
+          file_name: logoFile.name,
+          mime_type: logoFile.type,
+          file_base64: fileBase64,
+          file_size_bytes: logoFile.size,
+        } as any);
+        if (!uploadedAsset?.public_render_url) {
+          throw new Error('Logo berhasil diunggah, tetapi URL gambar dari backend kosong.');
+        }
+        dataToSave = { ...dataToSave, logoUrl: uploadedAsset.public_render_url };
+      }
+
+      await eventStudioService.updateGeneralSettings(dataToSave);
       hasEditedForm.current = false;
       setFormState(buildForm(eventStudioService.getEvent()));
+      setLogoFile(null);
+      setLogoPreview(eventStudioService.getEvent().logoUrl || dataToSave.logoUrl || '');
       setToast({ msg: '✅ Pengaturan umum event berhasil disimpan ke cloud database!', type: 'success' });
     } catch (err: any) {
-      setToast({ msg: `❌ Gagal menyimpan: ${err.message}`, type: 'error' });
+      setToast({ msg: `❌ Gagal menyimpan: ${err.message || 'Terjadi kesalahan.'}`, type: 'error' });
     } finally {
       setIsSaving(false);
-      setTimeout(() => setToast(null), 4000);
+      setIsUploadingLogo(false);
+      setTimeout(() => setToast(null), 5000);
     }
   };
 
@@ -412,25 +447,54 @@ export const GeneralEventEditor: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-          {/* Logo Input & Preview */}
+          {/* Upload Logo Event: file is stored in customer Drive through GAS */}
           <div className="space-y-2">
-            <label className="text-slate-700 dark:text-slate-300 font-semibold block">URL Logo Resmi Event:</label>
+            <label htmlFor="event-logo-upload" className="text-slate-700 dark:text-slate-300 font-semibold block">Upload Logo Resmi Event:</label>
             <input
-              type="text"
-              value={formData.logoUrl}
-              onChange={e => setFormData({ ...formData, logoUrl: e.target.value })}
-              className="w-full px-3.5 py-2.5 bg-[#FAFAFA] dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-2xl text-[#171717] dark:text-white font-mono text-xs focus:border-emerald-500 focus:bg-white dark:focus:bg-black/60 focus:outline-none"
-              placeholder="https://..."
+              id="event-logo-upload"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={e => {
+                const file = e.currentTarget.files?.[0] || null;
+                if (!file) return;
+                if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+                  setLogoFile(null);
+                  setToast({ msg: '❌ Format logo harus PNG, JPG/JPEG, atau WebP.', type: 'error' });
+                  e.currentTarget.value = '';
+                  return;
+                }
+                if (file.size > 2 * 1024 * 1024) {
+                  setLogoFile(null);
+                  setToast({ msg: '❌ Ukuran logo maksimum 2 MB.', type: 'error' });
+                  e.currentTarget.value = '';
+                  return;
+                }
+                setLogoFile(file);
+                const reader = new FileReader();
+                reader.onload = () => {
+                  if (typeof reader.result === 'string') setLogoPreview(reader.result);
+                };
+                reader.onerror = () => setToast({ msg: '❌ File logo tidak dapat dibaca.', type: 'error' });
+                reader.readAsDataURL(file);
+              }}
+              className="w-full px-3.5 py-2.5 bg-[#FAFAFA] dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-2xl text-[#171717] dark:text-white text-xs focus:border-emerald-500 focus:outline-none file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:px-3 file:py-2 file:font-semibold file:text-emerald-700"
             />
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">Pilih file langsung dari komputer/HP. Format PNG, JPG/JPEG, WebP; maksimum 2 MB. Logo disimpan melalui GAS ke Google Drive dan URL hasilnya dicatat pada data event.</p>
             <div className="p-3 rounded-2xl bg-[#FAFAFA] dark:bg-black/30 border border-[#ECECEF] dark:border-white/5 flex items-center gap-3">
-              <img
-                src={formData.logoUrl}
-                alt="Logo Event Preview"
-                className="w-12 h-12 rounded-xl object-cover border border-[#ECECEF] dark:border-white/10 bg-white dark:bg-black/50"
-              />
+              {logoPreview ? (
+                <img
+                  src={logoPreview}
+                  alt="Pratinjau Logo Event"
+                  className="w-12 h-12 rounded-xl object-contain border border-[#ECECEF] dark:border-white/10 bg-white dark:bg-black/50"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-xl border border-dashed border-slate-300 flex items-center justify-center text-slate-400">
+                  <ImageIcon className="w-5 h-5" />
+                </div>
+              )}
               <div className="text-[11px] text-slate-500 dark:text-slate-400">
                 <span className="font-semibold text-slate-800 dark:text-slate-200">Pratinjau Logo</span>
-                <p>Tampil pada header aplikasi, kartu pengenal, dan piagam.</p>
+                <p>{logoFile ? `File dipilih: ${logoFile.name}` : 'Logo tersimpan saat ini, atau pilih file baru untuk menggantinya.'}</p>
               </div>
             </div>
           </div>
@@ -678,7 +742,7 @@ export const GeneralEventEditor: React.FC = () => {
           className="px-6 py-3 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white rounded-2xl font-bold text-xs shadow-lg shadow-emerald-950/60 flex items-center gap-2 transition-all active:scale-98 disabled:opacity-50"
         >
           <Save className="w-4 h-4" />
-          <span>{isSaving ? 'Menyimpan ke Backend…' : 'Simpan Pengaturan Umum Event'}</span>
+          <span>{isUploadingLogo ? 'Mengunggah Logo & Menyimpan…' : isSaving ? 'Menyimpan ke Backend…' : 'Simpan Pengaturan Umum Event'}</span>
         </button>
       </div>
       )}
