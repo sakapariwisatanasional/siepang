@@ -60,12 +60,17 @@ export const AdminBrandingManager: React.FC = () => {
   const [modalType, setModalType] = useState<BrandingAssetType | null>(null);
   const [inputUrl, setInputUrl] = useState('');
   const [inputFileName, setInputFileName] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [validationResult, setValidationResult] = useState<BrandingValidationResult | null>(null);
   const [isValidating, setIsValidating] = useState(false);
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
   useEffect(() => {
+    void customerBrandingDriveService.loadFromBackend().catch(() => {
+      setNotification('Data branding dari GAS belum dapat dimuat. Periksa koneksi dan sesi admin.');
+    });
     const unsub = customerBrandingDriveService.subscribe(() => {
       setFolderStructure(customerBrandingDriveService.getFolderStructure());
       setHealth(customerBrandingDriveService.getBrandingHealth());
@@ -80,53 +85,88 @@ export const AdminBrandingManager: React.FC = () => {
   const openReplaceModal = (type: BrandingAssetType) => {
     setModalType(type);
     setInputUrl('');
-    setInputFileName(type === 'APP_LOGO' ? 'Logo_SiEpang_Baru.png' : 'Favicon_512x512.png');
+    setSelectedFile(null);
+    setInputFileName(type === 'APP_LOGO' ? 'Logo_Aplikasi.png' : 'Favicon.png');
     setValidationResult(null);
   };
 
-  const handleUrlChange = async (url: string) => {
-    setInputUrl(url);
-    if (!url.trim()) {
-      setValidationResult(null);
+  const handleFileChange = async (file: File | null) => {
+    setSelectedFile(file);
+    setInputUrl('');
+    setValidationResult(null);
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setValidationResult({ valid: false, state: 'UNSUPPORTED', message: 'Ukuran file maksimum 2 MB.' });
       return;
     }
-
-    if (modalType) {
-      setIsValidating(true);
-      const res = await customerBrandingDriveService.validateBrandingFile(url, modalType);
-      setValidationResult(res);
+    if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml'].includes(file.type.toLowerCase())) {
+      setValidationResult({ valid: false, state: 'UNSUPPORTED', message: 'Format yang didukung: PNG, JPEG, WebP, GIF, atau SVG.' });
+      return;
+    }
+    setInputFileName(file.name);
+    setIsValidating(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('File gambar tidak dapat dibaca.'));
+        reader.readAsDataURL(file);
+      });
+      setInputUrl(dataUrl);
+      if (modalType) {
+        const res = await customerBrandingDriveService.validateBrandingFile(dataUrl, modalType);
+        setValidationResult({ ...res, fileSizeBytes: file.size });
+      }
+    } catch (error) {
+      setValidationResult({ valid: false, state: 'BROKEN_SOURCE', message: error instanceof Error ? error.message : 'File gambar tidak dapat dibaca.' });
+    } finally {
       setIsValidating(false);
     }
   };
 
   const handleSaveAsset = async () => {
-    if (!modalType || !inputUrl.trim() || !validationResult?.valid) return;
-
-    await customerBrandingDriveService.uploadBrandingAsset({
-      workspace_id: 'ws_banyuwangi',
-      asset_type: modalType,
-      file_name: inputFileName.trim() || `${modalType.toLowerCase()}_asset.png`,
-      mime_type: 'image/png',
-      public_render_url: inputUrl.trim(),
-      dimensions: validationResult.dimensions,
-    });
-
-    setModalType(null);
-    setNotification(
-      `${modalType === 'APP_LOGO' ? 'Logo Aplikasi' : 'Favicon'} berhasil diperbarui ke Google Drive customer (v${brandingVersion + 1}).`
-    );
-    setTimeout(() => setNotification(null), 4000);
+    if (!modalType || !selectedFile || !inputUrl.startsWith('data:image/') || !validationResult?.valid || isSaving) return;
+    setIsSaving(true);
+    try {
+      const fileBase64 = inputUrl.substring(inputUrl.indexOf(',') + 1);
+      await customerBrandingDriveService.uploadBrandingAsset({
+        asset_type: modalType,
+        file_name: inputFileName.trim() || selectedFile.name,
+        mime_type: selectedFile.type.toLowerCase(),
+        file_base64: fileBase64,
+        dimensions: validationResult.dimensions,
+        file_size_bytes: selectedFile.size,
+      });
+      const savedType = modalType;
+      setModalType(null);
+      setSelectedFile(null);
+      setInputUrl('');
+      setNotification(`${savedType === 'APP_LOGO' ? 'Logo Aplikasi' : 'Favicon'} berhasil diunggah ke Google Drive dan disimpan melalui GAS.`);
+      setTimeout(() => setNotification(null), 4000);
+    } catch (error) {
+      setNotification(error instanceof Error ? error.message : 'Unggah branding gagal. Perubahan belum tersimpan.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleSelectExisting = (asset: CustomerBrandingAsset) => {
-    customerBrandingDriveService.setActiveAsset(asset.branding_asset_id);
-    setNotification(`${asset.file_name} diaktifkan sebagai aset utama.`);
+  const handleSelectExisting = async (asset: CustomerBrandingAsset) => {
+    try {
+      await customerBrandingDriveService.setActiveAsset(asset.branding_asset_id);
+      setNotification(`${asset.file_name} diaktifkan sebagai aset utama.`);
+    } catch (error) {
+      setNotification(error instanceof Error ? error.message : 'Gagal mengaktifkan aset.');
+    }
     setTimeout(() => setNotification(null), 3000);
   };
 
-  const handleRestoreDefault = (type: BrandingAssetType) => {
-    customerBrandingDriveService.restoreDefaultAsset(type);
-    setNotification(`Standar default ${type === 'APP_LOGO' ? 'Logo Aplikasi' : 'Favicon'} dipulihkan.`);
+  const handleRestoreDefault = async (type: BrandingAssetType) => {
+    try {
+      await customerBrandingDriveService.restoreDefaultAsset(type);
+      setNotification(`Logo default ${type === 'APP_LOGO' ? 'Aplikasi' : 'Favicon'} dipulihkan.`);
+    } catch (error) {
+      setNotification(error instanceof Error ? error.message : 'Gagal memulihkan branding default.');
+    }
     setTimeout(() => setNotification(null), 3000);
   };
 
@@ -183,6 +223,9 @@ export const AdminBrandingManager: React.FC = () => {
           <span>→</span>
           <span className="text-slate-400">4. SiEpang Default</span>
         </div>
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+          Khusus logo di kiri atas header aplikasi, Logo Aplikasi yang diunggah di halaman ini akan diprioritaskan. Logo event/workspace tetap menjadi fallback jika belum ada Logo Aplikasi aktif.
+        </p>
       </div>
 
       {/* System Health Card (Req 62) */}
@@ -474,15 +517,16 @@ export const AdminBrandingManager: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  URL Gambar (Google Drive Direct / CDN HTTPS)
+                  Unggah File Gambar
                 </label>
                 <input
-                  type="url"
-                  value={inputUrl}
-                  onChange={e => handleUrlChange(e.target.value)}
-                  placeholder="https://drive.google.com/uc?id=... atau https://..."
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-red-500"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                  onChange={e => void handleFileChange(e.target.files?.[0] || null)}
+                  disabled={isSaving}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs text-slate-900 dark:text-white file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-red-100 file:text-red-800"
                 />
+                <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">PNG, JPEG, WebP, GIF, atau SVG · maksimum 2 MB. File akan diunggah ke Google Drive melalui GAS.</p>
               </div>
 
               {/* Validation Feedback & Preview (Req 61) */}
@@ -529,7 +573,7 @@ export const AdminBrandingManager: React.FC = () => {
                       </div>
                       <div className="text-[11px]">
                         <div>Dimensi: <strong>{validationResult.dimensions?.width}×{validationResult.dimensions?.height} px</strong></div>
-                        <div>Format: <strong>PNG / Auto-Optimized</strong></div>
+                        <div>Format: <strong>{selectedFile?.type || 'Gambar'}</strong></div>
                       </div>
                     </div>
                   )}
@@ -547,11 +591,11 @@ export const AdminBrandingManager: React.FC = () => {
               </button>
               <button
                 type="button"
-                disabled={!validationResult?.valid}
+                disabled={!validationResult?.valid || !selectedFile || isSaving}
                 onClick={handleSaveAsset}
                 className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#A61B1B] to-[#C62828] text-white text-xs font-bold shadow-xs hover:opacity-95 disabled:opacity-50 transition-all cursor-pointer"
               >
-                Simpan & Aktifkan
+                {isSaving ? 'Mengunggah…' : 'Unggah & Aktifkan'}
               </button>
             </div>
           </div>
