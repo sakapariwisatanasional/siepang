@@ -1374,6 +1374,7 @@ export interface MediaItem {
   provider: MediaProviderType;
   source_type: MediaSourceType;
   source_url: string;
+  source_page_url?: string;
   provider_resource_id?: string;
   thumbnail_url: string;
   original_url?: string;
