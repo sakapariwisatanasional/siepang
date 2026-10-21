@@ -277,8 +277,9 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
     };
   }, []);
 
-  // Data fetching from existing services
+  // Identity and logo are hydrated from GAS via eventService.
   const event = eventService.getCurrentEvent();
+  const headerEventLogo = resolveEventLogoUrl(event.logoUrl || (event as any).logo_url || '');
   const announcements: Announcement[] = useMemo(() => {
     return isConfigured ? eventService.getAnnouncements().slice(0, 4) : [];
   }, [isConfigured]);
@@ -1459,8 +1460,18 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
           <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#C5141E] via-[#E31B23] to-[#FFD36A] p-[1.5px] shadow-sm flex items-center justify-center shrink-0">
-                <div className="w-full h-full rounded-[14px] bg-white dark:bg-[#121215] flex items-center justify-center font-black text-lg">
-                  ⚜️
+                <div className="w-full h-full rounded-[14px] bg-white dark:bg-[#121215] flex items-center justify-center overflow-hidden">
+                  {headerEventLogo ? (
+                    <img
+                      src={headerEventLogo}
+                      alt={event.name ? `Logo ${event.name}` : 'Logo kegiatan'}
+                      className="h-full w-full object-contain p-1"
+                      loading="eager"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <ImageIcon className="h-5 w-5 text-slate-400" aria-hidden="true" />
+                  )}
                 </div>
               </div>
               <div className="min-w-0">
@@ -1469,7 +1480,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                 </div>
                 <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">
                   {isConfigured
-                    ? `${event.organizationalLevel || 'Kwartir'} · ${event.campGround || 'Buper'}`
+                    ? [event.organizationalLevel, event.campGround || event.venue || event.location].filter(Boolean).join(' · ')
                     : 'Sistem Informasi Perkemahan Pramuka'}
                 </div>
               </div>
