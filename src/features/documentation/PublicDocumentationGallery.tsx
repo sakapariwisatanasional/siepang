@@ -391,7 +391,10 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
                   {displayedPhotos.map((photo, idx) => (
                     <div
                       key={photo.media_id}
-                      onClick={() => handleOpenLightbox(idx)}
+                      onClick={() => {
+                        if (photo.source_page_url) window.open(photo.source_page_url, '_blank', 'noopener,noreferrer');
+                        else handleOpenLightbox(idx);
+                      }}
                       className="group relative cursor-pointer overflow-hidden rounded-2xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 hover:border-[#208C60]/50 transition-all duration-300 shadow-xs flex flex-col"
                     >
                       {/* Image Thumbnail with lazy loading */}
@@ -400,7 +403,7 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2.5">
                           <span className="text-[10px] text-white flex items-center gap-1">
                             <Eye className="w-3 h-3" />
-                            <span>Perbesar Foto</span>
+                            <span>{photo.source_page_url ? 'Buka Halaman Sumber' : 'Perbesar Foto'}</span>
                           </span>
                         </div>
                       </div>
@@ -465,7 +468,10 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
                 {filteredVideos.map(video => (
                   <div
                     key={video.media_id}
-                    onClick={() => handlePlayVideo(video)}
+                    onClick={() => {
+                      if (video.source_page_url) window.open(video.source_page_url, '_blank', 'noopener,noreferrer');
+                      else handlePlayVideo(video);
+                    }}
                     className="group relative cursor-pointer overflow-hidden rounded-2xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 hover:border-[#F47743]/50 transition-all duration-300 shadow-xs flex flex-col"
                   >
                     {/* Video Thumbnail with centered play icon */}
@@ -548,6 +554,18 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
                 </a>
               )}
 
+              {currentLightboxPhoto.source_page_url && (
+                <a
+                  href={currentLightboxPhoto.source_page_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                  title="Buka halaman sumber"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Halaman Sumber</span>
+                </a>
+              )}
               <button
                 type="button"
                 onClick={() => setLightboxIndex(null)}
@@ -666,7 +684,7 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
                 {activeVideoItem.caption || 'Dokumentasi resmi liputan video kegiatan perkemahan.'}
               </div>
               <a
-                href={activeVideoItem.source_url}
+                href={activeVideoItem.source_page_url || activeVideoItem.source_url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/20 text-slate-800 dark:text-white font-semibold flex items-center gap-1.5 shrink-0 transition-colors"
