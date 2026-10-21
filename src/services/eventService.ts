@@ -106,27 +106,42 @@ class EventService {
         this.configError = null;
         this.lastErrorCode = null;
         const raw = res.data.event;
+        // `public.current` is the source of truth. Do not carry stale identity
+        // fields from a previous event when GAS returns an empty value.
         const normalized: ScoutEvent = {
-          ...this.currentEvent,
-          id: raw.id || this.currentEvent.id,
-          workspaceId: res.data.workspace?.id || this.currentEvent.workspaceId,
-          name: raw.name || this.currentEvent.name,
-          shortName: raw.short_name || raw.shortName || this.currentEvent.shortName,
-          eventCode: raw.event_code || raw.eventCode || this.currentEvent.eventCode,
-          status: (raw.status as any) || this.currentEvent.status,
-          category: (raw.category as any) || this.currentEvent.category,
-          theme: raw.theme || this.currentEvent.theme,
-          startDate: raw.start_date || raw.startDate || this.currentEvent.startDate,
-          endDate: raw.end_date || raw.endDate || this.currentEvent.endDate,
-          location: raw.location || this.currentEvent.location,
-          venue: raw.venue || this.currentEvent.venue,
-          campGround: raw.camp_ground || raw.campGround || this.currentEvent.campGround,
-          participantCapacity: raw.participant_capacity ?? raw.participantCapacity ?? this.currentEvent.participantCapacity,
-          registeredCount: raw.registeredCount ?? this.currentEvent.registeredCount,
-          checkedInCount: raw.checkedInCount ?? this.currentEvent.checkedInCount,
-          bannerUrl: raw.banner_url || raw.bannerUrl || this.currentEvent.bannerUrl,
-          logoUrl: raw.logo_url || raw.logoUrl || this.currentEvent.logoUrl,
-          features: raw.features ? { ...this.currentEvent.features, ...raw.features } : this.currentEvent.features,
+          ...EMPTY_EVENT,
+          id: String(raw.id || raw.event_id || ''),
+          workspaceId: String(res.data.workspace?.id || raw.workspace_id || raw.workspaceId || ''),
+          name: String(raw.name || ''),
+          shortName: String(raw.short_name || raw.shortName || ''),
+          eventCode: String(raw.event_code || raw.eventCode || ''),
+          status: ((raw.status as any) || EMPTY_EVENT.status),
+          category: ((raw.category as any) || EMPTY_EVENT.category),
+          organizationalLevel: String(raw.organizational_level || raw.organizationalLevel || ''),
+          organizer: String(raw.organizer || ''),
+          description: String(raw.description || ''),
+          theme: String(raw.theme || ''),
+          startDate: String(raw.start_date || raw.startDate || ''),
+          endDate: String(raw.end_date || raw.endDate || ''),
+          registrationStart: String(raw.registration_start || raw.registrationStart || ''),
+          registrationEnd: String(raw.registration_end || raw.registrationEnd || ''),
+          location: String(raw.location || ''),
+          venue: String(raw.venue || ''),
+          campGround: String(raw.camp_ground || raw.campGround || ''),
+          participantCapacity: Number(raw.participant_capacity ?? raw.participantCapacity ?? 0) || 0,
+          registeredCount: Number(raw.registeredCount ?? 0) || 0,
+          checkedInCount: Number(raw.checkedInCount ?? 0) || 0,
+          contingentCount: Number(raw.contingentCount ?? 0) || 0,
+          competitionCount: Number(raw.competitionCount ?? 0) || 0,
+          bannerUrl: String(raw.banner_url || raw.bannerUrl || ''),
+          logoUrl: String(raw.logo_url || raw.logoUrl || ''),
+          features: raw.features ? { ...EMPTY_EVENT.features, ...raw.features } : { ...EMPTY_EVENT.features },
+          homeSections: Array.isArray(raw.home_sections || raw.homeSections)
+            ? (raw.home_sections || raw.homeSections)
+            : [],
+          contacts: raw.contacts && typeof raw.contacts === 'object'
+            ? raw.contacts
+            : { ...EMPTY_EVENT.contacts },
         };
 
         this.setInstallationEvent(normalized);
