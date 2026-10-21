@@ -29,6 +29,7 @@ export interface GalleryUrlRecord {
   title: string;
   caption?: string;
   source_url: string;
+  source_page_url?: string;
   thumbnail_url?: string;
   album_id?: string;
   display_order?: number;
