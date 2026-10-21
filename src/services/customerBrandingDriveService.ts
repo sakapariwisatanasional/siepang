@@ -14,6 +14,7 @@ import {
   BrandingHealthReport,
 } from '../types';
 import { mediaResolverService } from './mediaResolverService';
+import { apiTransport } from './apiTransport';
 
 const DEFAULT_DRIVE_STRUCTURE: CustomerDriveFolderStructure = {
   root_drive_folder_id: '',
@@ -37,6 +38,7 @@ class CustomerBrandingDriveService {
   private folderStructure: CustomerDriveFolderStructure = { ...DEFAULT_DRIVE_STRUCTURE };
   private assets: CustomerBrandingAsset[] = [...INITIAL_BRANDING_ASSETS];
   private brandingVersion: number = 2;
+  private hasLoadedAdminAssets: boolean = false;
   private listeners: Set<() => void> = new Set();
 
   constructor() {
@@ -105,31 +107,31 @@ class CustomerBrandingDriveService {
   }
 
   public getActiveAsset(assetType: BrandingAssetType, workspaceId?: string): CustomerBrandingAsset | null {
-    const list = this.getBrandingAssets(workspaceId, assetType);
-    return list.find(a => a.status === 'ACTIVE') || list[0] || null;
+    return this.getBrandingAssets(workspaceId, assetType).find(a => a.status === 'ACTIVE') || null;
   }
 
-  public setActiveAsset(assetId: string, workspaceId?: string): CustomerBrandingAsset | null {
-    const target = this.assets.find(a => a.branding_asset_id === assetId);
-    if (!target) return null;
-
-    // Archive others of same type & workspace
-    this.assets = this.assets.map(a => {
-      if (a.asset_type === target.asset_type && (!workspaceId || a.workspace_id === target.workspace_id)) {
-        if (a.branding_asset_id === assetId) {
-          return { ...a, status: 'ACTIVE', updated_at: new Date().toISOString() };
-        }
-        return { ...a, status: 'ARCHIVED' };
-      }
-      return a;
-    });
-
-    // Increment branding version for cache busting (Req 63)
-    this.brandingVersion += 1;
+  /** Load authoritative branding metadata from GAS. Local storage is only a startup cache. */
+  public async loadFromBackend(publicOnly = false): Promise<void> {
+    const response = await apiTransport.send<{ assets?: CustomerBrandingAsset[]; version?: number; folderStructure?: CustomerDriveFolderStructure }>(
+      publicOnly ? 'branding.assets.public.get' : 'branding.assets.list', {}, { timeoutMs: 45000 }
+    );
+    if (!response.ok || !response.data) return;
+    if (Array.isArray(response.data.assets) && (!publicOnly || !this.hasLoadedAdminAssets)) this.assets = response.data.assets;
+    if (!publicOnly) this.hasLoadedAdminAssets = true;
+    if (Number.isFinite(Number(response.data.version))) this.brandingVersion = Number(response.data.version);
+    if (response.data.folderStructure) this.folderStructure = { ...DEFAULT_DRIVE_STRUCTURE, ...response.data.folderStructure };
     this.saveToStorage();
     this.applyFaviconToHead();
     this.notify();
-    return target;
+  }
+
+  public async setActiveAsset(assetId: string, _workspaceId?: string): Promise<CustomerBrandingAsset | null> {
+    const response = await apiTransport.send<{ assets?: CustomerBrandingAsset[]; version?: number; folderStructure?: CustomerDriveFolderStructure }>(
+      'branding.asset.activate', { branding_asset_id: assetId }, { timeoutMs: 45000 }
+    );
+    if (!response.ok || !response.data) throw new Error(response.error?.message || 'Gagal mengaktifkan aset branding di GAS.');
+    this.applyBackendAssetResult(response.data);
+    return this.assets.find(a => a.branding_asset_id === assetId) || null;
   }
 
   /**
@@ -138,72 +140,53 @@ class CustomerBrandingDriveService {
    * Favicon: /SiEpang/Branding/Favicon/
    */
   public async uploadBrandingAsset(payload: {
-    workspace_id: string;
     asset_type: BrandingAssetType;
     file_name: string;
     mime_type: string;
-    public_render_url: string;
-    drive_file_id?: string;
+    file_base64: string;
     dimensions?: { width: number; height: number };
     file_size_bytes?: number;
-    created_by?: string;
   }): Promise<CustomerBrandingAsset> {
-    const generatedFileId = payload.drive_file_id || '';
-    if (!generatedFileId) {
-      throw new Error('BRANDING_UPLOAD_FAILED: GAS tidak mengembalikan drive_file_id. Asset tidak disimpan sebagai record lokal.');
+    const response = await apiTransport.send<{
+      asset?: CustomerBrandingAsset;
+      assets?: CustomerBrandingAsset[];
+      version?: number;
+      folderStructure?: CustomerDriveFolderStructure;
+    }>('branding.asset.upload', payload, { timeoutMs: 45000 });
+    if (!response.ok || !response.data?.asset) {
+      throw new Error(response.error?.message || 'Upload logo ke GAS/Google Drive gagal.');
     }
-    const newVersion = (this.assets.filter(a => a.asset_type === payload.asset_type).length || 0) + 1;
-
-    // Set previously active to archived
-    this.assets = this.assets.map(a => {
-      if (a.asset_type === payload.asset_type && a.workspace_id === payload.workspace_id) {
-        return { ...a, status: 'ARCHIVED' };
-      }
-      return a;
-    });
-
-    const newAsset: CustomerBrandingAsset = {
-      branding_asset_id: `asset_${Date.now()}`,
-      workspace_id: payload.workspace_id,
-      asset_type: payload.asset_type,
-      drive_file_id: generatedFileId,
-      file_name: payload.file_name,
-      mime_type: payload.mime_type,
-      public_render_url: payload.public_render_url,
-      status: 'ACTIVE',
-      version: newVersion,
-      dimensions: payload.dimensions || { width: 512, height: 512 },
-      file_size_bytes: payload.file_size_bytes || 120000,
-      created_at: new Date().toISOString(),
-      created_by: payload.created_by || 'Admin Branding',
-    };
-
-    this.assets.unshift(newAsset);
-    this.brandingVersion += 1;
-    this.saveToStorage();
-    this.applyFaviconToHead();
-    this.notify();
-    return newAsset;
+    this.applyBackendAssetResult(response.data);
+    return response.data.asset;
   }
 
-  public restoreDefaultAsset(assetType: BrandingAssetType, workspaceId?: string) {
-    const defaultAsset = INITIAL_BRANDING_ASSETS.find(a => a.asset_type === assetType);
-    if (!defaultAsset) return;
+  public async restoreDefaultAsset(assetType: BrandingAssetType, _workspaceId?: string): Promise<void> {
+    const response = await apiTransport.send<{
+      assets?: CustomerBrandingAsset[];
+      version?: number;
+      folderStructure?: CustomerDriveFolderStructure;
+    }>('branding.asset.restore', { asset_type: assetType }, { timeoutMs: 45000 });
+    if (!response.ok || !response.data) throw new Error(response.error?.message || 'Gagal memulihkan logo default.');
+    this.applyBackendAssetResult(response.data);
+  }
 
-    this.assets = this.assets.map(a => {
-      if (a.asset_type === assetType && (!workspaceId || a.workspace_id === workspaceId)) {
-        if (a.branding_asset_id === defaultAsset.branding_asset_id) {
-          return { ...a, status: 'ACTIVE' };
-        }
-        return { ...a, status: 'ARCHIVED' };
-      }
-      return a;
-    });
-
-    this.brandingVersion += 1;
+  private applyBackendAssetResult(result: {
+    assets?: CustomerBrandingAsset[];
+    version?: number;
+    folderStructure?: CustomerDriveFolderStructure;
+  }): void {
+    if (Array.isArray(result.assets)) this.assets = result.assets;
+    this.hasLoadedAdminAssets = true;
+    if (Number.isFinite(Number(result.version))) this.brandingVersion = Number(result.version);
+    if (result.folderStructure) this.folderStructure = { ...DEFAULT_DRIVE_STRUCTURE, ...result.folderStructure };
     this.saveToStorage();
     this.applyFaviconToHead();
     this.notify();
+  }
+
+  public getRenderableImageUrl(url: string): string {
+    const resolved = mediaResolverService.resolveMedia(String(url || '').trim());
+    return resolved.previewUrl || resolved.thumbnailUrl || String(url || '');
   }
 
   /**
@@ -231,8 +214,11 @@ class CustomerBrandingDriveService {
       };
     }
 
-    // Resolve media with existing MediaResolver
-    const resolved = mediaResolverService.resolveMedia(trimmed);
+    // Data URLs are accepted only for a locally selected image preview; external URLs
+    // still pass through the shared resolver and its protocol/access checks.
+    const resolved: any = trimmed.startsWith('data:image/')
+      ? { accessStatus: 'ACCESSIBLE', previewUrl: trimmed, thumbnailUrl: trimmed, errorMessage: '' }
+      : mediaResolverService.resolveMedia(trimmed);
     if (resolved.accessStatus !== 'ACCESSIBLE') {
       return {
         valid: false,
@@ -390,7 +376,7 @@ class CustomerBrandingDriveService {
     const activeFavicon = this.getActiveAsset('FAVICON');
     if (!activeFavicon?.public_render_url) return;
 
-    const urlWithVersion = `${activeFavicon.public_render_url}?v=${this.brandingVersion}`;
+    const urlWithVersion = `${activeFavicon.public_render_url}${activeFavicon.public_render_url.includes('?') ? '&' : '?'}v=${this.brandingVersion}`;
 
     let iconLink = document.querySelector("link[rel*='icon']") as HTMLLinkElement | null;
     if (!iconLink) {
