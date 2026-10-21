@@ -15,13 +15,14 @@ type GalleryForm = {
   title: string;
   caption: string;
   source_url: string;
+  source_page_url: string;
   thumbnail_url: string;
   album_id: string;
   display_order: string;
   status: 'DRAFT' | 'PUBLISHED';
 };
 const emptyForm = (): GalleryForm => ({
-  id: '', type: 'PHOTO', title: '', caption: '', source_url: '', thumbnail_url: '',
+  id: '', type: 'PHOTO', title: '', caption: '', source_url: '', source_page_url: '', thumbnail_url: '',
   album_id: '', display_order: '0', status: 'DRAFT',
 });
 
@@ -83,14 +84,14 @@ export const AdminPublicGalleryManager: React.FC = () => {
   useEffect(() => { void reload(); }, [reload]);
   const visible = useMemo(() => items.filter(m =>
     (filter === 'ALL' || m.type === filter) &&
-    [m.title, m.caption, m.source_url].some(s => String(s || '').toLowerCase().includes(search.toLowerCase()))
+    [m.title, m.caption, m.source_url, m.source_page_url].some(s => String(s || '').toLowerCase().includes(search.toLowerCase()))
   ), [items, filter, search]);
 
   const edit = (item: GalleryUrlRecord) => {
     setError(''); setNotice('');
     setForm({
       id: item.id, type: item.type, title: item.title || '', caption: item.caption || '',
-      source_url: item.source_url || '', thumbnail_url: item.thumbnail_url || '',
+      source_url: item.source_url || '', source_page_url: item.source_page_url || '', thumbnail_url: item.thumbnail_url || '',
       album_id: item.album_id || '', display_order: String(item.display_order ?? 0),
       status: item.status === 'PUBLISHED' ? 'PUBLISHED' : 'DRAFT',
     });
@@ -102,6 +103,9 @@ export const AdminPublicGalleryManager: React.FC = () => {
     if (!form || working) return;
     if (!trim(form.title)) { setError('Judul wajib diisi.'); return; }
     if (!validHttps(trim(form.source_url))) { setError('URL media wajib berupa tautan HTTPS yang valid.'); return; }
+    if (trim(form.source_page_url) && !validHttps(trim(form.source_page_url))) {
+      setError('URL halaman sumber harus menggunakan HTTPS yang valid.'); return;
+    }
     if (trim(form.thumbnail_url) && !validHttps(trim(form.thumbnail_url))) {
       setError('URL thumbnail harus menggunakan HTTPS.'); return;
     }
@@ -115,7 +119,7 @@ export const AdminPublicGalleryManager: React.FC = () => {
       const thumbnailUrl = trim(form.thumbnail_url) || deriveThumbnail(sourceUrl, form.type);
       await documentationService.saveGalleryUrl({
         id: form.id, type: form.type, title: trim(form.title), caption: trim(form.caption),
-        source_url: sourceUrl, thumbnail_url: thumbnailUrl,
+        source_url: sourceUrl, source_page_url: trim(form.source_page_url), thumbnail_url: thumbnailUrl,
         album_id: trim(form.album_id), display_order: displayOrder, status: form.status,
       });
       setForm(null);
@@ -162,6 +166,7 @@ export const AdminPublicGalleryManager: React.FC = () => {
           <label className={labelClass}>Judul *<input required maxLength={160} className={inputClass} value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Judul dokumentasi"/></label>
           <label className={labelClass}>Urutan Tampil<input required type="number" min={0} max={999999} step={1} className={inputClass} value={form.display_order} onChange={e => setForm({ ...form, display_order: e.target.value })}/></label>
           <label className={`${labelClass} sm:col-span-2`}>URL Foto / Video (HTTPS) *<input required type="url" className={inputClass} value={form.source_url} onChange={e => setForm({ ...form, source_url: e.target.value })} placeholder="https://..."/><span className="block text-xs font-normal text-slate-500">Gunakan link publik. Untuk video: YouTube, Google Drive (akses diizinkan), atau file video langsung.</span></label>
+          <label className={`${labelClass} sm:col-span-2`}>URL Halaman Sumber (opsional)<input type="url" className={inputClass} value={form.source_page_url} onChange={e => setForm({ ...form, source_page_url: e.target.value })} placeholder="https://instagram.com/p/... atau halaman sumber asli"/><span className="block text-xs font-normal text-slate-500">Jika diisi, klik kartu media di Galeri Publik akan membuka halaman sumber ini di tab baru. Kosongkan untuk memakai perilaku galeri biasa.</span></label>
           <label className={`${labelClass} sm:col-span-2`}>URL Thumbnail (opsional; otomatis untuk YouTube / Drive)<input type="url" className={inputClass} value={form.thumbnail_url} onChange={e => setForm({ ...form, thumbnail_url: e.target.value })} placeholder={deriveThumbnail(form.source_url, form.type) || 'Kosongkan untuk thumbnail otomatis jika didukung'}/></label>
           <label className={`${labelClass} sm:col-span-2`}>Caption / Deskripsi<textarea rows={3} maxLength={2000} className={inputClass} value={form.caption} onChange={e => setForm({ ...form, caption: e.target.value })}/></label>
           <label className={labelClass}>ID Album (opsional)<input maxLength={100} className={inputClass} value={form.album_id} onChange={e => setForm({ ...form, album_id: e.target.value })}/></label>
