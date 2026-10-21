@@ -107,12 +107,26 @@ class WorkspaceService {
       const res = await apiTransport.send<PublicCurrentResponse>('public.current');
       if (res.ok && res.data?.workspace) {
         const rawWs = res.data.workspace;
+        // `public.current` is authoritative. Empty fields must not resurrect
+        // an old installation identity from local storage or previous state.
         this.currentWorkspace = {
+          ...EMPTY_WORKSPACE,
           ...this.currentWorkspace,
-          id: rawWs.id || this.currentWorkspace.id,
-          name: rawWs.name || this.currentWorkspace.name,
-          organization: rawWs.organization || rawWs.name || this.currentWorkspace.organization,
-          activeEventId: res.data.event?.id || this.currentWorkspace.activeEventId,
+          id: String(rawWs.id || ''),
+          code: String(rawWs.code || ''),
+          name: String(rawWs.name || ''),
+          organization: String(rawWs.organization || rawWs.branding?.organizationName || rawWs.name || ''),
+          province: String(rawWs.province || ''),
+          city: String(rawWs.city || ''),
+          region: String(rawWs.region || rawWs.city || rawWs.province || ''),
+          activeEventId: String(res.data.event?.id || ''),
+          branding: {
+            ...EMPTY_WORKSPACE.branding,
+            ...(rawWs.branding || {}),
+            organizationName: String(rawWs.branding?.organizationName || rawWs.organization || rawWs.name || ''),
+            logoUrl: String(rawWs.branding?.logoUrl || ''),
+            bannerUrl: String(rawWs.branding?.bannerUrl || ''),
+          },
         };
 
         brandingService.applyBranding({
