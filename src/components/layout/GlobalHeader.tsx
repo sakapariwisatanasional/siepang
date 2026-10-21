@@ -204,8 +204,14 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
                 <img
                   src={(() => {
                     const rawUrl = String(effectiveBranding.appLogoUrl).trim();
-                    const separator = rawUrl.includes('?') ? '&' : '?';
-                    return `${rawUrl}${separator}v=${encodeURIComponent(String(effectiveBranding.version ?? '1'))}`;
+                    // Normalize common Google Drive share links into an image URL.
+                    // GAS remains the source of the logo URL; this only changes its presentation URL.
+                    const driveId = rawUrl.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:[^#]*&)?id=)([a-zA-Z0-9_-]+)/)?.[1];
+                    const imageUrl = driveId
+                      ? `https://drive.google.com/uc?export=view&id=${driveId}`
+                      : rawUrl;
+                    const separator = imageUrl.includes('?') ? '&' : '?';
+                    return `${imageUrl}${separator}v=${encodeURIComponent(String(effectiveBranding.version ?? '1'))}`;
                   })()}
                   alt="Logo kegiatan"
                   className="w-full h-full object-contain p-0.5"
@@ -222,9 +228,11 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
             <div className="text-sm font-bold tracking-tight text-[#171717] dark:text-white truncate max-w-[190px] sm:max-w-[280px]">
               {currentEvent.name || workspace.name || 'SiEpang'}
             </div>
-            <div className="text-[10px] font-semibold text-[#A61B1B] dark:text-purple-300 truncate max-w-[200px] sm:max-w-[300px]">
-              {workspace.organization || workspace.name || currentEvent.shortName}
-            </div>
+            {String(currentEvent.organizer || '').trim() && (
+              <div className="text-[10px] font-semibold text-[#A61B1B] dark:text-purple-300 truncate max-w-[200px] sm:max-w-[300px]">
+                {currentEvent.organizer}
+              </div>
+            )}
           </div>
         </div>
 
