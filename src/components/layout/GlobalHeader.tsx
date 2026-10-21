@@ -33,6 +33,7 @@ import { workspaceService } from '../../services/workspaceService';
 import { eventService } from '../../services/eventService';
 import { brandingService, AppearanceMode } from '../../services/brandingService';
 import { customerBrandingDriveService } from '../../services/customerBrandingDriveService';
+import { mediaResolverService } from '../../services/mediaResolverService';
 import { syncQueue } from '../../offline/syncQueue';
 import { syncService } from '../../services/syncService';
 import { localCampServerService } from '../../services/localCampServerService';
@@ -127,8 +128,14 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
 
 
   const localStatus = syncService.getLocalCampStatus();
+  // Prefer the active EVENT_LOGO asset from the authoritative branding registry.
+  // This prevents a stale event.logoUrl from overriding the current Drive file ID.
+  const activeEventLogo = customerBrandingDriveService.getActiveAsset(
+    'EVENT_LOGO',
+    workspace.workspace_id || workspace.id
+  );
   const effectiveBranding = customerBrandingDriveService.getEffectiveBranding(
-    currentEvent.logoUrl,
+    activeEventLogo?.public_render_url || currentEvent.logoUrl,
     workspace.branding?.logoUrl
   );
 
@@ -203,15 +210,12 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({
               {effectiveBranding.appLogoUrl && !appLogoFailed ? (
                 <img
                   src={(() => {
-                    const rawUrl = String(effectiveBranding.appLogoUrl).trim();
-                    // Normalize common Google Drive share links into an image URL.
-                    // GAS remains the source of the logo URL; this only changes its presentation URL.
-                    const driveId = rawUrl.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:[^#]*&)?id=)([a-zA-Z0-9_-]+)/)?.[1];
-                    const imageUrl = driveId
-                      ? `https://drive.google.com/uc?export=view&id=${driveId}`
-                      : rawUrl;
-                    const separator = imageUrl.includes('?') ? '&' : '?';
-                    return `${imageUrl}${separator}v=${encodeURIComponent(String(effectiveBranding.version ?? '1'))}`;
+                    const rawUrl = String(effectiveBranding.appLogoUrl || '').trim();
+                    // Use the same shared resolver as the settings preview. Google Drive
+                    // view/download pages are HTML, not image bytes; the resolver returns
+                    // the direct thumbnail URL suitable for an <img> element.
+                    const resolved = mediaResolverService.resolveMedia(rawUrl);
+                    return resolved.thumbnailUrl || resolved.previewUrl || rawUrl;
                   })()}
                   alt="Logo kegiatan"
                   className="w-full h-full object-contain p-0.5"
