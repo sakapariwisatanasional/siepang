@@ -5,7 +5,7 @@
  * Adheres to Requirements 8-29, 36, 40, 56.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Users,
   CheckCircle2,
@@ -38,6 +38,8 @@ import {
   Building2,
   CheckSquare,
   HelpCircle,
+  Zap,
+  RefreshCw,
 } from 'lucide-react';
 import { eventService } from '../../services/eventService';
 import { participantService } from '../../services/participantService';
@@ -45,6 +47,8 @@ import { databaseStorageService } from '../../services/databaseStorageService';
 import { visitorManagementService } from '../../services/visitorManagementService';
 import { featureControlService } from '../../services/featureControlService';
 import { authService } from '../../services/authService';
+import { pointService } from '../../services/pointService';
+import { XPTransaction } from '../../types';
 import { canReadInstallation } from '../../backend/rbac/permissions';
 import { customerInstallationService } from '../../services/customerInstallationService';
 import { NavTab } from '../../components/navigation/MobileNavigation';
@@ -77,6 +81,56 @@ export const AdminDaerahDashboard: React.FC<AdminDaerahDashboardProps> = ({
   const contingents = participantService.getContingents();
   const visitors = visitorManagementService.getVisitors();
   const isDbConnected = databaseStorageService.isConnected();
+
+  // XP ledger is loaded from the authoritative GAS PointTransactions sheet.
+  const [xpTransactions, setXpTransactions] = useState<XPTransaction[]>([]);
+  const [xpLoading, setXpLoading] = useState(true);
+  const [xpError, setXpError] = useState('');
+  const [xpLastUpdated, setXpLastUpdated] = useState('');
+  const [xpFeatureEnabled, setXpFeatureEnabled] = useState(() => featureControlService.isFeatureEnabled('POINTS_XP'));
+  const [xpFeatureSaving, setXpFeatureSaving] = useState(false);
+  const [xpFeatureError, setXpFeatureError] = useState('');
+
+  useEffect(() => {
+    const syncFeatureState = () => setXpFeatureEnabled(featureControlService.isFeatureEnabled('POINTS_XP'));
+    const unsubscribe = featureControlService.subscribe(syncFeatureState);
+    void featureControlService.refreshFromSpreadsheet('EVENT')
+      .then(syncFeatureState)
+      .catch(error => setXpFeatureError(error instanceof Error ? error.message : 'Status fitur XP gagal dimuat dari GAS.'));
+    return unsubscribe;
+  }, []);
+
+  const refreshXpLedger = useCallback(async () => {
+    setXpLoading(true);
+    setXpError('');
+    try {
+      const rows = await pointService.refreshTransactions();
+      setXpTransactions([...rows].sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp))));
+      setXpLastUpdated(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+    } catch (error) {
+      setXpError(error instanceof Error ? error.message : 'Riwayat XP gagal dimuat dari GAS.');
+    } finally {
+      setXpLoading(false);
+    }
+  }, []);
+
+  const toggleXpFeature = useCallback(async () => {
+    setXpFeatureSaving(true);
+    setXpFeatureError('');
+    try {
+      const enabled = await featureControlService.toggleEventFeature('POINTS_XP');
+      setXpFeatureEnabled(enabled);
+      await refreshXpLedger();
+    } catch (error) {
+      setXpFeatureError(error instanceof Error ? error.message : 'Pengaturan fitur XP gagal disimpan.');
+    } finally {
+      setXpFeatureSaving(false);
+    }
+  }, [refreshXpLedger]);
+
+  useEffect(() => {
+    void refreshXpLedger();
+  }, [refreshXpLedger]);
 
   // Metrics
   const checkedInCount = participants.filter(p => p.checkedIn).length;
@@ -330,6 +384,110 @@ export const AdminDaerahDashboard: React.FC<AdminDaerahDashboardProps> = ({
           />
         </div>
       </div>
+
+      {/* XP LEDGER — live data from the GAS PointTransactions sheet */}
+      <section className="rounded-[24px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 p-4 sm:p-5 shadow-xs space-y-4" aria-labelledby="admin-xp-ledger-title">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/30 text-amber-600 flex items-center justify-center shrink-0"><Zap className="w-5 h-5" /></div>
+            <div>
+              <h2 id="admin-xp-ledger-title" className="text-sm font-black text-[#171717] dark:text-white">Pemantauan XP Peserta</h2>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Sumber: buku besar transaksi PointTransactions di GAS</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => void refreshXpLedger()} disabled={xpLoading} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/10 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5 disabled:opacity-50">
+              <RefreshCw className={`w-3.5 h-3.5 ${xpLoading ? 'animate-spin' : ''}`} /> Muat ulang
+            </button>
+            <button type="button" onClick={() => onNavigate('leaderboard')} className="rounded-xl bg-[#208C60] px-3 py-2 text-xs font-bold text-white hover:opacity-90">Peringkat XP</button>
+          </div>
+        </div>
+
+        <div className={`rounded-2xl border p-4 ${xpFeatureEnabled ? 'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/50 dark:bg-emerald-950/20' : 'border-amber-200 bg-amber-50/70 dark:border-amber-900/50 dark:bg-amber-950/20'}`}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${xpFeatureEnabled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'}`}><Zap className="h-5 w-5" /></div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white">Poin & Gamifikasi XP</h3>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${xpFeatureEnabled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300'}`}>{xpFeatureEnabled ? 'AKTIF' : 'NONAKTIF'}</span>
+                </div>
+                <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-600 dark:text-slate-300">Pengaturan master fitur XP untuk event aktif. Status disimpan melalui FeatureConfigs di GAS; menonaktifkan fitur tidak menghapus riwayat transaksi yang sudah ada.</p>
+                {xpFeatureError && <p role="alert" className="mt-2 text-xs font-semibold text-rose-600 dark:text-rose-300">{xpFeatureError}</p>}
+              </div>
+            </div>
+            <button type="button" onClick={() => void toggleXpFeature()} disabled={xpFeatureSaving} className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-extrabold text-white disabled:cursor-wait disabled:opacity-60 ${xpFeatureEnabled ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+              {xpFeatureSaving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+              {xpFeatureSaving ? 'Menyimpan pengaturan…' : xpFeatureEnabled ? 'Nonaktifkan fitur XP' : 'Aktifkan fitur XP'}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {([
+            { key: 'peer', title: 'Apresiasi sesama peserta', detail: 'Poin peer-to-peer untuk perilaku positif', match: (tx: XPTransaction) => tx.category === 'peer_appreciation' },
+            { key: 'attendance-agenda', title: 'Absensi kegiatan / QR agenda', detail: 'Reward kehadiran pada agenda terjadwal', match: (tx: XPTransaction) => tx.category === 'attendance' && /agenda|presensi/i.test(tx.reason) },
+            { key: 'attendance-checkin', title: 'Check-in QR umum', detail: 'Poin kedatangan atau check-in peserta', match: (tx: XPTransaction) => tx.category === 'attendance' && /check.?in|kedatangan/i.test(tx.reason) },
+            { key: 'activity', title: 'Aktivitas & checkpoint', detail: 'Reward scan aktivitas dan bonus checkpoint', match: (tx: XPTransaction) => tx.category === 'activity' },
+            { key: 'competition', title: 'Prestasi lomba', detail: 'Poin juara atau hasil kompetisi', match: (tx: XPTransaction) => tx.category === 'competition' && !/vote/i.test(tx.reason) },
+            { key: 'voting', title: 'Voting karya publik', detail: 'Poin dari voting atau apresiasi karya', match: (tx: XPTransaction) => tx.category === 'competition' && /vote/i.test(tx.reason) },
+            { key: 'manual', title: 'Poin manual / panitia / pengguna', detail: 'Bonus atau penyesuaian oleh admin/petugas; identitas pemberi mengikuti ledger GAS', match: (tx: XPTransaction) => tx.category === 'bonus' },
+          ]).map(channel => {
+            const channelRows = xpTransactions.filter(channel.match);
+            const total = channelRows.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0);
+            return <div key={channel.key} className="rounded-2xl border border-slate-200 bg-white p-3.5 dark:border-white/10 dark:bg-white/[0.03]">
+              <div className="flex items-start justify-between gap-2"><div className="text-xs font-extrabold text-slate-800 dark:text-slate-100">{channel.title}</div><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600 dark:bg-white/10 dark:text-slate-300">{xpLoading ? '…' : `${channelRows.length} transaksi`}</span></div>
+              <p className="mt-1.5 min-h-8 text-[11px] leading-4 text-slate-500 dark:text-slate-400">{channel.detail}</p>
+              <div className="mt-3 flex items-end justify-between gap-2"><div><div className="text-[10px] text-slate-500">Total bersih</div><div className={`text-lg font-black ${total < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{xpLoading ? '…' : `${total > 0 ? '+' : ''}${total.toLocaleString('id-ID')} XP`}</div></div><span className={`rounded-full px-2 py-1 text-[9px] font-extrabold ${xpFeatureEnabled ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-400'}`}>{xpFeatureEnabled ? 'Modul aktif' : 'Modul nonaktif'}</span></div>
+            </div>;
+          })}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-white/[0.04]">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">Untuk menambah atau mengubah nominal reward, buka Studio Buper → Aturan XP. Kartu channel merangkum transaksi yang benar-benar tercatat; belum ada toggle terpisah per channel.</p>
+          <button type="button" onClick={() => onNavigate('event_studio')} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-[11px] font-bold text-white hover:bg-slate-700 dark:bg-white dark:text-slate-900">Atur aturan XP <ChevronRight className="h-3.5 w-3.5" /></button>
+        </div>
+
+        {xpError ? (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 dark:bg-rose-950/20 dark:border-rose-900/40 p-3 text-xs text-rose-700 dark:text-rose-300">
+            <div className="font-bold">Riwayat XP belum dapat dimuat.</div><div className="mt-1">{xpError}</div>
+            <div className="mt-1 text-[10px]">Periksa deployment GAS, event aktif, dan izin baca PointTransactions.</div>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="rounded-xl bg-slate-50 dark:bg-white/[0.04] p-3"><div className="text-[10px] text-slate-500">Transaksi tercatat</div><div className="mt-1 text-lg font-black text-[#171717] dark:text-white">{xpLoading ? '…' : xpTransactions.length.toLocaleString('id-ID')}</div></div>
+              <div className="rounded-xl bg-slate-50 dark:bg-white/[0.04] p-3"><div className="text-[10px] text-slate-500">Total XP bersih</div><div className="mt-1 text-lg font-black text-emerald-600">{xpLoading ? '…' : xpTransactions.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0).toLocaleString('id-ID')}</div></div>
+              <div className="rounded-xl bg-slate-50 dark:bg-white/[0.04] p-3"><div className="text-[10px] text-slate-500">Sumber QR/presensi</div><div className="mt-1 text-lg font-black text-[#171717] dark:text-white">{xpLoading ? '…' : xpTransactions.filter(tx => tx.category === 'attendance' || tx.category === 'activity').length.toLocaleString('id-ID')}</div></div>
+              <div className="rounded-xl bg-slate-50 dark:bg-white/[0.04] p-3"><div className="text-[10px] text-slate-500">Apresiasi & lomba</div><div className="mt-1 text-lg font-black text-[#171717] dark:text-white">{xpLoading ? '…' : xpTransactions.filter(tx => tx.category === 'peer_appreciation' || tx.category === 'competition').length.toLocaleString('id-ID')}</div></div>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {([
+                ['attendance', 'QR agenda / check-in'],
+                ['activity', 'QR aktivitas / checkpoint'],
+                ['competition', 'Lomba / voting'],
+                ['peer_appreciation', 'Apresiasi kawan'],
+                ['bonus', 'Bonus / penyesuaian'],
+              ] as const).map(([category, label]) => {
+                const count = xpTransactions.filter(tx => tx.category === category).length;
+                return <span key={category} className="inline-flex items-center gap-1 rounded-full border border-slate-200 dark:border-white/10 px-2.5 py-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300">{label}<span className="rounded-full bg-slate-100 dark:bg-white/10 px-1.5 py-0.5">{count}</span></span>;
+              })}
+            </div>
+            <div className="overflow-x-auto rounded-xl border border-slate-100 dark:border-white/10">
+              <table className="w-full min-w-[620px] text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-white/[0.04] text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-2.5">Peserta</th><th className="px-3 py-2.5">Sumber / keterangan</th><th className="px-3 py-2.5">Waktu</th><th className="px-3 py-2.5 text-right">XP</th></tr></thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                  {xpLoading ? <tr><td colSpan={4} className="px-3 py-5 text-center text-slate-500">Memuat transaksi dari GAS…</td></tr> : xpTransactions.length === 0 ? <tr><td colSpan={4} className="px-3 py-5 text-center text-slate-500">Belum ada transaksi XP pada event aktif.</td></tr> : xpTransactions.slice(0, 8).map(tx => {
+                    const sourceLabel = tx.category === 'attendance' ? 'QR agenda / check-in' : tx.category === 'activity' ? 'QR aktivitas / checkpoint' : tx.category === 'competition' ? 'Lomba / voting' : tx.category === 'peer_appreciation' ? 'Apresiasi kawan' : 'Bonus / penyesuaian';
+                    const date = tx.timestamp && !Number.isNaN(new Date(tx.timestamp).getTime()) ? new Date(tx.timestamp).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+                    return <tr key={tx.id} className="text-slate-700 dark:text-slate-200"><td className="px-3 py-2.5 font-semibold">{tx.participantName || tx.participantId || 'Peserta tidak dikenal'}</td><td className="px-3 py-2.5"><div className="font-semibold">{sourceLabel}</div><div className="mt-0.5 max-w-[300px] truncate text-[10px] text-slate-500" title={tx.reason}>{tx.reason || 'Tanpa keterangan'}</div></td><td className="px-3 py-2.5 whitespace-nowrap text-slate-500">{date}</td><td className={`px-3 py-2.5 text-right font-black whitespace-nowrap ${tx.amount < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{tx.amount > 0 ? '+' : ''}{tx.amount.toLocaleString('id-ID')}</td></tr>;
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="text-[10px] text-slate-400">{xpLastUpdated ? `Terakhir diperbarui ${xpLastUpdated}` : 'Menunggu data GAS.'} · Menampilkan maksimal 8 transaksi terbaru.</div>
+          </>
+        )}
+      </section>
 
       {/* =========================================================================
           SECTION 2: SEARCH MENU ("Cari fitur...") (Requirement 14)
