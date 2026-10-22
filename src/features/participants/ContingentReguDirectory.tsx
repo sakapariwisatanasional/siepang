@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Search, Users, UserRound, RefreshCw, ShieldCheck, ImageOff } from 'lucide-react';
+import { ArrowLeft, Search, Users, UserRound, RefreshCw, ShieldCheck, ImageOff, UserPlus, X, LoaderCircle, Check } from 'lucide-react';
 import { gudepRegistrationService, ContingentRecord, GudepRecord, GudepDetail } from '../../services/gudepRegistrationService';
 
 type DirectoryContingent = ContingentRecord & { name: string; id: string };
@@ -38,6 +38,11 @@ export const ContingentReguDirectory: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
+  const [linkTarget, setLinkTarget] = useState<{gudep: GudepRecord; regu: {regu_id:string; regu_name:string; gender:'PUTRA'|'PUTRI'; quota:number}} | null>(null);
+  const [candidateQuery, setCandidateQuery] = useState('');
+  const [linkingId, setLinkingId] = useState('');
+  const [linkError, setLinkError] = useState('');
+  const [linkSuccess, setLinkSuccess] = useState('');
 
   const loadList = useCallback(async () => {
     setLoading(true); setError('');
@@ -76,7 +81,7 @@ export const ContingentReguDirectory: React.FC = () => {
   const renderRegu = (gender: 'PUTRA' | 'PUTRI') => {
     const rows = bundles.flatMap(bundle => bundle.detail.regu
       .filter(r => clean(r.gender).toUpperCase() === gender)
-      .map(regu => ({ bundle, regu, members: (bundle.detail.participants || []).filter(p => p.regu_id === regu.regu_id) })));
+      .map(regu => ({ bundle, regu, members: (bundle.detail.participants || []).filter(p => clean(p.regu_id) === clean(regu.regu_id)) })));
     return (
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-4 flex items-center justify-between gap-3">
@@ -86,6 +91,7 @@ export const ContingentReguDirectory: React.FC = () => {
           <div className="space-y-4">{rows.map(({ bundle, regu, members }) => <div key={regu.regu_id} className="rounded-xl border border-slate-200 p-3">
             <div className="mb-3 flex flex-wrap items-start justify-between gap-2"><div><h4 className="font-semibold text-slate-900">{regu.regu_name}</h4><p className="mt-0.5 text-xs text-slate-500">{bundle.gudep.gudep_number} · {bundle.gudep.institution_name || bundle.gudep.gudep_name}</p></div><span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusClass(regu.verification_status)}`}>{statusLabel(regu.verification_status)}</span></div>
             <div className="mb-3 text-xs text-slate-500">{members.length} peserta{regu.quota ? ` · Kuota ${regu.quota}` : ''}</div>
+            <button type="button" onClick={() => { setLinkTarget({ gudep: bundle.gudep, regu }); setCandidateQuery(''); setLinkError(''); setLinkSuccess(''); }} disabled={members.length >= Number(regu.quota || 0)} className="mb-3 inline-flex min-h-9 items-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"><UserPlus className="h-4 w-4"/> Tautkan peserta dari sekolah ini</button>
             {members.length === 0 ? <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">Belum ada peserta yang ditautkan ke regu ini.</p> : <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">{members.map(member => {
               const url = photoUrl(member);
               return <article key={member.id} className="min-w-0 min-w-0 rounded-lg border border-slate-200 bg-white p-2.5 text-center">
@@ -118,5 +124,23 @@ export const ContingentReguDirectory: React.FC = () => {
       {detailLoading ? <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">Memuat regu dan daftar peserta...</div> : bundles.length === 0 ? <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Belum ada Gudep yang terhubung dengan ID kontingen ini. Data tidak dicocokkan otomatis berdasarkan kemiripan nama agar peserta tidak masuk ke kontingen yang salah.</div> : <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">{renderRegu('PUTRA')}{renderRegu('PUTRI')}</div>}
       <p className="flex items-start gap-2 text-xs text-slate-500"><UserRound className="mt-0.5 h-4 w-4 shrink-0"/>Foto ditampilkan dari sumber profil resmi peserta. Jika foto tidak tersedia atau gagal dimuat, halaman menampilkan inisial nama.</p>
     </>}
+    {linkTarget && (() => {
+      const bundle = bundles.find(b => b.gudep.gudep_id === linkTarget.gudep.gudep_id);
+      const candidates = (bundle?.detail.eligibleParticipants || []).filter(p => {
+        const gender = clean(p.gender).toUpperCase();
+        const genderOk = linkTarget.regu.gender === 'PUTRA' ? ['M','MALE','LAKI-LAKI','PUTRA'].includes(gender) : ['F','FEMALE','PEREMPUAN','PUTRI'].includes(gender);
+        const q = candidateQuery.trim().toLocaleLowerCase('id');
+        return genderOk && (!q || [p.name,p.membership_number].some(v => clean(v).toLocaleLowerCase('id').includes(q)));
+      });
+      return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-3 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="link-participant-title">
+        <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4 sm:p-5"><div><p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Penautan anggota</p><h2 id="link-participant-title" className="mt-1 text-lg font-bold text-slate-900">Pilih peserta dari sekolah/kontingen</h2><p className="mt-1 text-sm text-slate-500">{linkTarget.gudep.institution_name || linkTarget.gudep.gudep_name} · Regu {linkTarget.regu.regu_name}</p></div><button type="button" onClick={() => setLinkTarget(null)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Tutup"><X className="h-5 w-5"/></button></div>
+          <div className="border-b border-slate-100 p-4"><label className="relative block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={candidateQuery} onChange={e => setCandidateQuery(e.target.value)} placeholder="Cari nama atau nomor anggota..." className="w-full rounded-xl border border-slate-200 py-3 pl-9 pr-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"/></label><p className="mt-2 text-xs text-slate-500">Hanya peserta yang terdaftar pada sekolah/kontingen ini dan sesuai kategori regu yang ditampilkan.</p></div>
+          {linkError && <div role="alert" className="mx-4 mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{linkError}</div>}{linkSuccess && <div role="status" className="mx-4 mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{linkSuccess}</div>}
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">{candidates.length === 0 ? <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">Tidak ada peserta tersedia yang cocok. Periksa sekolah/kontingen, jenis kelamin, atau status tautan peserta.</div> : <div className="space-y-2">{candidates.map(p => { const busy = linkingId === p.id; const photo = photoUrl(p as NonNullable<GudepDetail['participants']>[number]); return <div key={p.id} className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"><div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-sm font-bold text-slate-600">{photo ? <img src={photo} alt="" className="h-full w-full object-cover"/> : initials(p.name)}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-slate-800">{p.name}</p><p className="truncate text-xs text-slate-500">{p.membership_number || 'Nomor anggota belum tersedia'}</p></div><button type="button" disabled={!!linkingId} onClick={() => { void (async () => { setLinkingId(p.id); setLinkError(''); setLinkSuccess(''); try { await gudepRegistrationService.linkExistingParticipant({gudep_id:linkTarget.gudep.gudep_id,regu_id:linkTarget.regu.regu_id,participant_id:p.id}); setLinkSuccess(`${p.name} berhasil ditautkan ke Regu ${linkTarget.regu.regu_name}.`); const refreshed = await gudepRegistrationService.detail(linkTarget.gudep.gudep_id); setBundles(old => old.map(b => b.gudep.gudep_id === linkTarget.gudep.gudep_id ? {gudep:b.gudep,detail:refreshed} : b)); } catch(e) { setLinkError(e instanceof Error ? e.message : 'Gagal menautkan peserta.'); } finally { setLinkingId(''); } })(); }} className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-60">{busy ? <LoaderCircle className="h-4 w-4 animate-spin"/> : <UserPlus className="h-4 w-4"/>}{busy ? 'Menyimpan' : 'Tautkan'}</button></div>; })}</div>}</div>
+          <div className="flex justify-end border-t border-slate-200 bg-slate-50 p-4"><button type="button" onClick={() => { setLinkTarget(null); setLinkSuccess(''); }} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Selesai</button></div>
+        </div>
+      </div>;
+    })()}
   </div>;
 };
