@@ -771,6 +771,7 @@ export interface XPTransaction {
   amount: number;
   reason: string;
   category: 'attendance' | 'competition' | 'peer_appreciation' | 'bonus' | 'activity';
+  sourceType?: string;
   timestamp: string;
 }
 
@@ -1548,6 +1549,14 @@ export type SystemFeatureKey =
   | 'COMPETITION_GALLERY'
   | 'VOTING'
   | 'POINTS_XP'
+  | 'XP_PEER_APPRECIATION'
+  | 'XP_USER_AWARD'
+  | 'XP_COMMITTEE_AWARD'
+  | 'XP_ATTENDANCE_REWARD'
+  | 'XP_CHECKPOINT_REWARD'
+  | 'XP_COMPETITION_REWARD'
+  | 'XP_VOTING_REWARD'
+  | 'XP_MANUAL_AWARD'
   | 'BADGES'
   | 'PARTICIPANT_LEADERBOARD'
   | 'CONTINGENT_LEADERBOARD'
