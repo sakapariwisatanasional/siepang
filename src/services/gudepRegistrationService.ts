@@ -7,6 +7,7 @@
  */
 import { apiTransport } from './apiTransport';
 
+export type ContingentRecord = { id: string; event_id?: string; name: string; region?: string; leader_name?: string; verification_status?: string; };
 export type GudepRecord = {
   gudep_id: string; event_id: string; gudep_name: string; gudep_number: string;
   institution_name?: string; registration_status: string; verification_status: string; activation_status?: 'ACTIVE' | 'INACTIVE';
@@ -27,6 +28,7 @@ export type GudepDetail = {
   gudep: GudepRecord; regu: GudepRegu[]; advisors: GudepAdvisor[]; operators: GudepOperator[];
   participantLinks: Array<{ id: string; participant_id: string; regu_id: string; gudep_id: string; status: string }>;
   advisorRegu: unknown[];
+  eligibleParticipants?: Array<{ id: string; name: string; gender: string; membership_number?: string; profile_photo_url?: string; profile_photo_file_id?: string; institution?: string; contingent_id?: string; status?: string }>;
 };
 
 const send = async <T>(action: string, payload: Record<string, unknown>): Promise<T> => {
@@ -36,7 +38,7 @@ const send = async <T>(action: string, payload: Record<string, unknown>): Promis
 };
 
 export const gudepRegistrationService = {
-  list: () => send<{ gudep: GudepRecord[] }>('gudep.registration.list', {}),
+  list: () => send<{ gudep: GudepRecord[]; contingents: ContingentRecord[] }>('gudep.registration.list', {}),
   // Khusus pilihan pada formulir pendaftaran peserta. Tidak mengubah daftar Gudep
   // pada panel pengelolaan/administrasi yang tetap menggunakan list().
   listForParticipantRegistration: () => send<{ gudep: GudepRecord[] }>('gudep.participant.registration.options', {}),
