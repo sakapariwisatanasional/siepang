@@ -20,8 +20,11 @@ export type GudepAdvisor = {
   advisor_id: string; gudep_id: string; full_name: string; gender?: string;
   verification_status?: string; activation_status?: 'ACTIVE' | 'INACTIVE';
 };
+export type GudepOperator = {
+  user_id: string; name: string; email: string; status: string; assigned_at?: string;
+};
 export type GudepDetail = {
-  gudep: GudepRecord; regu: GudepRegu[]; advisors: GudepAdvisor[];
+  gudep: GudepRecord; regu: GudepRegu[]; advisors: GudepAdvisor[]; operators: GudepOperator[];
   participantLinks: Array<{ id: string; participant_id: string; regu_id: string; gudep_id: string; status: string }>;
   advisorRegu: unknown[];
 };
