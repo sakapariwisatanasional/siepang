@@ -98,6 +98,7 @@ class PointService {
       reason: String(r.reason || ''),
       category: (['attendance', 'competition', 'peer_appreciation', 'bonus', 'activity'].includes(String(r.source_type))
         ? String(r.source_type) : 'bonus') as XPTransaction['category'],
+      sourceType: String(r.source_type || ''),
       timestamp: String(r.created_at || ''),
     }));
     this.notify();
