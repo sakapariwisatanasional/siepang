@@ -21,6 +21,7 @@ export const GudepReguManager: React.FC = () => {
   const [selectedId, setSelectedId] = useState('');
   const [regu, setRegu] = useState<GudepRegu[]>([]);
   const [advisors, setAdvisors] = useState<GudepAdvisor[]>([]);
+  const [assignedOperators, setAssignedOperators] = useState<Array<{user_id:string;name:string;email:string;status:string;assigned_at?:string}>>([]);
   const [availableUsers, setAvailableUsers] = useState<ManagedUser[]>([]);
   const [assignUserId, setAssignUserId] = useState('');
   const [usersLoading, setUsersLoading] = useState(false);
@@ -88,6 +89,9 @@ export const GudepReguManager: React.FC = () => {
       // This is an additive role grant and does not revoke any existing role.
       await userManagementService.grantAdditionalRoles(assignUserId, ['registration_officer'], 'EVENT');
       setAvailableUsers(await userManagementService.refreshUsers());
+      const refreshedDetail = await gudepRegistrationService.detail(selectedId);
+      setAdvisors(refreshedDetail.advisors || []);
+      setAssignedOperators(refreshedDetail.operators || []);
       setMessage(`Akun ${target.name || target.email} berhasil ditugaskan ke ${selected?.gudep_name || 'Gudep'} dan diberi akses menu Data Peserta. Backend tetap membatasi pendaftaran ke Gudep yang ditugaskan.`);
       setAssignUserId('');
     } catch (e: any) {
@@ -96,10 +100,10 @@ export const GudepReguManager: React.FC = () => {
   };
   useEffect(() => {
     const current = ++detailRequest.current;
-    if (!selectedId) { setRegu([]); setAdvisors([]); setDetailLoading(false); return; }
-    setDetailLoading(true); setRegu([]); setAdvisors([]);
+    if (!selectedId) { setRegu([]); setAdvisors([]); setAssignedOperators([]); setDetailLoading(false); return; }
+    setDetailLoading(true); setRegu([]); setAdvisors([]); setAssignedOperators([]);
     gudepRegistrationService.detail(selectedId).then(data => {
-      if (current === detailRequest.current) { setRegu(data.regu || []); setAdvisors(data.advisors || []); }
+      if (current === detailRequest.current) { setRegu(data.regu || []); setAdvisors(data.advisors || []); setAssignedOperators(data.operators || []); }
     }).catch((e: any) => {
       if (current === detailRequest.current) setError(e?.message || 'Gagal membaca regu.');
     }).finally(() => { if (current === detailRequest.current) setDetailLoading(false); });
@@ -125,7 +129,7 @@ export const GudepReguManager: React.FC = () => {
       setMessage(`Regu ${result.regu.regu_name} berhasil disimpan di GAS.`);
       reguKey.current = newKey(); setRForm(blankRegu()); setAddRegu(false);
       const updated = await gudepRegistrationService.detail(selectedId);
-      setRegu(updated.regu || []); setAdvisors(updated.advisors || []);
+      setRegu(updated.regu || []); setAdvisors(updated.advisors || []); setAssignedOperators(updated.operators || []);
     } catch (err: any) { setError(err?.message || 'Penyimpanan regu gagal.'); }
     finally { setBusy(false); }
   };
@@ -153,7 +157,7 @@ export const GudepReguManager: React.FC = () => {
       setDecisionNotes('');
       await load(selectedId);
       const fresh = await gudepRegistrationService.detail(selectedId);
-      setRegu(fresh.regu || []); setAdvisors(fresh.advisors || []);
+      setRegu(fresh.regu || []); setAdvisors(fresh.advisors || []); setAssignedOperators(fresh.operators || []);
       setMessage(`Keputusan verifikasi Gudep ${decision} berhasil disimpan ke GAS. Verifikasi Regu dilakukan secara terpisah.`);
     } catch (e: any) { setError(e?.message || 'Gagal menyimpan keputusan verifikasi.'); }
     finally { setBusy(false); }
@@ -182,7 +186,7 @@ export const GudepReguManager: React.FC = () => {
     try {
       await gudepRegistrationService.submitRegu(selectedId, reguId);
       const fresh = await gudepRegistrationService.detail(selectedId);
-      setRegu(fresh.regu || []); setAdvisors(fresh.advisors || []);
+      setRegu(fresh.regu || []); setAdvisors(fresh.advisors || []); setAssignedOperators(fresh.operators || []);
       setMessage(`Pengajuan Regu ${reguName} berhasil dikirim ke GAS.`);
     } catch (e: any) { setError(e?.message || 'Gagal mengajukan Regu.'); }
     finally { setBusy(false); }
@@ -199,7 +203,7 @@ export const GudepReguManager: React.FC = () => {
       await gudepRegistrationService.verifyRegu(selectedId, reguId, decision, note);
       setReguNotes(prev => ({ ...prev, [reguId]: '' }));
       const fresh = await gudepRegistrationService.detail(selectedId);
-      setRegu(fresh.regu || []); setAdvisors(fresh.advisors || []);
+      setRegu(fresh.regu || []); setAdvisors(fresh.advisors || []); setAssignedOperators(fresh.operators || []);
       setMessage(`Keputusan verifikasi Regu ${reguName}: ${decision} berhasil disimpan ke GAS.`);
     } catch (e: any) { setError(e?.message || `Gagal memverifikasi Regu ${reguName}.`); }
     finally { setBusy(false); }
@@ -213,7 +217,7 @@ export const GudepReguManager: React.FC = () => {
       await gudepRegistrationService.activateGudep(selectedId,status);
       await load(selectedId);
       const result = await gudepRegistrationService.detail(selectedId);
-      setRegu(result.regu || []); setAdvisors(result.advisors || []);
+      setRegu(result.regu || []); setAdvisors(result.advisors || []); setAssignedOperators(result.operators || []);
       setMessage(`Gudep beserta Regu berhasil ${status === 'ACTIVE' ? 'diaktifkan' : 'dinonaktifkan'} di GAS.`);
     } catch (e: any) { setError(e?.message || 'Aktivasi Gudep gagal.'); }
     finally { setBusy(false); }
@@ -224,7 +228,7 @@ export const GudepReguManager: React.FC = () => {
     try {
       await gudepRegistrationService.activateRegu(selectedId,id,status);
       const result = await gudepRegistrationService.detail(selectedId);
-      setRegu(result.regu || []); setAdvisors(result.advisors || []);
+      setRegu(result.regu || []); setAdvisors(result.advisors || []); setAssignedOperators(result.operators || []);
       setMessage('Status aktivasi Regu berhasil disimpan di GAS.');
     } catch (e: any) { setError(e?.message || 'Aktivasi Regu gagal.'); }
     finally { setBusy(false); }
@@ -232,7 +236,7 @@ export const GudepReguManager: React.FC = () => {
 
   const beginEditGudep = () => { if (!selected) return; setEditGudepForm({gudep_number:selected.gudep_number || '',gudep_name:selected.gudep_name || '',institution_name:selected.institution_name || ''}); setEditGudep(true); };
   const saveGudepName = async (e: React.FormEvent) => { e.preventDefault(); if (!selected || busy) return; setBusy(true); setError(''); setMessage(''); try { const result = await gudepRegistrationService.updateGudep({gudep_id:selected.gudep_id,...editGudepForm}); setMessage('Identitas Gudep berhasil diperbarui di GAS. ID dan status verifikasi dipertahankan.'); setEditGudep(false); await load(result.gudep.gudep_id); } catch (err:any) { setError(err?.message || 'Perubahan Gudep gagal disimpan.'); } finally { setBusy(false); } };
-  const saveReguName = async (reguId:string) => { if (!selected || busy || !editingReguName.trim()) return; setBusy(true); setError(''); setMessage(''); try { await gudepRegistrationService.updateRegu({gudep_id:selected.gudep_id,regu_id:reguId,regu_name:editingReguName.trim()}); const result=await gudepRegistrationService.detail(selected.gudep_id); setRegu(result.regu || []); setAdvisors(result.advisors || []); setEditingReguId(''); setEditingReguName(''); setMessage('Nama regu berhasil diperbarui di GAS. ID dan relasi peserta dipertahankan.'); } catch(err:any) { setError(err?.message || 'Perubahan nama regu gagal disimpan.'); } finally { setBusy(false); } };
+  const saveReguName = async (reguId:string) => { if (!selected || busy || !editingReguName.trim()) return; setBusy(true); setError(''); setMessage(''); try { await gudepRegistrationService.updateRegu({gudep_id:selected.gudep_id,regu_id:reguId,regu_name:editingReguName.trim()}); const result=await gudepRegistrationService.detail(selected.gudep_id); setRegu(result.regu || []); setAdvisors(result.advisors || []); setAssignedOperators(result.operators || []); setEditingReguId(''); setEditingReguName(''); setMessage('Nama regu berhasil diperbarui di GAS. ID dan relasi peserta dipertahankan.'); } catch(err:any) { setError(err?.message || 'Perubahan nama regu gagal disimpan.'); } finally { setBusy(false); } };
   const selected = gudep.find(g => g.gudep_id === selectedId);
   const locked = selected?.registration_status === 'SUBMITTED' || selected?.verification_status === 'VERIFIED';
   // Gudep VERIFIED boleh menerima regu tambahan; SUBMITTED/PENDING tetap terkunci.
@@ -290,7 +294,7 @@ export const GudepReguManager: React.FC = () => {
               {editGudep && <form onSubmit={saveGudepName} className="rounded-xl border border-blue-200 bg-white p-3 space-y-3 dark:border-blue-500/30 dark:bg-white/[0.03]"><div className="grid grid-cols-1 gap-2 sm:grid-cols-3"><div><label className={labelClass}>Nomor Gudep</label><input required maxLength={60} className={inputClass} value={editGudepForm.gudep_number} onChange={e=>setEditGudepForm(p=>({...p,gudep_number:e.target.value}))}/></div><div><label className={labelClass}>Nama Gudep</label><input required maxLength={150} className={inputClass} value={editGudepForm.gudep_name} onChange={e=>setEditGudepForm(p=>({...p,gudep_name:e.target.value}))}/></div><div><label className={labelClass}>Nama pangkalan/sekolah</label><input maxLength={150} className={inputClass} value={editGudepForm.institution_name} onChange={e=>setEditGudepForm(p=>({...p,institution_name:e.target.value}))}/></div></div><div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={()=>setEditGudep(false)} disabled={busy} className="min-h-9 rounded-lg border px-3 text-xs font-bold">Batal</button><button type="submit" disabled={busy} className="min-h-9 rounded-lg bg-blue-700 px-3 text-xs font-bold text-white">{busy?'Menyimpan…':'Simpan perubahan'}</button></div></form>}
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div className="rounded-lg bg-white p-3 dark:bg-white/5"><p className="text-[10px] font-bold uppercase text-slate-500">Data Pangkalan</p><p className="mt-1 text-xs font-semibold text-slate-900 dark:text-white">{g.institution_name || 'Nama pangkalan belum diisi'}</p><p className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">{g.address || 'Alamat belum diisi'}</p><p className="mt-1 text-[11px] text-slate-600 dark:text-slate-300">Kontak: {g.contact_name || '—'} · {g.contact_phone || 'No. HP belum diisi'}</p><p className="break-all text-[11px] text-slate-600 dark:text-slate-300">{g.contact_email || 'Email belum diisi'}</p></div>
-                <div className="rounded-lg bg-white p-3 dark:bg-white/5"><p className="text-[10px] font-bold uppercase text-slate-500">Pembina / Pendamping / Pimpinan</p>{advisors.length ? <ul className="mt-1 space-y-1">{advisors.map((a: any, index: number) => <li key={a.advisor_id || a.id || `${a.full_name || a.name || 'pembina'}-${index}`} className="text-xs text-slate-800 dark:text-slate-100"><span className="font-semibold">{a.full_name || a.name || 'Nama belum tersedia'}</span><span className="block text-[11px] text-slate-500">{a.email || 'Email —'} · {a.phone || a.contact_phone || 'HP —'}</span></li>)}</ul> : <p className="mt-1 text-xs text-slate-500">Data pembina/pendamping belum tercatat.</p>}<p className="mt-2 text-[10px] text-slate-500">Akun pengelola ditetapkan melalui penugasan di kartu ini.</p></div>
+                <div className="rounded-lg bg-white p-3 dark:bg-white/5"><p className="text-[10px] font-bold uppercase text-slate-500">Pembina / Pendamping / Pimpinan</p>{advisors.length > 0 || assignedOperators.length > 0 ? <div className="mt-1 space-y-2">{advisors.map((a: any, index: number) => <div key={a.advisor_id || a.id || `${a.full_name || a.name || 'pembina'}-${index}`} className="text-xs text-slate-800 dark:text-slate-100"><span className="font-semibold">{a.full_name || a.name || 'Nama belum tersedia'}</span><span className="block text-[11px] text-slate-500">{a.email || 'Email —'} · {a.phone || a.contact_phone || 'HP —'}</span></div>)}{assignedOperators.map((operator, index) => <div key={operator.user_id || `${operator.email}-${index}`} className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs text-emerald-900 dark:border-emerald-500/20 dark:bg-emerald-950/20 dark:text-emerald-100"><span className="block text-[10px] font-bold uppercase tracking-wide">Petugas pengelola Gudep</span><span className="font-semibold">{operator.name || operator.email || operator.user_id}</span>{operator.email && <span className="block text-[11px] opacity-80">{operator.email}</span>}</div>)}</div> : <p className="mt-1 text-xs text-slate-500">Data pembina/pendamping belum tercatat dan belum ada petugas pengelola yang ditugaskan.</p>}<p className="mt-2 text-[10px] text-slate-500">Akun pengelola yang ditugaskan melalui panel di bawah ditampilkan di sini.</p></div>
               </div>
 
               <div className="rounded-xl border border-slate-200 p-3 dark:border-white/10 space-y-3">
