@@ -98,7 +98,6 @@ class PointService {
       reason: String(r.reason || ''),
       category: (['attendance', 'competition', 'peer_appreciation', 'bonus', 'activity'].includes(String(r.source_type))
         ? String(r.source_type) : 'bonus') as XPTransaction['category'],
-      sourceType: String(r.source_type || ''),
       timestamp: String(r.created_at || ''),
     }));
     this.notify();
@@ -127,22 +126,11 @@ class PointService {
       if (category === 'peer_appreciation' && !peerKind) throw new Error('Jenis apresiasi tidak dikenal.');
       const referenceId = category === 'peer_appreciation'
         ? `peer:${eventService.getCurrentEvent()?.id}:${actor.id}:${participantId}:${peerKind}` : '';
-      if (category === 'peer_appreciation') {
-        // List all transactions so legacy (date-scoped) references are checked too.
-        const existing = await apiTransport.send<{ records: any[] }>('admin.entity.list', {
-          entity: 'pointTransactions', filters: { participant_id: participantId },
-        });
-        if (!existing.ok || !Array.isArray(existing.data?.records)) {
-          throw new Error(existing.error?.message || 'Tidak dapat memeriksa apresiasi sebelumnya.');
-        }
-        if (existing.data.records.some(r =>
-          r.source_type === 'peer_appreciation' && String(r.created_by) === actor.id &&
-          String(r.reason) === reason
-        )) throw new Error('Apresiasi ini sudah pernah Anda berikan kepada peserta tersebut.');
-        if (actor.participantCode) {
-          const target = participantService.getParticipants().find(p => p.id === participantId);
-          if (target?.code === actor.participantCode) throw new Error('Tidak boleh memberikan apresiasi kepada diri sendiri.');
-        }
+      if (category === 'peer_appreciation' && actor.participantCode) {
+        // Fast local self-appreciation guard. Duplicate history is validated atomically
+        // by adminPeerAppreciationUpsert_ under LockService in GAS.
+        const target = participantService.getParticipants().find(p => p.id === participantId);
+        if (target?.code === actor.participantCode) throw new Error('Tidak boleh memberikan apresiasi kepada diri sendiri.');
       }
       const saved = await apiTransport.send<{ record: any }>('admin.entity.upsert', {
         entity: 'pointTransactions',
@@ -166,7 +154,15 @@ class PointService {
         amount: Number(row.amount), reason: String(row.reason || reason),
         category, timestamp: String(row.created_at || now),
       };
-      await this.refreshTransactions();
+      if (category === 'peer_appreciation') {
+        // GAS has already verified the write and reconciled Participants.points.
+        // Avoid a second full-ledger read on every appreciation scan; update local UI
+        // from the authoritative transaction returned by the server instead.
+        this.transactions = [tx, ...this.transactions.filter(item => item.id !== tx.id)];
+        this.notify();
+      } else {
+        await this.refreshTransactions();
+      }
       return tx;
     } finally {
       this.inFlight.delete(key);
