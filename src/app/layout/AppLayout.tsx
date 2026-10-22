@@ -84,8 +84,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   return (
     <div className="relative isolate min-h-screen min-w-0 flex flex-col bg-[#FFF8F7] dark:bg-[#0E0E12] text-[#1F1F1F] dark:text-slate-100 transition-colors">
       <AppBackgroundDecor />
-      {/* Top Header */}
-      <div className="relative z-10">
+      {/* Top Header: keep header popovers above the dashboard content stacking context. */}
+      <div className="relative z-40">
       <GlobalHeader
         onOpenScanner={onOpenScanner}
         onOpenSyncCenter={onOpenSyncCenter}
