@@ -148,7 +148,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
 
     // 1. Check if Activity QR or Checkpoint QR token (Requirements 8-10)
     const actConfig = activityQrService.getConfigByToken(code);
-    const isActToken = Boolean(actConfig) || code.startsWith('AGENDA_') || code.startsWith('SIEPANG-CP-') || code.includes('ACT_') || code.includes('CP_') || code.startsWith('SIEPANG:QR:v1:ACT');
+    const isActToken = Boolean(actConfig) || code.startsWith('AGENDA_') || code.includes('ACT_') || code.includes('CP_') || code.startsWith('SIEPANG:QR:v1:ACT');
     if (isActToken) {
       try {
         const scanRes = await activityQrService.scanActivityQr(code);
@@ -426,9 +426,16 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
             </div>
           )}
           {scanPaused && !isResolving && !scannedParticipant && !scannedUserQr && !scannedActivityResult && !scannedVisitor && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 text-center px-6 gap-3 z-10">
-              <div className="text-sm">{actionErrorMessage ? 'QR belum dikenali' : 'Pemindaian selesai'}</div>
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 overflow-y-auto bg-black/90 px-5 py-6 text-center">
+              <div className="text-base font-semibold text-white">{actionErrorMessage ? 'QR belum berhasil diproses' : 'Pemindaian selesai'}</div>
+              {actionErrorMessage && (
+                <div role="alert" className="w-full max-w-sm rounded-xl border border-rose-500/40 bg-rose-950/80 p-3 text-left text-xs leading-relaxed text-rose-100 break-words">
+                  <div className="mb-1 font-bold text-rose-300">Penyebab</div>
+                  {actionErrorMessage}
+                </div>
+              )}
               <button type="button" onClick={() => { setActionErrorMessage(null); setScanPaused(false); setCameraRetry(v => v + 1); }} className="rounded-lg bg-emerald-600 px-5 py-3 font-bold text-white">Scan Ulang</button>
+              <div className="max-w-sm text-[11px] leading-relaxed text-slate-300">Jika penyebab menyebut akun belum terhubung, hubungkan akun dengan data peserta terlebih dahulu. Jika menyebut QR tidak aktif atau event berbeda, terbitkan QR dari agenda aktif yang benar.</div>
             </div>
           )}
           {cameraReady && !cameraError && !scanPaused && (
