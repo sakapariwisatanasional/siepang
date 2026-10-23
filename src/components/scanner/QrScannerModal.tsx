@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { resolveGoogleDriveImageUrl } from '../../utils/googleDriveImage';
 import {
   X,
   Zap,
@@ -23,7 +24,6 @@ import {
   ShieldCheck,
   AlertTriangle,
   Lock,
-  LoaderCircle,
 } from 'lucide-react';
 import { participantService } from '../../services/participantService';
 import { attendanceService } from '../../services/attendanceService';
@@ -79,7 +79,6 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   // Anti-abuse state
   const [givenTypes, setGivenTypes] = useState<Set<PeerAppreciationType>>(new Set());
   const [checkingAppreciations, setCheckingAppreciations] = useState(false);
-  const [savingAppreciation, setSavingAppreciation] = useState<PeerAppreciationType | null>(null);
 
   const currentUser = authService.getCurrentUser();
   const currentRole = currentUser?.role || 'viewer';
@@ -364,23 +363,19 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   };
 
   const handlePeerAppreciation = async (type: PeerAppreciationType) => {
-    if (!scannedParticipant || savingAppreciation) return;
-    setSavingAppreciation(type);
-    setActionErrorMessage(null);
+    if (!scannedParticipant) return;
     try {
       await pointService.givePeerAppreciation(scannedParticipant.id, scannedParticipant.name, type);
       setGivenTypes(prev => new Set(prev).add(type));
       setShowPeerModal(false);
-      setActionSuccessMessage(`Apresiasi ${PEER_APPRECIATIONS.find(item => item.type === type)?.label || type} berhasil disimpan.`);
+      setActionSuccessMessage(`⚜️ Apresiasi "${type}" tersimpan di GAS (PointTransactions).`);
       setTimeout(() => {
         setActionSuccessMessage(null);
         setScannedParticipant(null);
         onClose();
       }, 1500);
     } catch (err: any) {
-      setActionErrorMessage(err?.message || 'Apresiasi belum berhasil disimpan. Silakan coba lagi.');
-    } finally {
-      setSavingAppreciation(null);
+      setActionErrorMessage(err.message);
     }
   };
 
@@ -498,7 +493,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                 {/* Participant Identity Card Header */}
                 <div className="flex items-center gap-3.5 pb-4 border-b border-[#ECECEF] dark:border-white/10">
                   <img
-                    src={scannedParticipant.photoUrl}
+                    src={resolveGoogleDriveImageUrl(scannedParticipant.photoUrl, (scannedParticipant as any).profile_photo_file_id, 320)}
                     alt={scannedParticipant.name}
                     className="w-14 h-14 rounded-2xl object-cover border-2 border-emerald-500/40"
                   />
@@ -563,8 +558,8 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                     className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-semibold text-xs transition-colors border border-amber-500/30 cursor-pointer"
                   >
                     <div className="flex items-center gap-2.5">
-                      {checkingAppreciations ? <LoaderCircle className="w-4 h-4 text-amber-500 animate-spin" /> : <HeartHandshake className="w-4 h-4 text-amber-500" />}
-                      <span>{checkingAppreciations ? 'Memeriksa riwayat apresiasi…' : 'Beri Tanda Apresiasi Kawan Pramuka'}</span>
+                      <HeartHandshake className="w-4 h-4 text-amber-500" />
+                      <span>Beri Tanda Apresiasi Kawan Pramuka</span>
                     </div>
                     <ChevronRight className="w-4 h-4 text-amber-500" />
                   </button>
@@ -610,10 +605,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <div className="w-full max-w-sm bg-white dark:bg-[#141418] border border-amber-500/30 rounded-[28px] p-5 space-y-4 shadow-2xl">
             <div className="text-center space-y-1">
-              <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                <HeartHandshake className="h-6 w-6" />
-              </div>
-              <div className="text-base font-bold text-[#171717] dark:text-white">Apresiasi Kawan Kemah</div>
+              <div className="text-sm font-bold text-[#171717] dark:text-white">Apresiasi Kawan Kemah ⚜️</div>
               <div className="text-xs text-slate-600 dark:text-slate-300">
                 Pilih karakter kepramukaan yang paling menonjol pada <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{scannedParticipant.name}</span>:
               </div>
@@ -622,27 +614,12 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
               </div>
             </div>
 
-            {savingAppreciation && (
-              <div role="status" aria-live="polite" className="flex items-center gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-left">
-                <LoaderCircle className="h-5 w-5 shrink-0 animate-spin text-amber-500" />
-                <div className="min-w-0">
-                  <div className="text-xs font-bold text-slate-900 dark:text-white">Sedang menyimpan XP…</div>
-                  <div className="text-[11px] text-slate-600 dark:text-slate-300">Tunggu sebentar, jangan pindai ulang.</div>
-                </div>
-                <span className="ml-auto h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-amber-500" />
-              </div>
-            )}
             <div className="space-y-2">
-              {PEER_APPRECIATIONS.map(item => {
-                const isSavingThis = savingAppreciation === item.type;
-                const isBusy = savingAppreciation !== null;
-                return (
+              {PEER_APPRECIATIONS.map(item => (
                 <button
                   key={item.type}
-                  type="button"
-                  disabled={isBusy || givenTypes.has(item.type)}
                   onClick={() => handlePeerAppreciation(item.type)}
-                  className={`w-full flex items-center justify-between p-3.5 rounded-2xl border text-left transition-all ${isBusy || givenTypes.has(item.type) ? 'cursor-not-allowed opacity-65 border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5' : 'cursor-pointer border-[#ECECEF] dark:border-white/10 bg-white dark:bg-white/5 hover:border-amber-400 hover:bg-amber-500/10 active:scale-[0.99]'}`}
+                  className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-white/5 hover:bg-amber-500/15 border border-[#ECECEF] dark:border-white/10 text-left transition-colors cursor-pointer"
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-sm">
@@ -657,20 +634,16 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                       <div className="text-[10px] text-slate-500 dark:text-slate-400">{item.type}</div>
                     </div>
                   </div>
-                  <div className="flex min-w-[86px] items-center justify-end gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                    {isSavingThis ? <><LoaderCircle className="h-4 w-4 animate-spin" /><span>Menyimpan</span></> : givenTypes.has(item.type) ? <span>Sudah diberikan</span> : <span>+{item.xp} XP</span>}
-                  </div>
+                  <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{givenTypes.has(item.type) ? 'Sudah diberikan' : `+${item.xp} XP`}</div>
                 </button>
-                );
-              })}
+              ))}
             </div>
 
             <button
-              disabled={savingAppreciation !== null}
               onClick={() => setShowPeerModal(false)}
-              className="w-full rounded-xl py-2.5 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white"
+              className="w-full py-2 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
             >
-              {savingAppreciation ? 'Penyimpanan sedang berlangsung…' : 'Batal'}
+              Batal
             </button>
           </div>
         </div>
