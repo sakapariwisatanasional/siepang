@@ -22,6 +22,7 @@ import {
   Check,
 } from 'lucide-react';
 import { ActivityQrConfig } from '../../types';
+import { QrImage } from '../../components/qr/QrImage';
 import { eventStudioService } from '../../services/eventStudioService';
 import { brandingService } from '../../services/brandingService';
 
@@ -254,11 +255,7 @@ export const ActivityQrSignPrint: React.FC<ActivityQrSignPrintProps> = ({
                 {/* Large High-Contrast QR Code */}
                 <div className="my-auto py-2">
                   <div className="w-56 h-56 mx-auto p-3 bg-white border-4 border-slate-900 rounded-2xl shadow-xl flex items-center justify-center">
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(activeConfig.qrToken)}`}
-                      alt={activeConfig.title}
-                      className="w-full h-full object-contain"
-                    />
+                    <QrImage value={activeConfig.qrToken} size={188} className="h-full w-full rounded-xl" imageClassName="p-1" />
                   </div>
                 </div>
 
@@ -327,11 +324,7 @@ export const ActivityQrSignPrint: React.FC<ActivityQrSignPrintProps> = ({
 
                     <div className="my-auto py-6">
                       <div className="w-80 h-80 mx-auto p-4 bg-white border-8 border-slate-950 rounded-3xl shadow-2xl flex items-center justify-center">
-                        <img
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(cfg.qrToken)}`}
-                          alt={cfg.title}
-                          className="w-full h-full object-contain"
-                        />
+                        <QrImage value={cfg.qrToken} size={272} className="h-full w-full rounded-2xl" imageClassName="p-2" />
                       </div>
                     </div>
 
@@ -379,11 +372,7 @@ export const ActivityQrSignPrint: React.FC<ActivityQrSignPrintProps> = ({
                     </div>
 
                     <div className="w-32 h-32 mx-auto p-2 bg-white border-2 border-slate-900 rounded-xl">
-                      <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(cfg.qrToken)}`}
-                        alt={cfg.title}
-                        className="w-full h-full object-contain"
-                      />
+                      <QrImage value={cfg.qrToken} size={112} className="h-full w-full rounded-lg" imageClassName="p-1" />
                     </div>
 
                     <div className="space-y-1">
@@ -426,11 +415,7 @@ export const ActivityQrSignPrint: React.FC<ActivityQrSignPrintProps> = ({
                           </div>
 
                           <div className="w-44 h-44 mx-auto p-3 bg-white border-4 border-slate-950 rounded-2xl shadow">
-                            <img
-                              src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(cfg.qrToken)}`}
-                              alt={cfg.title}
-                              className="w-full h-full object-contain"
-                            />
+                            <QrImage value={cfg.qrToken} size={152} className="h-full w-full rounded-xl" imageClassName="p-1" />
                           </div>
 
                           <div className="space-y-1.5">
