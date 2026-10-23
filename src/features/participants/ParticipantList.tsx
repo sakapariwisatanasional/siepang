@@ -82,6 +82,10 @@ export const ParticipantList: React.FC = () => {
   const [revisionModalTarget, setRevisionModalTarget] = useState<Participant | null>(null);
   const [revisionReasonText, setRevisionReasonText] = useState('Foto KTA atau dokumen izin kurang jelas, mohon unggah ulang.');
   const [showImportModal, setShowImportModal] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importPreviewRows, setImportPreviewRows] = useState<Record<string, string>[]>([]);
+  const [selectedImportIndexes, setSelectedImportIndexes] = useState<number[]>([]);
+  const [importRowResults, setImportRowResults] = useState<Array<{row:number;status:string;name?:string;error?:string}>>([]);
   const [showStepRegModal, setShowStepRegModal] = useState(false);
   const [showGudepManager, setShowGudepManager] = useState(false);
   const [managerGudep, setManagerGudep] = useState<GudepRecord[]>([]);
@@ -136,17 +140,13 @@ export const ParticipantList: React.FC = () => {
   // Import State (Requirement 12)
   const [importStep, setImportStep] = useState<'upload' | 'preview' | 'result'>('upload');
   const [rawCsvText, setRawCsvText] = useState('');
-  const [importRows, setImportRows] = useState<Array<{sourceRow:number; raw:any; mapped:any; selected:boolean; error:string}>>([]);
-  const [importBusy, setImportBusy] = useState(false);
-  const [importGudepOptions, setImportGudepOptions] = useState<GudepRecord[]>([]);
-  const [importGudepId, setImportGudepId] = useState('');
-  const [importReguOptions, setImportReguOptions] = useState<GudepRegu[]>([]);
-  const [importReguId, setImportReguId] = useState('');
-  const [importTargetLoading, setImportTargetLoading] = useState(false);
-  const [importTargetError, setImportTargetError] = useState('');
+  const [importFileName, setImportFileName] = useState('');
+  const [importBatchId, setImportBatchId] = useState(() => makeRequestKey());
   const [importResult, setImportResult] = useState<{
-    accepted: number; needsReview: number; rejected: number; duplicatesCount: number;
-    details?: Array<{row:number; status:string; participant_id?:string; message?:string}>;
+    accepted: number;
+    needsReview: number;
+    rejected: number;
+    duplicatesCount: number;
   } | null>(null);
 
   const [toast, setToast] = useState<string | null>(null);
@@ -475,130 +475,139 @@ export const ParticipantList: React.FC = () => {
     });
   };
 
-  // Import target options come from the authoritative GAS Gudep endpoints.
-  useEffect(() => {
-    if (!showImportModal) return;
-    let active = true;
-    setImportTargetLoading(true);
-    setImportTargetError('');
-    gudepRegistrationService.listForParticipantRegistration().then(({ gudep }) => {
-      if (!active) return;
-      const available = (gudep || []).filter(g => {
-        const verification = String(g.verification_status || '').trim().toUpperCase();
-        const activation = String(g.activation_status || '').trim().toUpperCase();
-        const contingentVerification = String(g.contingent_verification_status || '').trim().toUpperCase();
-        return verification === 'VERIFIED' && (!activation || activation === 'ACTIVE') && (!contingentVerification || contingentVerification === 'VERIFIED');
-      });
-      setImportGudepOptions(available);
-    }).catch((err:any) => {
-      if (active) { setImportGudepOptions([]); setImportTargetError(err?.message || 'Daftar kontingen/sekolah tidak dapat dimuat dari GAS.'); }
-    }).finally(() => { if (active) setImportTargetLoading(false); });
-    return () => { active = false; };
-  }, [showImportModal]);
+  // Import XLS/XLSX/CSV: normalize common Indonesian/English headers to the canonical GAS schema.
+  const parseImportText = (text: string): Record<string, string>[] => {
+    const workbook = XLSX.read(text, { type: 'string', raw: false });
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    if (!firstSheet) throw new Error('Sheet pada file tidak ditemukan.');
+    return XLSX.utils.sheet_to_json<Record<string, any>>(firstSheet, { defval: '', raw: false })
+      .map(row => Object.fromEntries(Object.entries(row).map(([key, value]) => [String(key).trim(), String(value ?? '').trim()])))
+      .filter(row => Object.values(row).some(value => String(value).trim() !== ''));
+  };
 
-  useEffect(() => {
-    if (!showImportModal || !importGudepId) {
-      setImportReguOptions([]);
-      setImportReguId('');
-      return;
-    }
-    let active = true;
-    setImportTargetLoading(true);
-    setImportTargetError('');
-    gudepRegistrationService.detail(importGudepId).then(detail => {
-      if (!active) return;
-      const available = (detail.regu || []).filter(r => {
-        const verification = String(r.verification_status || '').trim().toUpperCase();
-        const activation = String(r.activation_status || '').trim().toUpperCase();
-        return verification === 'VERIFIED' && (!activation || activation === 'ACTIVE');
-      });
-      setImportReguOptions(available);
-    }).catch((err:any) => {
-      if (active) { setImportReguOptions([]); setImportTargetError(err?.message || 'Daftar regu tidak dapat dimuat dari GAS.'); }
-    }).finally(() => { if (active) setImportTargetLoading(false); });
-    return () => { active = false; };
-  }, [showImportModal, importGudepId]);
-
-  // Import file parsing is client-side only; authoritative validation and persistence stay in GAS.
-  const normalizeImportHeader = (value: any) => String(value ?? '').trim().toLocaleLowerCase('id-ID').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
-  const mapImportRow = (row: Record<string, any>) => {
-    const mapped: any = {};
-    const aliases: Record<string, string[]> = {
-      name: ['nama lengkap','nama','name','full name','nama peserta'],
-      gender: ['jenis kelamin','gender','jk','kelamin'],
-      role: ['tingkatan','tingkat','role','scout level','golongan'],
-      membershipNumber: ['nta','kta','nomor anggota','nomor tanda anggota','nomor pramuka','pramuka id'],
-      schoolPangkalan: ['nama sekolah','sekolah','pangkalan','school','institution','nama pangkalan'],
-      contingentName: ['kontingen','nama kontingen','contingent','contingent name'],
-      email: ['email','alamat email','e mail'],
-      phone: ['nomor telepon','telepon','no telepon','no hp','nomor hp','hp','phone','telepon orang tua','nomor telepon orang tua'],
-      birthPlace: ['tempat lahir','birth place'],
-      birthDate: ['tanggal lahir','tgl lahir','birth date','date of birth'],
-    };
-    const normalized: Record<string, any> = {};
-    Object.keys(row).forEach(key => { normalized[normalizeImportHeader(key)] = row[key]; });
-    Object.keys(aliases).forEach(field => {
-      const found = aliases[field].find(alias => normalized[normalizeImportHeader(alias)] !== undefined && String(normalized[normalizeImportHeader(alias)] ?? '').trim() !== '');
-      if (found) mapped[field] = String(normalized[normalizeImportHeader(found)]).trim();
+  const normalizeImportRow = (row: Record<string, any>, index: number): Record<string, string | number> => {
+    const normalized = new Map<string, string>();
+    Object.entries(row || {}).forEach(([key, value]) => {
+      const k = String(key).trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[._-]+/g, ' ').replace(/\s+/g, ' ').trim();
+      normalized.set(k, String(value ?? '').trim());
     });
-    if (mapped.gender) {
-      const g = normalizeImportHeader(mapped.gender);
-      if (['l','laki laki','putra','pria','male','m'].includes(g)) mapped.gender = 'M';
-      else if (['p','perempuan','putri','wanita','female','f'].includes(g)) mapped.gender = 'F';
-      else mapped.gender = '';
-    }
-    return mapped;
+    const get = (aliases: string[]) => {
+      for (const alias of aliases) {
+        const key = alias.toLowerCase().replace(/[._-]+/g, ' ').replace(/\s+/g, ' ').trim();
+        const value = normalized.get(key);
+        if (value) return value;
+      }
+      return '';
+    };
+    const rawGender = get(['jenis kelamin', 'gender', 'kelamin', 'jk', 'putra putri', 'putra/putri']).trim().toUpperCase();
+    let gender = rawGender;
+    if (['L', 'LAKI-LAKI', 'LAKI LAKI', 'PUTRA', 'PRIA', 'MALE', 'M'].includes(rawGender)) gender = 'M';
+    if (['P', 'PEREMPUAN', 'PUTRI', 'WANITA', 'FEMALE', 'F'].includes(rawGender)) gender = 'F';
+    const school = get(['sekolah', 'nama sekolah', 'pangkalan', 'nama pangkalan', 'school pangkalan', 'institution', 'institution name']);
+    const contingent = get(['kontingen', 'nama kontingen', 'contingent', 'contingent name']) || school;
+    return {
+      source_row: Number(get(['source row', 'baris sumber'])) || index + 2,
+      name: get(['nama lengkap', 'nama peserta', 'nama anggota', 'nama', 'name', 'full name']),
+      gender,
+      role: get(['tingkatan', 'golongan', 'role', 'kategori', 'jenjang']) || 'Penggalang',
+      membershipNumber: get(['nta', 'kta', 'nta/kta', 'nta / kta', 'nomor nta', 'no nta', 'no. nta', 'nomor kta', 'nomor anggota', 'nomor pramuka', 'id anggota', 'membership number']),
+      email: get(['email', 'e-mail', 'alamat email']),
+      phone: get(['telepon', 'nomor telepon', 'no telepon', 'no hp', 'nomor hp', 'hp', 'phone', 'whatsapp', 'wa']),
+      schoolPangkalan: school || contingent,
+      contingentName: contingent,
+      contingentId: get(['contingent id', 'id kontingen', 'contingent_id']),
+      birthPlace: get(['tempat lahir', 'birth place', 'birthplace']),
+      birthDate: get(['tanggal lahir', 'tgl lahir', 'birth date', 'birthdate']),
+    };
   };
-  const parseImportMatrix = (matrix: any[][]) => {
-    const nonEmpty = matrix.filter(row => Array.isArray(row) && row.some(cell => String(cell ?? '').trim() !== ''));
-    if (nonEmpty.length < 2) throw new Error('File harus memiliki header dan minimal satu baris data.');
-    const headerIndex = nonEmpty.findIndex(row => row.some(cell => ['nama lengkap','nama','name','nta','jenis kelamin'].includes(normalizeImportHeader(cell))));
-    if (headerIndex < 0 || headerIndex >= nonEmpty.length - 1) throw new Error('Header kolom peserta tidak ditemukan. Pastikan baris judul memuat Nama, Nama Lengkap, atau NTA.');
-    const headers = nonEmpty[headerIndex].map((h, i) => String(h ?? '').trim() || `Kolom ${i + 1}`);
-    const parsed = nonEmpty.slice(headerIndex + 1).map((values, index) => {
-      const raw: Record<string, any> = {};
-      headers.forEach((header, i) => { raw[header] = values[i] ?? ''; });
-      const mapped = mapImportRow(raw);
-      const error = !mapped.name || mapped.name.trim().length < 2 ? 'Nama lengkap wajib diisi.' : (mapped.gender === undefined || mapped.gender === '' ? 'Jenis kelamin belum dikenali; periksa sebelum impor.' : '');
-      return { sourceRow: headerIndex + index + 2, raw, mapped, selected: !error, error };
-    }).filter(row => Object.values(row.raw).some(value => String(value ?? '').trim() !== ''));
-    if (!parsed.length) throw new Error('Tidak ditemukan baris data setelah header.');
-    setImportRows(parsed);
-    setImportStep('preview');
+
+  const resetImportFlow = () => {
+    setImportStep('upload');
+    setRawCsvText('');
+    setImportFileName('');
+    setImportBatchId(makeRequestKey());
+    setImportPreviewRows([]);
+    setSelectedImportIndexes([]);
+    setImportRowResults([]);
+    setImportResult(null);
   };
+
+  const closeImportModal = () => {
+    if (importBusy) return;
+    setShowImportModal(false);
+    if (importStep === 'result') resetImportFlow();
+  };
+
   const handleImportFile = async (file?: File) => {
     if (!file) return;
+    setImportFileName(file.name);
+    setImportBatchId(makeRequestKey());
+    setImportResult(null);
+    setImportRowResults([]);
     try {
-      const ext = file.name.toLowerCase().split('.').pop();
-      if (!['xlsx','xls','csv'].includes(ext || '')) throw new Error('Format file harus XLSX, XLS, atau CSV.');
-      const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+      const bytes = await file.arrayBuffer();
+      const workbook = XLSX.read(bytes, { type: 'array', raw: false, cellDates: false });
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      if (!firstSheet) throw new Error('Sheet pertama tidak berisi data.');
-      parseImportMatrix(XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '', raw: false }) as any[][]);
-    } catch (err:any) { showToast(err?.message || 'File tidak dapat dibaca.'); }
+      if (!firstSheet) throw new Error('Sheet pada file tidak ditemukan.');
+      setRawCsvText(XLSX.utils.sheet_to_csv(firstSheet));
+      setImportStep('upload');
+      showToast(`File “${file.name}” berhasil dibaca. Klik “Verifikasi & Import ke GAS” untuk memeriksa data sebelum disimpan.`);
+    } catch (error: any) {
+      showToast(`Gagal membaca file “${file.name}”: ${error?.message || 'Format tidak didukung.'}`);
+    }
   };
-  const handleValidatePastedCsv = () => {
-    try {
-      if (!rawCsvText.trim()) throw new Error('Unggah file atau tempelkan data CSV terlebih dahulu.');
-      const workbook = XLSX.read(rawCsvText, { type: 'string', cellDates: true });
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      parseImportMatrix(XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '', raw: false }) as any[][]);
-    } catch (err:any) { showToast(err?.message || 'CSV tidak dapat dibaca.'); }
-  };
+
   const handleProcessImport = async () => {
-    const selected = importRows.filter(row => row.selected && !row.error);
-    if (!selected.length) { showToast('Pilih minimal satu baris valid untuk diimpor.'); return; }
+    if (importBusy) return;
+    if (importStep === 'upload') {
+      try {
+        const rows = parseImportText(rawCsvText);
+        if (!rows.length) throw new Error('File harus memiliki header dan minimal satu baris data.');
+        if (rows.length > 100) throw new Error('Maksimal 100 baris per batch. Pecah file menjadi beberapa bagian.');
+        const canonicalRows = rows.map((row, index) => normalizeImportRow(row, index));
+        const invalid = canonicalRows.filter(row => String(row.name || '').trim().length < 2 || !['M', 'F'].includes(String(row.gender || '').toUpperCase()));
+        if (invalid.length) {
+          const firstInvalid = invalid[0];
+          throw new Error(`${invalid.length} baris belum valid. Periksa nama dan jenis kelamin. Contoh: baris ${firstInvalid.source_row} — ${!String(firstInvalid.name || '').trim() ? 'nama belum terisi' : 'jenis kelamin harus L/Putra atau P/Putri'}.`);
+        }
+        setImportPreviewRows(rows);
+        setSelectedImportIndexes(rows.map((_, index) => index));
+        setImportStep('preview');
+      } catch (error: any) {
+        showToast(`Validasi file gagal: ${error?.message || 'Format data tidak valid.'}`);
+      }
+      return;
+    }
+    if (importStep !== 'preview') return;
+    const selectedRows = selectedImportIndexes.map(index => ({ raw: importPreviewRows[index], index })).filter(item => Boolean(item.raw));
+    if (!selectedRows.length) {
+      showToast('Pilih minimal satu baris untuk diimpor.');
+      return;
+    }
+    const rows = selectedRows.map(({ raw, index }) => normalizeImportRow(raw, index));
     setImportBusy(true);
+    setImportResult(null);
+    setImportRowResults([]);
     try {
-      const res = await participantService.importParticipantsToGas(selected.map(row => ({ ...row.mapped, source_row: row.sourceRow })), { gudepId: importGudepId, reguId: importReguId });
-      setImportResult({ accepted: res.accepted, needsReview: 0, rejected: res.rejected, duplicatesCount: res.duplicatesCount, details: res.details });
+      const response = await participantService.importParticipantsToGas(rows, importBatchId);
+      const results = Array.isArray(response.results) ? response.results : [];
+      const imported = Number(response.imported || 0);
+      const failed = results.filter((item: any) => String(item.status || '').toUpperCase() !== 'IMPORTED');
+      const duplicatesCount = failed.filter((item: any) => String(item.status || '').toUpperCase() === 'DUPLICATE' || /sudah terdaftar|duplikat|duplicate|already_exists/i.test(String(item.error || ''))).length;
+      setImportRowResults(results);
+      setImportResult({ accepted: imported, needsReview: duplicatesCount, rejected: Math.max(0, failed.length - duplicatesCount), duplicatesCount });
       setImportStep('result');
-      showToast(`Impor selesai: ${res.accepted} berhasil, ${res.rejected} gagal.`);
-      try { await participantService.loadParticipants(); } catch (refreshErr:any) { showToast('Impor tersimpan, tetapi daftar peserta belum berhasil disegarkan. Muat ulang halaman untuk memeriksa hasil.'); }
-    } catch (err:any) {
-      showToast(err?.message || 'Impor gagal. Data belum dapat dikonfirmasi tersimpan.');
-    } finally { setImportBusy(false); }
+      if (imported > 0) await participantService.loadParticipants();
+      showToast(`Impor “${importFileName || 'data peserta'}” selesai: ${imported} berhasil, ${duplicatesCount} duplikat, ${Math.max(0, failed.length - duplicatesCount)} gagal.`);
+    } catch (error: any) {
+      const message = error?.message || 'Kesalahan tidak diketahui.';
+      setImportRowResults([{ row: 0, status: 'ERROR', name: importFileName || 'File impor', error: message }]);
+      setImportResult({ accepted: 0, needsReview: 0, rejected: rows.length, duplicatesCount: 0 });
+      setImportStep('result');
+      showToast(`Impor gagal: ${message}`);
+    } finally {
+      setImportBusy(false);
+    }
   };
 
   const getStatusBadge = (status: ParticipantStatus) => {
@@ -697,7 +706,7 @@ export const ParticipantList: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => setShowImportModal(true)}
+            onClick={() => { resetImportFlow(); setShowImportModal(true); }}
             className="flex items-center justify-center p-2.5 sm:px-3 sm:py-2 bg-[#FAFAFA] hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 text-[#6B7280] dark:text-slate-300 rounded-xl text-xs font-semibold border border-[#ECECEF] dark:border-white/10 transition-colors min-w-[44px] min-h-[44px] cursor-pointer"
             title="Impor CSV Peserta"
             aria-label="Impor CSV Peserta"
@@ -1734,15 +1743,21 @@ export const ParticipantList: React.FC = () => {
                   Impor Peserta Massal
                 </span>
                 <h3 className="text-sm font-bold text-[#171717] dark:text-white">Upload / Tempel Data CSV</h3>
+                {importFileName && <p className="mt-1 text-[11px] text-sky-600 dark:text-sky-300">File: {importFileName}</p>}
               </div>
-              <button onClick={() => setShowImportModal(false)} className="p-1 text-[#6B7280] hover:text-[#171717] dark:text-slate-400 dark:hover:text-white cursor-pointer">✕</button>
+              <button disabled={importBusy} onClick={closeImportModal} className="p-1 text-[#6B7280] hover:text-[#171717] dark:text-slate-400 dark:hover:text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" title={importBusy ? 'Impor sedang diproses' : 'Tutup'}>✕</button>
             </div>
 
             {importStep === 'upload' && (
               <div className="space-y-3 text-xs">
-                <p className="text-[#6B7280] dark:text-slate-300">Unggah Excel (.xlsx/.xls) atau CSV. Sistem membaca sheet pertama, mendeteksi kolom umum, lalu menampilkan pratinjau sebelum data dikirim ke GAS.</p>
-                <input type="file" accept=".xlsx,.xls,.csv" onChange={e => { const file = e.target.files?.[0]; if (file) void handleImportFile(file); e.currentTarget.value = ''; }} className="w-full rounded-xl border border-[#ECECEF] dark:border-white/10 p-3 text-[#171717] dark:text-white" />
-                <p className="text-[#6B7280] dark:text-slate-400">Atau tempel CSV di bawah ini:</p>
+                <p className="text-[#6B7280] dark:text-slate-300">
+                  Tempelkan baris data CSV dengan kolom: <code className="text-[#C62828] font-mono bg-red-50 dark:bg-red-950/40 px-1 py-0.5 rounded">Nama Lengkap, Jenis Kelamin, Tingkatan, NTA, Kontingen, Telepon</code>.
+                </p>
+                <label className="flex items-center gap-3 p-3 rounded-xl border border-dashed border-sky-300 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-950/20 cursor-pointer">
+                  <Upload size={18} className="text-sky-600" />
+                  <span className="flex-1 text-[#171717] dark:text-white font-semibold">Pilih file XLS, XLSX, atau CSV</span>
+                  <input type="file" accept=".xls,.xlsx,.csv,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="max-w-[170px]" onChange={e => { const file = e.target.files?.[0]; e.currentTarget.value = ''; void handleImportFile(file); }} />
+                </label>
                 <textarea
                   rows={6}
                   value={rawCsvText}
@@ -1752,53 +1767,79 @@ export const ParticipantList: React.FC = () => {
                 <div className="flex justify-end gap-2 pt-2">
                   <button onClick={() => setShowImportModal(false)} className="px-4 py-2 bg-[#FAFAFA] hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 rounded-xl text-[#6B7280] dark:text-slate-300 cursor-pointer border border-[#ECECEF] dark:border-white/10">Batal</button>
                   <button
-                    onClick={handleValidatePastedCsv}
-                    className="px-5 py-2.5 bg-[#C62828] hover:bg-[#A61B1B] text-white font-bold rounded-xl shadow-xs cursor-pointer"
+                    onClick={() => void handleProcessImport()}
+                    disabled={importBusy}
+                    className="px-5 py-2.5 bg-[#C62828] hover:bg-[#A61B1B] disabled:opacity-60 text-white font-bold rounded-xl shadow-xs cursor-pointer"
                   >
-                    Validasi & Pratinjau
+                    {importBusy ? 'Menyimpan ke GAS…' : 'Verifikasi & Import ke GAS'}
                   </button>
                 </div>
               </div>
             )}
 
             {importStep === 'preview' && (
-              <div className="rounded-2xl border border-sky-200 dark:border-sky-900 bg-sky-50/70 dark:bg-sky-950/20 p-3 space-y-3">
-                <div className="font-bold text-slate-800 dark:text-slate-100">Tujuan peserta setelah import</div>
-                <p className="text-slate-600 dark:text-slate-300">Pilih sekolah/Gudep yang sudah diverifikasi. Regu bersifat opsional; jika dipilih, GAS akan menautkan peserta ke regu setelah validasi gender dan kuota.</p>
-                <label className="block text-slate-700 dark:text-slate-200">Kontingen / Sekolah (Gudep)
-                  <select value={importGudepId} disabled={importTargetLoading || importBusy} onChange={e=>{setImportGudepId(e.target.value);setImportReguId('');}} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#242428] p-2.5 text-slate-900 dark:text-white">
-                    <option value="">Tidak menetapkan sekolah/kontingen sekarang</option>
-                    {importGudepOptions.map(g=><option key={g.gudep_id} value={g.gudep_id}>{g.institution_name || g.gudep_name} · {g.gudep_number}</option>)}
-                  </select>
-                </label>
-                {importGudepId && <label className="block text-slate-700 dark:text-slate-200">Regu (opsional)
-                  <select value={importReguId} disabled={importTargetLoading || importBusy || !importGudepId} onChange={e=>setImportReguId(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#242428] p-2.5 text-slate-900 dark:text-white">
-                    <option value="">Hanya tetapkan sekolah/kontingen, belum masuk regu</option>
-                    {importReguOptions.map(r=><option key={r.regu_id} value={r.regu_id}>{r.regu_name} · {r.gender} · kuota {r.quota}</option>)}
-                  </select>
-                </label>}
-                {importTargetLoading && <p className="text-sky-700 dark:text-sky-300">Memuat pilihan dari GAS…</p>}
-                {importTargetError && <p role="alert" className="text-rose-600">{importTargetError}</p>}
-              </div>
-            )}
-
-            {importStep === 'preview' && (
               <div className="space-y-3 text-xs">
                 <div className="flex items-center justify-between gap-3">
-                  <div><p className="font-bold text-[#171717] dark:text-white">Pratinjau impor</p><p className="text-[#6B7280] dark:text-slate-300">{importRows.filter(r=>r.selected && !r.error).length} baris dipilih dari {importRows.length}. Baris bertanda masalah tidak dapat dipilih.</p></div>
-                  <button type="button" onClick={()=>setImportStep('upload')} className="px-3 py-2 rounded-lg border border-[#ECECEF] dark:border-white/10">Kembali</button>
+                  <div>
+                    <h4 className="font-bold text-[#171717] dark:text-white">Verifikasi data sebelum impor</h4>
+                    <p className="text-[#6B7280] dark:text-slate-300">{importPreviewRows.length} baris ditemukan; {selectedImportIndexes.length} baris dipilih.</p>
+                  </div>
+                  <button type="button" className="px-3 py-2 rounded-lg border border-[#ECECEF] dark:border-white/10" onClick={() => setSelectedImportIndexes(selectedImportIndexes.length === importPreviewRows.length ? [] : importPreviewRows.map((_, index) => index))}>
+                    {selectedImportIndexes.length === importPreviewRows.length ? 'Batalkan semua' : 'Pilih semua'}
+                  </button>
                 </div>
                 <div className="max-h-72 overflow-auto border border-[#ECECEF] dark:border-white/10 rounded-xl">
-                  <table className="w-full text-left"><thead className="sticky top-0 bg-gray-50 dark:bg-white/10"><tr><th className="p-2">Pilih</th><th className="p-2">Baris</th><th className="p-2">Nama</th><th className="p-2">JK</th><th className="p-2">NTA</th><th className="p-2">Validasi</th></tr></thead><tbody>
-                    {importRows.map((row, index)=><tr key={`${row.sourceRow}-${index}`} className="border-t border-[#ECECEF] dark:border-white/10"><td className="p-2"><input type="checkbox" checked={row.selected && !row.error} disabled={!!row.error || importBusy} onChange={e=>setImportRows(old=>old.map((r,i)=>i===index?{...r,selected:e.target.checked}:r))}/></td><td className="p-2">{row.sourceRow}</td><td className="p-2">{row.mapped.name || '—'}</td><td className="p-2">{row.mapped.gender || '—'}</td><td className="p-2">{row.mapped.membershipNumber || '—'}</td><td className={`p-2 ${row.error?'text-rose-600':'text-emerald-600'}`}>{row.error || 'Siap'}</td></tr>)}
-                  </tbody></table>
+                  <table className="min-w-full text-left">
+                    <thead className="sticky top-0 bg-[#FAFAFA] dark:bg-[#202027]">
+                      <tr>
+                        <th className="p-2">Pilih</th>
+                        <th className="p-2">Nama</th>
+                        <th className="p-2">Jenis Kelamin</th>
+                        <th className="p-2">NTA</th>
+                        <th className="p-2">Sekolah/Kontingen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importPreviewRows.map((row, index) => {
+                        const get = (keys: string[]) => {
+                          const key = Object.keys(row).find(k => keys.includes(k.trim().toLowerCase()));
+                          return key ? String(row[key] || '') : '';
+                        };
+                        const name = get(['nama lengkap','nama','name','nama peserta']);
+                        const gender = get(['jenis kelamin','gender','kelamin']);
+                        const nta = get(['nta','kta','nomor anggota','nta / kta','nta/ kta']);
+                        const school = get(['kontingen','sekolah','nama sekolah','pangkalan','nama pangkalan']);
+                        return <tr key={index} className="border-t border-[#ECECEF] dark:border-white/10">
+                          <td className="p-2"><input type="checkbox" checked={selectedImportIndexes.includes(index)} onChange={e => setSelectedImportIndexes(old => e.target.checked ? [...old, index] : old.filter(i => i !== index))} /></td>
+                          <td className="p-2">{name || <span className="text-rose-500">Nama kosong</span>}</td>
+                          <td className="p-2">{gender || '—'}</td>
+                          <td className="p-2">{nta || '—'}</td>
+                          <td className="p-2">{school || '—'}</td>
+                        </tr>;
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-                <div className="flex justify-end gap-2"><button type="button" disabled={importBusy} onClick={()=>setImportStep('upload')} className="px-4 py-2 rounded-xl border border-[#ECECEF] dark:border-white/10">Batal</button><button type="button" disabled={importBusy || !importRows.some(r=>r.selected && !r.error)} onClick={()=>void handleProcessImport()} className="px-5 py-2.5 bg-[#C62828] text-white font-bold rounded-xl disabled:opacity-50">{importBusy?'Menyimpan ke GAS…':'Import '+importRows.filter(r=>r.selected && !r.error).length+' peserta'}</button></div>
+                <p className="text-amber-700 dark:text-amber-300">Data yang gagal validasi backend akan dilaporkan setelah impor. Peserta yang sudah terdaftar tidak akan ditimpa.</p>
+                <div className="flex justify-between gap-2">
+                  <button onClick={() => setImportStep('upload')} className="px-4 py-2 rounded-xl border border-[#ECECEF] dark:border-white/10">Kembali</button>
+                  <button disabled={importBusy || selectedImportIndexes.length === 0} onClick={() => void handleProcessImport()} className="px-5 py-2.5 bg-[#C62828] disabled:opacity-60 text-white font-bold rounded-xl">
+                    {importBusy ? 'Menyimpan ke GAS…' : `Import ${selectedImportIndexes.length} baris ke GAS`}
+                  </button>
+                </div>
               </div>
             )}
 
             {importStep === 'result' && importResult && (
               <div className="space-y-4 text-xs">
+                <div className={`p-3 rounded-2xl border flex items-start gap-2 ${importRowResults.some(item => String(item.status || '').toUpperCase() === 'ERROR') ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200' : importResult.accepted > 0 ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200' : 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200'}`}>
+                  {importRowResults.some(item => String(item.status || '').toUpperCase() === 'ERROR') ? <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /> : importResult.accepted > 0 ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" /> : <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />}
+                  <div>
+                    <div className="font-bold">{importRowResults.some(item => String(item.status || '').toUpperCase() === 'ERROR') ? 'Hasil impor belum terkonfirmasi' : importResult.accepted > 0 ? 'Proses impor selesai' : 'Tidak ada peserta yang berhasil diimpor'}</div>
+                    <div className="mt-1">File: {importFileName || 'Data tempel'} · Berhasil terkonfirmasi: {importResult.accepted} · Duplikat: {importResult.duplicatesCount} · Gagal/ditolak: {importResult.rejected}</div>
+                    {importRowResults.some(item => String(item.status || '').toUpperCase() === 'ERROR') && <div className="mt-1 font-semibold">Jangan unggah ulang sebagai batch baru. Gunakan “Coba lagi dengan batch yang sama” agar GAS dapat mengembalikan hasil yang sama jika penyimpanan sebelumnya sudah terjadi.</div>}
+                  </div>
+                </div>
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800">
                     <span className="text-[10px] text-emerald-700 dark:text-emerald-400 block font-bold">DITERIMA</span>
@@ -1814,9 +1855,6 @@ export const ParticipantList: React.FC = () => {
                   </div>
                 </div>
 
-                {importResult.details && importResult.details.length > 0 && (
-                  <div className="max-h-52 overflow-auto rounded-xl border border-[#ECECEF] dark:border-white/10"><table className="w-full text-left"><thead><tr><th className="p-2">Baris</th><th className="p-2">Status</th><th className="p-2">Keterangan</th></tr></thead><tbody>{importResult.details.map((d,i)=><tr key={`${d.row}-${i}`} className="border-t border-[#ECECEF] dark:border-white/10"><td className="p-2">{d.row}</td><td className="p-2">{d.status}</td><td className="p-2">{d.message || d.participant_id || '—'}</td></tr>)}</tbody></table></div>
-                )}
                 {importResult.duplicatesCount > 0 && (
                   <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-800 dark:text-amber-300 flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
@@ -1824,13 +1862,37 @@ export const ParticipantList: React.FC = () => {
                   </div>
                 )}
 
-                <div className="flex justify-end pt-2">
+                {importRowResults.some(item => !['IMPORTED','IMPORTED_TO_CONTINGENT','IMPORTED_AND_LINKED'].includes(String(item.status || '').toUpperCase())) && (
+                  <div className="max-h-40 overflow-auto rounded-xl border border-rose-200 dark:border-rose-900">
+                    <div className="p-2 font-bold text-rose-700 dark:text-rose-300">Baris yang gagal diimpor</div>
+                    {importRowResults.filter(item => !['IMPORTED','IMPORTED_TO_CONTINGENT','IMPORTED_AND_LINKED'].includes(String(item.status || '').toUpperCase())).map((item, index) => (
+                      <div key={`${item.row}-${index}`} className="p-2 border-t border-rose-100 dark:border-rose-900">
+                        Baris {item.row}: {item.name || 'Tanpa nama'} — {item.error || (item as any).message || 'Gagal tanpa keterangan'}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-2 pt-2">
+                  {importRowResults.some(item => String(item.status || '').toUpperCase() === 'ERROR') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Reuse the same importBatchId: GAS returns the cached result if the first
+                        // request already committed, preventing a retry from creating duplicates.
+                        setImportResult(null);
+                        setImportRowResults([]);
+                        setImportStep('preview');
+                      }}
+                      className="px-4 py-2.5 rounded-xl border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 font-bold"
+                    >
+                      Coba lagi dengan batch yang sama
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       setShowImportModal(false);
-                      setImportStep('upload');
-                      setImportRows([]);
-                      setRawCsvText('');
+                      resetImportFlow();
                     }}
                     className="px-5 py-2 bg-[#C62828] hover:bg-[#A61B1B] text-white rounded-xl font-bold cursor-pointer"
                   >
