@@ -66,6 +66,8 @@ import { PublicSponsorStrip } from '../../components/banners/PublicSponsorStrip'
 import { GlobalFooter } from '../../components/layout/GlobalFooter';
 import { VisitorPublicRegistrationModal } from '../visitors/VisitorPublicRegistrationModal';
 import { MediaItem, LeaderboardEntry, ScheduleItem, Announcement } from '../../types';
+import { ParticipantAvatar } from '../../components/ParticipantAvatar';
+import { resolveGoogleDriveImageUrl } from '../../utils/googleDriveImage';
 
 export type InstallationState = 'LOADING' | 'CONFIGURED' | 'NOT_CONFIGURED' | 'BACKEND_UNREACHABLE';
 
@@ -318,7 +320,11 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
           id: String(entry.id || ''),
           name: String(entry.name || 'Peserta'),
           contingentName: String(entry.contingentName || ''),
-          avatar: String(entry.avatar || ''),
+          avatar: resolveGoogleDriveImageUrl(
+            entry.avatar || entry.profile_photo_url || entry.profilePhotoUrl || entry.photo_url || entry.photoUrl || entry.avatar_url || '',
+            entry.profile_photo_file_id || entry.photo_file_id || entry.profilePhotoFileId || '',
+            1000,
+          ),
           role: String(entry.role || 'Peserta'),
           xp: Number(entry.xp || 0),
           level: Number(entry.level || (Math.floor(Math.max(0, Number(entry.xp || 0)) / 200) + 1)),
@@ -963,15 +969,12 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
 
                 <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-tr from-[#C5141E] to-[#E31B23] p-[1.5px] mt-2">
                   <div className="w-full h-full rounded-full bg-slate-100 dark:bg-black overflow-hidden flex items-center justify-center font-bold text-xs text-slate-600 dark:text-slate-300">
-                    {entry.avatar ? (
-                      <img
-                        src={entry.avatar}
-                        alt={entry.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      entry.name?.substring(0, 2).toUpperCase() || 'PR'
-                    )}
+                    <ParticipantAvatar
+                      name={entry.name}
+                      src={entry.avatar}
+                      className="w-full h-full object-cover"
+                      fallbackClassName="w-full h-full flex items-center justify-center bg-slate-100 dark:bg-black text-slate-600 dark:text-slate-300 font-bold text-xs"
+                    />
                   </div>
                 </div>
 
