@@ -435,7 +435,7 @@ class ParticipantService {
   // ==================== CSV / SPREADSHEET IMPORT ====================
 
   /** Import selected participant rows through the authoritative GAS admin endpoint. */
-  public async importParticipantsToGas(rows: Array<Record<string, any>>): Promise<{
+  public async importParticipantsToGas(rows: Array<Record<string, any>>, target: { gudepId?: string; reguId?: string } = {}): Promise<{
     accepted: number; rejected: number; duplicatesCount: number;
     details: Array<{row:number; status:string; participant_id?:string; message?:string}>;
   }> {
@@ -444,7 +444,7 @@ class ParticipantService {
     const event = eventService.getCurrentEvent();
     const eventId = String(event?.id || (event as any)?.event_id || '');
     if (!eventId) throw new Error('Event aktif tidak ditemukan.');
-    const response = await apiTransport.send<any>('participants.admin.import', { event_id: eventId, rows });
+    const response = await apiTransport.send<any>('participants.admin.import', { event_id: eventId, rows, gudep_id: String(target.gudepId || ''), regu_id: String(target.reguId || '') });
     if (!response.ok) throw new Error(response.error?.message || 'GAS menolak proses impor.');
     const data = response.data;
     if (!data || !Array.isArray(data.details)) throw new Error('Respons impor GAS tidak valid; periksa spreadsheet sebelum mencoba ulang.');
