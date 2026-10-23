@@ -148,7 +148,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
 
     // 1. Check if Activity QR or Checkpoint QR token (Requirements 8-10)
     const actConfig = activityQrService.getConfigByToken(code);
-    const isActToken = Boolean(actConfig) || code.startsWith('AGENDA_') || code.includes('ACT_') || code.includes('CP_') || code.startsWith('SIEPANG:QR:v1:ACT');
+    const isActToken = Boolean(actConfig) || code.startsWith('AGENDA_') || code.startsWith('SIEPANG-CP-') || code.includes('ACT_') || code.includes('CP_') || code.startsWith('SIEPANG:QR:v1:ACT');
     if (isActToken) {
       try {
         const scanRes = await activityQrService.scanActivityQr(code);
