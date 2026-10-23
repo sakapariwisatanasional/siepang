@@ -11,7 +11,7 @@
  * - Scan analytics & participant scan logs
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   QrCode,
   Zap,
@@ -36,9 +36,15 @@ import {
 import { activityQrService, ScanResult } from '../../services/activityQrService';
 import { ActivityQrConfig, ActivityQrMode, ActivityCheckpointItem } from '../../types';
 import { authService } from '../../services/authService';
+import { workspaceService } from '../../services/workspaceService';
+import { eventStudioService } from '../../services/eventStudioService';
+import { QrImage } from '../../components/qr/QrImage';
+import { agendaAttendanceService } from '../../services/agendaAttendanceService';
 
 interface ActivityQrModalProps {
   activityId: string;
+  scheduleId?: string;
+  scheduleXpReward?: number;
   activityTitle: string;
   category?: string;
   location?: string;
@@ -49,6 +55,8 @@ interface ActivityQrModalProps {
 
 export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
   activityId,
+  scheduleId,
+  scheduleXpReward,
   activityTitle,
   category = 'Kegiatan Umum',
   location = 'Lapangan Buper',
@@ -87,38 +95,160 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
   const [showRotateConfirm, setShowRotateConfirm] = useState(false);
   const [rotateReason, setRotateReason] = useState('Pencegahan kebocoran token / pergantian sesi kegiatan');
   const [toast, setToast] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [serverAnalytics, setServerAnalytics] = useState<{ total_scans: number; unique_participants: number; total_xp_distributed: number } | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3500);
   };
 
-  const handleSaveConfig = () => {
-    const saved = activityQrService.configureActivityQr(activityId, {
-      title: activityTitle,
-      category,
-      location,
-      mode,
-      rewardXp: Number(rewardXp),
-      scanOpens,
-      scanCloses,
-      enabled,
-      isMultiCheckpoint,
-      checkpointOrder,
-      checkpoints: isMultiCheckpoint ? checkpoints : undefined,
-    });
+  const workspaceId = workspaceService.getCurrentWorkspace()?.id || currentUser?.workspaceId || '';
+  const activeEvent = eventStudioService.getEvent();
+  const eventId = workspaceService.getCurrentWorkspace()?.activeEventId || currentUser?.eventId || activeEvent?.id || '';
 
-    showToast('✅ Pengaturan QR Kegiatan berhasil disimpan!');
+  const ensureConfig = () => {
+    return activityQrService.configureActivityQr(
+      activityId,
+      {
+        title: activityTitle,
+        category,
+        location,
+        mode,
+        rewardXp: Number(rewardXp),
+        scanOpens,
+        scanCloses,
+        enabled,
+        isMultiCheckpoint,
+        checkpointOrder,
+        checkpoints: isMultiCheckpoint ? checkpoints : undefined,
+        scheduleId,
+      },
+      workspaceId,
+      eventId
+    );
   };
 
-  const handleRotateToken = () => {
-    if (!rotateReason.trim()) return;
+  const currentConfig = activityQrService.getConfigByActivityId(activityId);
+  const analytics = serverAnalytics;
+
+  useEffect(() => {
+    if (activeTab !== 'analytics' || !scheduleId) return;
+    let alive = true;
+    setAnalyticsLoading(true);
+    agendaAttendanceService.analytics(scheduleId)
+      .then(result => { if (alive) setServerAnalytics({ total_scans: result.total_scans, unique_participants: result.unique_participants, total_xp_distributed: result.total_xp_distributed }); })
+      .catch((err: any) => { if (alive) showToast(`Statistik GAS gagal dimuat: ${err?.message || 'Kesalahan tidak diketahui'}`); })
+      .finally(() => { if (alive) setAnalyticsLoading(false); });
+    return () => { alive = false; };
+  }, [activeTab, scheduleId]);
+  const isOfficialToken = Boolean(currentConfig?.qrToken && /^AGENDA_[a-f0-9]{64}$/i.test(currentConfig.qrToken));
+  const previewToken = isOfficialToken && enabled ? currentConfig!.qrToken : '';
+  const downloadHref = previewToken
+    ? `data:text/plain;charset=utf-8,${encodeURIComponent(previewToken)}`
+    : '';
+
+  const handleSaveConfig = async () => {
+    if (!enabled) {
+      if (!scheduleId) {
+        showToast('Agenda ID tidak tersedia. QR belum dapat dinonaktifkan di GAS dari kartu aktivitas ini.');
+        return;
+      }
+      setIsSaving(true);
+      try {
+        const result = await agendaAttendanceService.disable(scheduleId);
+        activityQrService.toggleActivityQr(activityId, false);
+        const disabledConfig = activityQrService.getConfigByActivityId(activityId);
+        if (disabledConfig) disabledConfig.qrToken = '';
+        showToast(`QR agenda dinonaktifkan di GAS. ${result.disabled_count} token tidak lagi dapat dipindai.`);
+      } catch (err: any) {
+        showToast(`Penonaktifan QR gagal: ${err?.message || 'Kesalahan tidak diketahui'}`);
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
+    if (!scheduleId) {
+      showToast('Agenda ID tidak tersedia. Buka Kelola QR dari kartu Jadwal Kegiatan agar QR resmi dapat diterbitkan.');
+      return;
+    }
+
+    setIsSaving(true);
     try {
-      activityQrService.rotateActivityToken(activityId, currentUser?.name || 'Panitia Giat', rotateReason);
-      setShowRotateConfirm(false);
-      showToast('🔄 Token QR berhasil diregenerasi! Token lama tidak lagi berlaku.');
+      const previousConfig = currentConfig;
+      const hadOfficialToken = Boolean(previousConfig?.qrToken && /^AGENDA_[a-f0-9]{64}$/i.test(previousConfig.qrToken));
+      const scanWindowChanged = Boolean(previousConfig && (previousConfig.scanOpens !== scanOpens || previousConfig.scanCloses !== scanCloses));
+      const saved = ensureConfig();
+      let officialToken = saved.qrToken;
+      let authoritativeXp = saved.rewardXp;
+      if (hadOfficialToken && scanWindowChanged) {
+        const rotated = await agendaAttendanceService.rotate(scheduleId, previousConfig!.qrToken, 'Perubahan jendela waktu pemindaian', scanOpens, scanCloses);
+        officialToken = rotated.qr_token;
+        authoritativeXp = Number(rotated.xp_reward || 0);
+        saved.qrToken = officialToken;
+        saved.scheduleId = rotated.schedule_id;
+        saved.rewardXp = authoritativeXp;
+      } else if (!hadOfficialToken || saved.scheduleId !== scheduleId) {
+        const issued = await agendaAttendanceService.issue(scheduleId, scanOpens, scanCloses);
+        officialToken = issued.qr_token;
+        authoritativeXp = Number(issued.xp_reward || 0);
+        saved.qrToken = officialToken;
+        saved.scheduleId = issued.schedule_id;
+        saved.rewardXp = authoritativeXp;
+      }
+      setRewardXp(authoritativeXp);
+      setActiveTab('preview');
+      showToast('QR agenda resmi tersimpan di GAS. Jendela scan divalidasi server dan XP mengikuti konfigurasi agenda.');
     } catch (err: any) {
-      alert(err.message);
+      showToast(`QR belum diterbitkan: ${err?.message || 'Gagal menghubungi GAS'}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleOpenPrint = () => {
+    if (!enabled || !isOfficialToken) {
+      showToast('Aktifkan dan terbitkan QR agenda resmi terlebih dahulu sebelum mencetak.');
+      setActiveTab('config');
+      return;
+    }
+    const saved = ensureConfig();
+    if (onOpenPrintSign) {
+      onOpenPrintSign(saved);
+      return;
+    }
+    window.print();
+  };
+
+  const handleRotateToken = async () => {
+    if (!rotateReason.trim()) return;
+    if (!scheduleId) {
+      showToast('QR resmi hanya dapat diregenerasi dari agenda yang tersimpan di GAS. Buka QR melalui kartu Jadwal Kegiatan.');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const currentToken = /^AGENDA_[a-f0-9]{64}$/i.test(currentConfig?.qrToken || '') ? currentConfig!.qrToken : '';
+      const response = await agendaAttendanceService.rotate(scheduleId, currentToken, rotateReason, scanOpens, scanCloses);
+      const saved = activityQrService.configureActivityQr(
+        activityId,
+        { title: activityTitle, category, location, mode, rewardXp: response.xp_reward, scanOpens, scanCloses, enabled: true, isMultiCheckpoint, checkpointOrder, checkpoints: isMultiCheckpoint ? checkpoints : undefined, scheduleId },
+        workspaceId,
+        eventId
+      );
+      saved.qrToken = response.qr_token;
+      saved.scheduleId = response.schedule_id;
+      saved.rewardXp = response.xp_reward;
+      setEnabled(true);
+      setRewardXp(response.xp_reward);
+      setShowRotateConfirm(false);
+      setActiveTab('preview');
+      showToast('Token QR resmi diregenerasi di GAS. Token lama telah dinonaktifkan.');
+    } catch (err: any) {
+      showToast(`Regenerasi QR gagal: ${err?.message || 'Kesalahan tidak diketahui'}`);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -140,13 +270,11 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
     setCheckpoints(checkpoints.filter((_, i) => i !== idx));
   };
 
-  const currentConfig = activityQrService.getConfigByActivityId(activityId);
-  const analytics = currentConfig ? activityQrService.getActivityAnalytics(activityId) : null;
-  const qrDisplayToken = currentConfig?.qrToken || '';
+  const qrDisplayToken = previewToken;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="w-full max-w-2xl bg-[#1c0c0f] border-2 border-red-500/40 rounded-3xl p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto text-slate-100">
+      <div className="w-full max-w-6xl bg-[#1c0c0f] border-2 border-red-500/40 rounded-3xl p-4 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto text-slate-100">
         {toast && (
           <div className="p-3.5 rounded-2xl bg-red-950/90 border border-red-500/50 text-xs text-red-200 font-semibold flex items-center justify-between shadow-xl">
             <span>{toast}</span>
@@ -173,39 +301,28 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
         </div>
 
         {/* Tab Switcher */}
-        <div className="grid grid-cols-4 gap-1 p-1 bg-black/40 rounded-2xl border border-white/5 text-xs font-semibold">
-          <button
-            onClick={() => setActiveTab('config')}
-            className={`py-2 rounded-xl transition-all ${
-              activeTab === 'config' ? 'bg-red-700 text-white shadow' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            ⚙️ Parameter QR
-          </button>
-          <button
-            onClick={() => setActiveTab('checkpoints')}
-            className={`py-2 rounded-xl transition-all ${
-              activeTab === 'checkpoints' ? 'bg-red-700 text-white shadow' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            🧭 Multi-Pos ({checkpoints.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('preview')}
-            className={`py-2 rounded-xl transition-all ${
-              activeTab === 'preview' ? 'bg-red-700 text-white shadow' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            👁️ Pratinjau
-          </button>
-          <button
-            onClick={() => setActiveTab('analytics')}
-            className={`py-2 rounded-xl transition-all ${
-              activeTab === 'analytics' ? 'bg-red-700 text-white shadow' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            📊 Statistik ({analytics?.validScansCount || 0})
-          </button>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+          {[
+            { key: 'config', icon: '⚙️', title: 'Parameter QR', desc: 'Aktivasi, mode, reward, dan jadwal scan' },
+            { key: 'checkpoints', icon: '🧭', title: `Multi-Pos (${checkpoints.length})`, desc: 'Belum terhubung ke endpoint scan GAS' },
+            { key: 'preview', icon: '👁️', title: 'Pratinjau', desc: 'Lihat QR siap pakai dan aksi cepat' },
+            { key: 'analytics', icon: '📊', title: `Statistik (${analytics?.total_scans || 0})`, desc: 'Presensi dan XP terverifikasi dari GAS' },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              disabled={tab.key === 'checkpoints'}
+              onClick={() => setActiveTab(tab.key as typeof activeTab)}
+              className={`rounded-2xl border p-4 text-left transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+                activeTab === tab.key
+                  ? 'border-red-500/50 bg-red-950/50 shadow-lg shadow-red-950/40'
+                  : 'border-white/5 bg-black/35 hover:border-white/10 hover:bg-black/50'
+              }`}
+            >
+              <div className="text-base">{tab.icon}</div>
+              <div className="mt-2 font-bold text-white">{tab.title}</div>
+              <div className="mt-1 text-[11px] leading-relaxed text-slate-400">{tab.desc}</div>
+            </button>
+          ))}
         </div>
 
         {/* TAB 1: CONFIGURATION */}
@@ -230,24 +347,27 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
               </label>
             </div>
 
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {/* Purpose Mode (Req 2, 13) */}
-            <div>
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <label className="text-slate-300 font-semibold block mb-1">
                 Fungsi & Mode Validasi QR:
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {[
-                  { id: 'PARTICIPATION', label: 'Partisipasi & XP', desc: 'Catat kehadiran umum & beri XP' },
-                  { id: 'ATTENDANCE', label: 'Presensi Resmi', desc: 'Sinkron otomatis ke buku presensi' },
-                  { id: 'CHECKPOINT', label: 'Pos / Checkpoint', desc: 'Rangkaian pos Wide Game' },
-                  { id: 'CHECK_IN', label: 'Pintu Gerbang Masuk', desc: 'Check-in area panggung / sesi' },
-                  { id: 'CHALLENGE', label: 'Penyelesaian Tantangan', desc: 'Poin untuk uji keterampilan' },
+                  { id: 'PARTICIPATION', label: 'Partisipasi & XP', desc: 'Presensi agenda dan reward XP', supported: true },
+                  { id: 'ATTENDANCE', label: 'Presensi Resmi', desc: 'Tercatat ke AttendanceLogs GAS', supported: true },
+                  { id: 'CHECKPOINT', label: 'Pos / Checkpoint', desc: 'Belum terhubung ke endpoint scan resmi', supported: false },
+                  { id: 'CHECK_IN', label: 'Pintu Gerbang Masuk', desc: 'Gunakan QR gerbang khusus', supported: false },
+                  { id: 'CHALLENGE', label: 'Penyelesaian Tantangan', desc: 'Endpoint scan tantangan belum aktif', supported: false },
                 ].map(m => (
                   <button
                     key={m.id}
                     type="button"
+                    disabled={!m.supported}
                     onClick={() => setMode(m.id as ActivityQrMode)}
-                    className={`p-3 rounded-2xl text-left border transition-all ${
+                    title={!m.supported ? 'Belum didukung oleh alur scan QR agenda saat ini' : undefined}
+                    className={`p-3 rounded-2xl text-left border transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
                       mode === m.id
                         ? 'bg-red-950/60 border-red-500 text-white shadow-md'
                         : 'bg-black/30 border-white/5 text-slate-400 hover:text-white'
@@ -261,7 +381,7 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
             </div>
 
             {/* XP Reward & Point Rule (Req 16, 17) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-slate-300 font-semibold block mb-1">
                   Hadiah Poin XP Peserta (Terkonfigurasi):
@@ -273,15 +393,16 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                   <input
                     type="number"
                     min="0"
-                    max="500"
-                    value={rewardXp}
-                    onChange={e => setRewardXp(Number(e.target.value))}
-                    className="flex-1 px-3.5 py-2.5 bg-black/40 border border-white/10 rounded-xl text-white font-mono font-bold"
+                    max="10000"
+                    value={isOfficialToken ? (currentConfig?.rewardXp ?? rewardXp) : (scheduleXpReward ?? rewardXp)}
+                    readOnly
+                    aria-label="XP sesuai konfigurasi agenda di GAS"
+                    className="flex-1 px-3.5 py-2.5 bg-black/40 border border-white/10 rounded-xl text-white font-mono font-bold cursor-not-allowed"
                   />
                   <span className="text-xs text-amber-400 font-bold">XP</span>
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Poin masuk ke Ledger Transaksi resmi saat scan berhasil.
+                  Nilai resmi dibaca dari agenda di GAS; ubah reward melalui pengaturan jadwal.
                 </p>
               </div>
 
@@ -302,7 +423,7 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
             </div>
 
             {/* Scan Window (Req 11) */}
-            <div className="p-3.5 rounded-2xl bg-black/30 border border-white/5 space-y-2">
+            <div className="p-4 rounded-2xl bg-black/30 border border-white/10 space-y-2">
               <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200">
                 <Clock className="w-4 h-4 text-red-400" />
                 <span>Jendela Waktu Pemindaian (Scan Window):</span>
@@ -328,8 +449,9 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                 </div>
               </div>
               <div className="text-[10px] text-slate-400">
-                Pemindaian di luar jam ini akan ditolak dengan pesan informatif kepada peserta.
+                Jendela ini disimpan bersama token resmi dan divalidasi oleh GAS saat QR dipindai.
               </div>
+            </div>
             </div>
 
             {/* Action Buttons */}
@@ -337,7 +459,8 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
               <button
                 type="button"
                 onClick={() => setShowRotateConfirm(true)}
-                className="px-3.5 py-2 bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 border border-rose-500/30 rounded-xl font-semibold flex items-center gap-1.5 transition-all text-xs"
+                disabled={!enabled || isSaving}
+                className="px-3.5 py-2 bg-rose-950/60 hover:bg-rose-900/60 disabled:opacity-50 disabled:cursor-not-allowed text-rose-300 border border-rose-500/30 rounded-xl font-semibold flex items-center gap-1.5 transition-all text-xs"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Regenerasi Token</span>
@@ -346,10 +469,11 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
               <button
                 type="button"
                 onClick={handleSaveConfig}
-                className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold shadow-lg shadow-red-950/50 flex items-center gap-2"
+                disabled={isSaving}
+                className="px-5 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white rounded-xl font-bold shadow-lg shadow-red-950/50 flex items-center gap-2"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>Simpan Parameter QR</span>
+                <span>{isSaving ? 'Memproses QR...' : 'Simpan & Terbitkan QR Resmi'}</span>
               </button>
             </div>
           </div>
@@ -362,7 +486,7 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
               <div>
                 <div className="font-bold text-white text-sm">Mode Rangkaian Pos / Checkpoints</div>
                 <div className="text-[11px] text-slate-400">
-                  Cocok untuk Wide Game, Penjelajahan Rimba, Orienteering, dan Pos Uji Keterampilan.
+                  Multi-pos belum terhubung ke endpoint scan GAS. Gunakan QR agenda resmi untuk presensi dan XP.
                 </div>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
@@ -370,6 +494,7 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                   type="checkbox"
                   checked={isMultiCheckpoint}
                   onChange={e => setIsMultiCheckpoint(e.target.checked)}
+                  disabled
                   className="sr-only peer"
                 />
                 <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
@@ -498,77 +623,145 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
             )}
           </div>
         )}
-
         {/* TAB 3: LIVE PREVIEW & PRINT (Req 5, 6, 7) */}
         {activeTab === 'preview' && (
           <div className="space-y-4 text-xs">
-            {/* Live QR Sign Card Preview */}
-            <div className="max-w-sm mx-auto p-5 rounded-3xl bg-gradient-to-b from-[#2a0e13] via-[#1c0c0f] to-[#120709] border-2 border-red-500/40 text-center space-y-3 shadow-2xl">
-              <div className="space-y-0.5">
-                <span className="px-2.5 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 font-bold text-[10px] uppercase">
-                  {category}
-                </span>
-                <h4 className="text-base font-black text-white mt-1">{activityTitle}</h4>
-                <div className="text-[11px] text-slate-300 flex items-center justify-center gap-2">
-                  <span>⏰ {scheduleTime}</span>
-                  <span>·</span>
-                  <span>📍 {location}</span>
+            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)] gap-4">
+              <div className="rounded-3xl border border-red-500/20 bg-gradient-to-b from-[#2a0e13] via-[#1c0c0f] to-[#120709] p-5 shadow-2xl">
+                <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)] gap-5 items-start">
+                  <div className="mx-auto flex flex-col items-center gap-3">
+                    <QrImage
+                      value={qrDisplayToken}
+                      size={220}
+                      className="shadow-xl"
+                      emptyLabel="QR belum aktif"
+                      subtitle="Simpan pengaturan untuk menghasilkan token resmi yang siap dipindai."
+                    />
+                    <div className="w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-center text-[10px] text-slate-400">
+                      <div className="font-semibold text-slate-300">Token QR</div>
+                      <div className="mt-1 truncate font-mono">{qrDisplayToken || 'Belum dibuat'}</div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <div className="inline-flex rounded-full border border-red-500/30 bg-red-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-red-300">
+                        {category}
+                      </div>
+                      <h4 className="mt-2 text-2xl font-black tracking-tight text-white">{activityTitle}</h4>
+                      <p className="mt-1 text-sm text-slate-300">QR ini digunakan untuk presensi dan pencatatan partisipasi kegiatan secara resmi di SiEpang.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                        <div className="flex items-center gap-2 text-slate-300 font-semibold"><Clock className="w-4 h-4 text-red-400" />Waktu Kegiatan</div>
+                        <div className="mt-2 text-base font-bold text-white">{scheduleTime}</div>
+                        <div className="mt-1 text-[11px] text-slate-400">Jendela scan: {scanOpens} - {scanCloses}</div>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                        <div className="flex items-center gap-2 text-slate-300 font-semibold"><MapPin className="w-4 h-4 text-red-400" />Lokasi</div>
+                        <div className="mt-2 text-base font-bold text-white">{location}</div>
+                        <div className="mt-1 text-[11px] text-slate-400">Mode: {mode}</div>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                        <div className="text-slate-300 font-semibold">Reward XP</div>
+                        <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-amber-300">
+                          <Zap className="w-4 h-4" />
+                          <span className="text-lg font-black">+{rewardXp}</span>
+                          <span className="text-xs font-semibold">XP</span>
+                        </div>
+                        <div className="mt-2 text-[11px] text-slate-400">Scan kedua dicegah agar reward tidak ganda.</div>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                        <div className="text-slate-300 font-semibold">Status QR</div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${enabled ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-500/20 text-slate-300 border border-slate-500/30'}`}>
+                            {enabled ? 'AKTIF' : 'NONAKTIF'}
+                          </span>
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${isOfficialToken ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}`}>
+                            {isOfficialToken ? 'TOKEN RESMI GAS' : 'BELUM DITERBITKAN'}
+                          </span>
+                        </div>
+                        <div className="mt-2 text-[11px] text-slate-400">Token hanya valid jika diterbitkan GAS dari agenda resmi.</div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* QR Canvas Box */}
-              <div className="w-48 h-48 mx-auto p-3 bg-white rounded-2xl shadow-xl flex items-center justify-center">
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrDisplayToken)}`}
-                  alt="QR Code Kegiatan"
-                  className="w-full h-full object-contain"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <div className="text-[11px] text-slate-300 font-medium">
-                  Scan menggunakan aplikasi SiEpang untuk mencatat keikutsertaan
+              <div className="space-y-4">
+                <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
+                  <h5 className="text-sm font-bold text-white">Aksi Cepat</h5>
+                  <div className="mt-4 grid grid-cols-1 gap-3">
+                    <button
+                      type="button"
+                      onClick={handleSaveConfig}
+                      className="flex items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 py-3 font-bold text-white shadow hover:bg-red-500"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Simpan Pengaturan QR</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleOpenPrint}
+                      className="flex items-center justify-center gap-2 rounded-2xl bg-white/10 px-4 py-3 font-semibold text-white border border-white/10 hover:bg-white/15"
+                    >
+                      <Printer className="w-4 h-4" />
+                      <span>Cetak Lembar Tanda Kegiatan</span>
+                    </button>
+                    <a
+                      href={downloadHref || undefined}
+                      download={`QR_${activityTitle.replace(/\s+/g, '_')}.txt`}
+                      className={`flex items-center justify-center gap-2 rounded-2xl px-4 py-3 font-semibold border ${downloadHref ? 'bg-white/10 text-white border-white/10 hover:bg-white/15' : 'pointer-events-none bg-white/5 text-slate-500 border-white/5'}`}
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Unduh Token QR</span>
+                    </a>
+                  </div>
                 </div>
-                {rewardXp > 0 && (
-                  <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 font-mono font-bold text-xs border border-amber-500/30">
-                    <Zap className="w-3.5 h-3.5" />
-                    <span>+{rewardXp} XP Poin Pramuka</span>
+
+                <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
+                  <h5 className="text-sm font-bold text-white">Ringkasan Pengaturan</h5>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl bg-white/5 p-3">
+                      <div className="text-[10px] text-slate-400">Jenis QR</div>
+                      <div className="mt-1 font-bold text-white">{mode}</div>
+                    </div>
+                    <div className="rounded-2xl bg-white/5 p-3">
+                      <div className="text-[10px] text-slate-400">Multi-Pos</div>
+                      <div className="mt-1 font-bold text-white">{isMultiCheckpoint ? `${checkpoints.length} Pos` : 'Tidak aktif'}</div>
+                    </div>
+                    <div className="rounded-2xl bg-white/5 p-3">
+                      <div className="text-[10px] text-slate-400">Urutan Pos</div>
+                      <div className="mt-1 font-bold text-white">{checkpointOrder}</div>
+                    </div>
+                    <div className="rounded-2xl bg-white/5 p-3">
+                      <div className="text-[10px] text-slate-400">Event Aktif</div>
+                      <div className="mt-1 truncate font-bold text-white">{eventId || 'Belum terdeteksi'}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {isMultiCheckpoint && checkpoints.length > 0 && (
+                  <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
+                    <h5 className="text-sm font-bold text-white">Daftar Pos</h5>
+                    <div className="mt-4 grid grid-cols-1 gap-3">
+                      {checkpoints.map((cp, idx) => (
+                        <div key={cp.checkpointId} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="font-bold text-white">{idx + 1}. {cp.name}</div>
+                              <div className="mt-1 text-[11px] text-slate-400">{cp.location}</div>
+                            </div>
+                            <span className="rounded-full bg-amber-500/20 px-2 py-1 text-[10px] font-bold text-amber-300">+{cp.rewardXp} XP</span>
+                          </div>
+                          <div className="mt-2 truncate rounded-xl bg-black/30 px-2.5 py-2 font-mono text-[10px] text-slate-400">{cp.qrToken}</div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
-
-              <div className="text-[9px] text-slate-500 font-mono truncate px-2">
-                Token Opaque: {qrDisplayToken}
-              </div>
-            </div>
-
-            {/* Quick Actions */}
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (currentConfig && onOpenPrintSign) {
-                    onOpenPrintSign(currentConfig);
-                  } else {
-                    window.print();
-                  }
-                }}
-                className="px-4 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold flex items-center gap-2 shadow"
-              >
-                <Printer className="w-4 h-4" />
-                <span>Cetak Lembar Tanda Kegiatan (A4 Sign)</span>
-              </button>
-
-              <a
-                href={`https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(qrDisplayToken)}`}
-                download={`QR_${activityTitle.replace(/\s+/g, '_')}.png`}
-                target="_blank"
-                rel="noreferrer"
-                className="px-4 py-2.5 bg-white/10 hover:bg-white/15 text-white rounded-xl font-semibold flex items-center gap-2 border border-white/10"
-              >
-                <Download className="w-4 h-4" />
-                <span>Unduh Gambar PNG</span>
-              </a>
             </div>
           </div>
         )}
@@ -576,67 +769,40 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
         {/* TAB 4: SCAN ANALYTICS (Req 18) */}
         {activeTab === 'analytics' && (
           <div className="space-y-4 text-xs">
+            {!scheduleId && <div className="rounded-2xl border border-amber-500/30 bg-amber-950/30 p-3 text-amber-200">Statistik server hanya tersedia untuk QR yang terhubung ke agenda resmi GAS.</div>}
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-slate-400">Angka berikut dibaca dari AttendanceLogs dan PointTransactions GAS. Percobaan duplikat tidak dihitung sebagai presensi baru; server mencegah reward ganda.</div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
                 <div className="text-slate-400 text-[10px]">Total Pemindaian</div>
                 <div className="text-base font-black text-white mt-0.5 font-mono">
-                  {analytics?.totalScans || 0} Kali
+                  {analyticsLoading ? 'Memuat…' : (analytics?.total_scans ?? 0)} Kali
                 </div>
               </div>
               <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
                 <div className="text-slate-400 text-[10px]">Peserta Unik</div>
                 <div className="text-base font-black text-red-400 mt-0.5 font-mono">
-                  {analytics?.uniqueParticipants || 0} Orang
+                  {analyticsLoading ? 'Memuat…' : (analytics?.unique_participants ?? 0)} Orang
                 </div>
               </div>
               <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
                 <div className="text-slate-400 text-[10px]">Percobaan Duplikat</div>
                 <div className="text-base font-black text-amber-400 mt-0.5 font-mono">
-                  {analytics?.duplicateAttemptsCount || 0} Dicegah
+                  Idempotensi GAS
                 </div>
               </div>
               <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
                 <div className="text-slate-400 text-[10px]">Total XP Terdistribusi</div>
                 <div className="text-base font-black text-amber-300 mt-0.5 font-mono">
-                  +{analytics?.totalXpDistributed || 0} XP
+                  +{analyticsLoading ? '…' : (analytics?.total_xp_distributed ?? 0)} XP
                 </div>
               </div>
             </div>
 
-            {/* Recent Scans Table */}
-            <div className="rounded-2xl bg-black/30 border border-white/5 overflow-hidden">
-              <div className="p-3 border-b border-white/5 font-bold text-slate-300">
-                Log Pemindaian Terbaru
-              </div>
-              <div className="divide-y divide-white/5 max-h-[220px] overflow-y-auto">
-                {analytics?.recentScans && analytics.recentScans.length > 0 ? (
-                  analytics.recentScans.map(scan => (
-                    <div key={scan.scanId} className="p-3 flex items-center justify-between text-[11px]">
-                      <div>
-                        <div className="font-bold text-white">{scan.participantName}</div>
-                        <div className="text-slate-400 text-[10px]">
-                          {scan.contingentName} · {scan.scannedAt}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            scan.status === 'SUCCESS'
-                              ? 'bg-red-500/20 text-red-300'
-                              : 'bg-amber-500/20 text-amber-300'
-                          }`}
-                        >
-                          {scan.status === 'SUCCESS' ? `+${scan.xpAwarded} XP` : 'Duplikat Dicegah'}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-6 text-center text-slate-500">
-                    Belum ada riwayat pemindaian untuk kegiatan ini.
-                  </div>
-                )}
-              </div>
+            <div className="rounded-2xl bg-black/30 border border-white/5 p-4">
+              <div className="font-bold text-slate-300">Integritas Data Scan</div>
+              <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+                GAS menyimpan presensi yang berhasil dan transaksi XP. Percobaan duplikat ditolak secara idempoten, tetapi belum dicatat sebagai metrik terpisah sehingga tidak ditampilkan sebagai angka palsu.
+              </p>
             </div>
           </div>
         )}
