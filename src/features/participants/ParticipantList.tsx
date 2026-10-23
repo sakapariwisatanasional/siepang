@@ -11,6 +11,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import {
   Search,
   Filter,
@@ -135,11 +136,11 @@ export const ParticipantList: React.FC = () => {
   // Import State (Requirement 12)
   const [importStep, setImportStep] = useState<'upload' | 'preview' | 'result'>('upload');
   const [rawCsvText, setRawCsvText] = useState('');
+  const [importRows, setImportRows] = useState<Array<{sourceRow:number; raw:any; mapped:any; selected:boolean; error:string}>>([]);
+  const [importBusy, setImportBusy] = useState(false);
   const [importResult, setImportResult] = useState<{
-    accepted: number;
-    needsReview: number;
-    rejected: number;
-    duplicatesCount: number;
+    accepted: number; needsReview: number; rejected: number; duplicatesCount: number;
+    details?: Array<{row:number; status:string; participant_id?:string; message?:string}>;
   } | null>(null);
 
   const [toast, setToast] = useState<string | null>(null);
@@ -468,28 +469,86 @@ export const ParticipantList: React.FC = () => {
     });
   };
 
-  // Process CSV import (Requirement 12)
-  const handleProcessImport = () => {
-    const lines = rawCsvText.trim().split('\n');
-    if (lines.length < 2) {
-      alert('File CSV harus memiliki header dan minimal 1 baris data.');
-      return;
-    }
-
-    const headers = lines[0].split(',').map(h => h.trim());
-    const rows = lines.slice(1).map(line => {
-      const vals = line.split(',').map(v => v.trim());
-      const obj: any = {};
-      headers.forEach((h, idx) => {
-        obj[h] = vals[idx] || '';
-      });
-      return obj;
+  // Import file parsing is client-side only; authoritative validation and persistence stay in GAS.
+  const normalizeImportHeader = (value: any) => String(value ?? '').trim().toLocaleLowerCase('id-ID').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  const mapImportRow = (row: Record<string, any>) => {
+    const mapped: any = {};
+    const aliases: Record<string, string[]> = {
+      name: ['nama lengkap','nama','name','full name','nama peserta'],
+      gender: ['jenis kelamin','gender','jk','kelamin'],
+      role: ['tingkatan','tingkat','role','scout level','golongan'],
+      membershipNumber: ['nta','kta','nomor anggota','nomor tanda anggota','nomor pramuka','pramuka id'],
+      schoolPangkalan: ['nama sekolah','sekolah','pangkalan','school','institution','nama pangkalan'],
+      contingentName: ['kontingen','nama kontingen','contingent','contingent name'],
+      email: ['email','alamat email','e mail'],
+      phone: ['nomor telepon','telepon','no telepon','no hp','nomor hp','hp','phone','telepon orang tua','nomor telepon orang tua'],
+      birthPlace: ['tempat lahir','birth place'],
+      birthDate: ['tanggal lahir','tgl lahir','birth date','date of birth'],
+    };
+    const normalized: Record<string, any> = {};
+    Object.keys(row).forEach(key => { normalized[normalizeImportHeader(key)] = row[key]; });
+    Object.keys(aliases).forEach(field => {
+      const found = aliases[field].find(alias => normalized[normalizeImportHeader(alias)] !== undefined && String(normalized[normalizeImportHeader(alias)] ?? '').trim() !== '');
+      if (found) mapped[field] = String(normalized[normalizeImportHeader(found)]).trim();
     });
-
-    const res = participantService.importParticipants(rows, currentActorName);
-    setImportResult(res);
-    setImportStep('result');
-    showToast(`✅ Impor selesai: ${res.accepted} Diterima, ${res.needsReview} Ditinjau.`);
+    if (mapped.gender) {
+      const g = normalizeImportHeader(mapped.gender);
+      if (['l','laki laki','putra','pria','male','m'].includes(g)) mapped.gender = 'M';
+      else if (['p','perempuan','putri','wanita','female','f'].includes(g)) mapped.gender = 'F';
+      else mapped.gender = '';
+    }
+    return mapped;
+  };
+  const parseImportMatrix = (matrix: any[][]) => {
+    const nonEmpty = matrix.filter(row => Array.isArray(row) && row.some(cell => String(cell ?? '').trim() !== ''));
+    if (nonEmpty.length < 2) throw new Error('File harus memiliki header dan minimal satu baris data.');
+    const headerIndex = nonEmpty.findIndex(row => row.some(cell => ['nama lengkap','nama','name','nta','jenis kelamin'].includes(normalizeImportHeader(cell))));
+    if (headerIndex < 0 || headerIndex >= nonEmpty.length - 1) throw new Error('Header kolom peserta tidak ditemukan. Pastikan baris judul memuat Nama, Nama Lengkap, atau NTA.');
+    const headers = nonEmpty[headerIndex].map((h, i) => String(h ?? '').trim() || `Kolom ${i + 1}`);
+    const parsed = nonEmpty.slice(headerIndex + 1).map((values, index) => {
+      const raw: Record<string, any> = {};
+      headers.forEach((header, i) => { raw[header] = values[i] ?? ''; });
+      const mapped = mapImportRow(raw);
+      const error = !mapped.name || mapped.name.trim().length < 2 ? 'Nama lengkap wajib diisi.' : (mapped.gender === undefined || mapped.gender === '' ? 'Jenis kelamin belum dikenali; periksa sebelum impor.' : '');
+      return { sourceRow: headerIndex + index + 2, raw, mapped, selected: !error, error };
+    }).filter(row => Object.values(row.raw).some(value => String(value ?? '').trim() !== ''));
+    if (!parsed.length) throw new Error('Tidak ditemukan baris data setelah header.');
+    setImportRows(parsed);
+    setImportStep('preview');
+  };
+  const handleImportFile = async (file?: File) => {
+    if (!file) return;
+    try {
+      const ext = file.name.toLowerCase().split('.').pop();
+      if (!['xlsx','xls','csv'].includes(ext || '')) throw new Error('Format file harus XLSX, XLS, atau CSV.');
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!firstSheet) throw new Error('Sheet pertama tidak berisi data.');
+      parseImportMatrix(XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '', raw: false }) as any[][]);
+    } catch (err:any) { showToast(err?.message || 'File tidak dapat dibaca.'); }
+  };
+  const handleValidatePastedCsv = () => {
+    try {
+      if (!rawCsvText.trim()) throw new Error('Unggah file atau tempelkan data CSV terlebih dahulu.');
+      const workbook = XLSX.read(rawCsvText, { type: 'string', cellDates: true });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      parseImportMatrix(XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '', raw: false }) as any[][]);
+    } catch (err:any) { showToast(err?.message || 'CSV tidak dapat dibaca.'); }
+  };
+  const handleProcessImport = async () => {
+    const selected = importRows.filter(row => row.selected && !row.error);
+    if (!selected.length) { showToast('Pilih minimal satu baris valid untuk diimpor.'); return; }
+    setImportBusy(true);
+    try {
+      const res = await participantService.importParticipantsToGas(selected.map(row => ({ ...row.mapped, source_row: row.sourceRow })));
+      setImportResult({ accepted: res.accepted, needsReview: 0, rejected: res.rejected, duplicatesCount: res.duplicatesCount, details: res.details });
+      setImportStep('result');
+      showToast(`Impor selesai: ${res.accepted} berhasil, ${res.rejected} gagal.`);
+      try { await participantService.loadParticipants(); } catch (refreshErr:any) { showToast('Impor tersimpan, tetapi daftar peserta belum berhasil disegarkan. Muat ulang halaman untuk memeriksa hasil.'); }
+    } catch (err:any) {
+      showToast(err?.message || 'Impor gagal. Data belum dapat dikonfirmasi tersimpan.');
+    } finally { setImportBusy(false); }
   };
 
   const getStatusBadge = (status: ParticipantStatus) => {
@@ -1631,9 +1690,9 @@ export const ParticipantList: React.FC = () => {
 
             {importStep === 'upload' && (
               <div className="space-y-3 text-xs">
-                <p className="text-[#6B7280] dark:text-slate-300">
-                  Tempelkan baris data CSV dengan kolom: <code className="text-[#C62828] font-mono bg-red-50 dark:bg-red-950/40 px-1 py-0.5 rounded">Nama Lengkap, Jenis Kelamin, Tingkatan, NTA, Kontingen, Telepon</code>.
-                </p>
+                <p className="text-[#6B7280] dark:text-slate-300">Unggah Excel (.xlsx/.xls) atau CSV. Sistem membaca sheet pertama, mendeteksi kolom umum, lalu menampilkan pratinjau sebelum data dikirim ke GAS.</p>
+                <input type="file" accept=".xlsx,.xls,.csv" onChange={e => { const file = e.target.files?.[0]; if (file) void handleImportFile(file); e.currentTarget.value = ''; }} className="w-full rounded-xl border border-[#ECECEF] dark:border-white/10 p-3 text-[#171717] dark:text-white" />
+                <p className="text-[#6B7280] dark:text-slate-400">Atau tempel CSV di bawah ini:</p>
                 <textarea
                   rows={6}
                   value={rawCsvText}
@@ -1643,12 +1702,27 @@ export const ParticipantList: React.FC = () => {
                 <div className="flex justify-end gap-2 pt-2">
                   <button onClick={() => setShowImportModal(false)} className="px-4 py-2 bg-[#FAFAFA] hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 rounded-xl text-[#6B7280] dark:text-slate-300 cursor-pointer border border-[#ECECEF] dark:border-white/10">Batal</button>
                   <button
-                    onClick={handleProcessImport}
+                    onClick={handleValidatePastedCsv}
                     className="px-5 py-2.5 bg-[#C62828] hover:bg-[#A61B1B] text-white font-bold rounded-xl shadow-xs cursor-pointer"
                   >
-                    Validasi & Impor
+                    Validasi & Pratinjau
                   </button>
                 </div>
+              </div>
+            )}
+
+            {importStep === 'preview' && (
+              <div className="space-y-3 text-xs">
+                <div className="flex items-center justify-between gap-3">
+                  <div><p className="font-bold text-[#171717] dark:text-white">Pratinjau impor</p><p className="text-[#6B7280] dark:text-slate-300">{importRows.filter(r=>r.selected && !r.error).length} baris dipilih dari {importRows.length}. Baris bertanda masalah tidak dapat dipilih.</p></div>
+                  <button type="button" onClick={()=>setImportStep('upload')} className="px-3 py-2 rounded-lg border border-[#ECECEF] dark:border-white/10">Kembali</button>
+                </div>
+                <div className="max-h-72 overflow-auto border border-[#ECECEF] dark:border-white/10 rounded-xl">
+                  <table className="w-full text-left"><thead className="sticky top-0 bg-gray-50 dark:bg-white/10"><tr><th className="p-2">Pilih</th><th className="p-2">Baris</th><th className="p-2">Nama</th><th className="p-2">JK</th><th className="p-2">NTA</th><th className="p-2">Validasi</th></tr></thead><tbody>
+                    {importRows.map((row, index)=><tr key={`${row.sourceRow}-${index}`} className="border-t border-[#ECECEF] dark:border-white/10"><td className="p-2"><input type="checkbox" checked={row.selected && !row.error} disabled={!!row.error || importBusy} onChange={e=>setImportRows(old=>old.map((r,i)=>i===index?{...r,selected:e.target.checked}:r))}/></td><td className="p-2">{row.sourceRow}</td><td className="p-2">{row.mapped.name || '—'}</td><td className="p-2">{row.mapped.gender || '—'}</td><td className="p-2">{row.mapped.membershipNumber || '—'}</td><td className={`p-2 ${row.error?'text-rose-600':'text-emerald-600'}`}>{row.error || 'Siap'}</td></tr>)}
+                  </tbody></table>
+                </div>
+                <div className="flex justify-end gap-2"><button type="button" disabled={importBusy} onClick={()=>setImportStep('upload')} className="px-4 py-2 rounded-xl border border-[#ECECEF] dark:border-white/10">Batal</button><button type="button" disabled={importBusy || !importRows.some(r=>r.selected && !r.error)} onClick={()=>void handleProcessImport()} className="px-5 py-2.5 bg-[#C62828] text-white font-bold rounded-xl disabled:opacity-50">{importBusy?'Menyimpan ke GAS…':'Import '+importRows.filter(r=>r.selected && !r.error).length+' peserta'}</button></div>
               </div>
             )}
 
@@ -1669,6 +1743,9 @@ export const ParticipantList: React.FC = () => {
                   </div>
                 </div>
 
+                {importResult.details && importResult.details.length > 0 && (
+                  <div className="max-h-52 overflow-auto rounded-xl border border-[#ECECEF] dark:border-white/10"><table className="w-full text-left"><thead><tr><th className="p-2">Baris</th><th className="p-2">Status</th><th className="p-2">Keterangan</th></tr></thead><tbody>{importResult.details.map((d,i)=><tr key={`${d.row}-${i}`} className="border-t border-[#ECECEF] dark:border-white/10"><td className="p-2">{d.row}</td><td className="p-2">{d.status}</td><td className="p-2">{d.message || d.participant_id || '—'}</td></tr>)}</tbody></table></div>
+                )}
                 {importResult.duplicatesCount > 0 && (
                   <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-800 dark:text-amber-300 flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
@@ -1681,6 +1758,8 @@ export const ParticipantList: React.FC = () => {
                     onClick={() => {
                       setShowImportModal(false);
                       setImportStep('upload');
+                      setImportRows([]);
+                      setRawCsvText('');
                     }}
                     className="px-5 py-2 bg-[#C62828] hover:bg-[#A61B1B] text-white rounded-xl font-bold cursor-pointer"
                   >
