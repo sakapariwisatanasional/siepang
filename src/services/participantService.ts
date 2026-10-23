@@ -434,6 +434,23 @@ class ParticipantService {
 
   // ==================== CSV / SPREADSHEET IMPORT ====================
 
+  /** Import selected participant rows through the authoritative GAS admin endpoint. */
+  public async importParticipantsToGas(rows: Array<Record<string, any>>): Promise<{
+    accepted: number; rejected: number; duplicatesCount: number;
+    details: Array<{row:number; status:string; participant_id?:string; message?:string}>;
+  }> {
+    if (!Array.isArray(rows) || rows.length === 0) throw new Error('Pilih minimal satu baris peserta.');
+    if (rows.length > 100) throw new Error('Maksimal 100 peserta per batch impor.');
+    const event = eventService.getCurrentEvent();
+    const eventId = String(event?.id || (event as any)?.event_id || '');
+    if (!eventId) throw new Error('Event aktif tidak ditemukan.');
+    const response = await apiTransport.send<any>('participants.admin.import', { event_id: eventId, rows });
+    if (!response.ok) throw new Error(response.error?.message || 'GAS menolak proses impor.');
+    const data = response.data;
+    if (!data || !Array.isArray(data.details)) throw new Error('Respons impor GAS tidak valid; periksa spreadsheet sebelum mencoba ulang.');
+    return { accepted: Number(data.accepted || 0), rejected: Number(data.rejected || 0), duplicatesCount: Number(data.duplicatesCount || 0), details: data.details };
+  }
+
   public importParticipants(
     rows: any[],
     importedBy: string
