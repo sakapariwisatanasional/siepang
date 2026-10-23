@@ -627,9 +627,9 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
         {activeTab === 'preview' && (
           <div className="space-y-4 text-xs">
             <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)] gap-4">
-              <div className="rounded-3xl border border-red-500/20 bg-gradient-to-b from-[#2a0e13] via-[#1c0c0f] to-[#120709] p-5 shadow-2xl">
-                <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)] gap-5 items-start">
-                  <div className="mx-auto flex flex-col items-center gap-3">
+              <div className="min-w-0 overflow-hidden rounded-3xl border border-red-500/20 bg-gradient-to-b from-[#2a0e13] via-[#1c0c0f] to-[#120709] p-4 sm:p-5 shadow-2xl">
+                <div className="grid grid-cols-1 gap-5 items-start min-w-0">
+                  <div className="mx-auto flex w-full max-w-[240px] min-w-0 flex-col items-center gap-3">
                     <QrImage
                       value={qrDisplayToken}
                       size={220}
@@ -643,7 +643,7 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="space-y-4">
+                  <div className="min-w-0 space-y-4">
                     <div>
                       <div className="inline-flex rounded-full border border-red-500/30 bg-red-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-red-300">
                         {category}
