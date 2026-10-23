@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { PhotoEntityType } from '../../types';
 import { profilePhotoService } from '../../services/profilePhotoService';
+import { resolveGoogleDriveImageUrl } from '../../utils/googleDriveImage';
 
 interface ProfilePhotoUploaderProps {
   entityType: PhotoEntityType;
@@ -64,7 +65,7 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
 }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
-  const [photoUrl, setPhotoUrl] = useState<string | undefined>(currentPhotoUrl);
+  const [photoUrl, setPhotoUrl] = useState<string | undefined>(resolveGoogleDriveImageUrl(currentPhotoUrl, undefined, 512) || undefined);
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [mode, setMode] = useState<'CHOOSER' | 'CAMERA' | 'CROPPER'>('CHOOSER');
 
@@ -92,7 +93,7 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
 
   // Sync current photo url
   useEffect(() => {
-    setPhotoUrl(currentPhotoUrl);
+    setPhotoUrl(resolveGoogleDriveImageUrl(currentPhotoUrl, undefined, 512) || undefined);
   }, [currentPhotoUrl]);
 
   // Clean camera stream on unmount or mode exit
@@ -347,7 +348,7 @@ export const ProfilePhotoUploader: React.FC<ProfilePhotoUploaderProps> = ({
         auto_approve: autoApproveOnUpload,
       });
 
-      setPhotoUrl(saved.profile_photo_url);
+      setPhotoUrl(resolveGoogleDriveImageUrl(saved.profile_photo_url, saved.profile_photo_file_id, 512) || undefined);
       if (onPhotoSaved) {
         onPhotoSaved(saved);
       }
