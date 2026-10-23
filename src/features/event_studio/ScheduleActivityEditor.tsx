@@ -145,6 +145,8 @@ export const ScheduleActivityEditor: React.FC = () => {
   // Activity QR Management state (Requirements 1-7)
   const [selectedQrActivity, setSelectedQrActivity] = useState<{
     id: string;
+    scheduleId?: string;
+    scheduleXpReward?: number;
     title: string;
     category?: string;
     location?: string;
@@ -622,6 +624,8 @@ export const ScheduleActivityEditor: React.FC = () => {
                         type="button"
                         onClick={() => setSelectedQrActivity({
                           id: item.id,
+                          scheduleId: item.id,
+                          scheduleXpReward: item.xpReward,
                           title: item.title,
                           category: item.category,
                           location: item.location,
@@ -1153,6 +1157,8 @@ export const ScheduleActivityEditor: React.FC = () => {
       {selectedQrActivity && (
         <ActivityQrModal
           activityId={selectedQrActivity.id}
+          scheduleId={selectedQrActivity.scheduleId}
+          scheduleXpReward={selectedQrActivity.scheduleXpReward}
           activityTitle={selectedQrActivity.title}
           category={selectedQrActivity.category}
           location={selectedQrActivity.location}
