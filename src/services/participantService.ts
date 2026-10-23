@@ -432,24 +432,52 @@ class ParticipantService {
     return { isDuplicate: false };
   }
 
-  // ==================== CSV / SPREADSHEET IMPORT ====================
-
-  /** Import selected participant rows through the authoritative GAS admin endpoint. */
-  public async importParticipantsToGas(rows: Array<Record<string, any>>, target: { gudepId?: string; reguId?: string } = {}): Promise<{
-    accepted: number; rejected: number; duplicatesCount: number;
-    details: Array<{row:number; status:string; participant_id?:string; message?:string}>;
+  // Persist imported participants through the authoritative GAS admin endpoint.
+  // The legacy local-only importParticipants method remains for compatibility but is not used by the UI flow.
+  public async importParticipantsToGas(rows: Record<string, any>[], importBatchId = ''): Promise<{
+    imported: number;
+    failed: number;
+    results: Array<{row:number;status:string;participant_id?:string;name?:string;error?:string}>;
+    event_id?: string;
+    duplicatesCount?: number;
   }> {
-    if (!Array.isArray(rows) || rows.length === 0) throw new Error('Pilih minimal satu baris peserta.');
-    if (rows.length > 100) throw new Error('Maksimal 100 peserta per batch impor.');
-    const event = eventService.getCurrentEvent();
-    const eventId = String(event?.id || (event as any)?.event_id || '');
-    if (!eventId) throw new Error('Event aktif tidak ditemukan.');
-    const response = await apiTransport.send<any>('participants.admin.import', { event_id: eventId, rows, gudep_id: String(target.gudepId || ''), regu_id: String(target.reguId || '') });
-    if (!response.ok) throw new Error(response.error?.message || 'GAS menolak proses impor.');
-    const data = response.data;
-    if (!data || !Array.isArray(data.details)) throw new Error('Respons impor GAS tidak valid; periksa spreadsheet sebelum mencoba ulang.');
-    return { accepted: Number(data.accepted || 0), rejected: Number(data.rejected || 0), duplicatesCount: Number(data.duplicatesCount || 0), details: data.details };
+    if (!Array.isArray(rows) || rows.length === 0) throw new Error('Tidak ada baris peserta yang dipilih untuk diimpor.');
+    const result = await apiTransport.send<any>('participants.admin.import', {
+      rows,
+      import_batch_id: importBatchId || undefined,
+      event_id: eventService.getCurrentEvent()?.id || '',
+    });
+    if (!result.ok) throw new Error(result.error?.message || 'GAS menolak proses impor peserta.');
+    const envelope = result.data;
+    const data = envelope?.data && typeof envelope.data === 'object' ? envelope.data : envelope;
+    // GAS ParticipantAdminApi.gs returns {accepted,rejected,duplicatesCount,details};
+    // normalize this and older {imported,failed,results} response contracts.
+    const rawResults = Array.isArray(data?.results) ? data.results : Array.isArray(data?.details) ? data.details : null;
+    if (!data || !rawResults) throw new Error('GAS mengirim respons impor yang tidak dikenali. Jangan ulangi impor sebelum memeriksa spreadsheet.');
+    const results = rawResults.map((item: any, index: number) => {
+      const rawStatus = String(item?.status || '').trim().toUpperCase();
+      const successful = ['IMPORTED', 'IMPORTED_TO_CONTINGENT', 'IMPORTED_AND_LINKED', 'SUCCESS', 'OK'].includes(rawStatus);
+      const duplicate = rawStatus === 'DUPLICATE' || /sudah terdaftar|DUPLICATE|ALREADY_EXISTS/i.test(String(item?.error || item?.message || ''));
+      return {
+        row: Number(item?.row) || index + 2,
+        status: successful ? 'IMPORTED' : duplicate ? 'DUPLICATE' : 'REJECTED',
+        participant_id: item?.participant_id ? String(item.participant_id) : undefined,
+        name: item?.name ? String(item.name) : undefined,
+        error: successful ? undefined : String(item?.error || item?.message || (duplicate ? 'Peserta sudah terdaftar.' : 'Baris ditolak backend.')),
+      };
+    });
+    const imported = Number.isFinite(Number(data.imported)) ? Number(data.imported) : Number(data.accepted ?? results.filter((x: any) => x.status === 'IMPORTED').length);
+    const failed = Number.isFinite(Number(data.failed)) ? Number(data.failed) : Number(data.rejected ?? results.filter((x: any) => x.status !== 'IMPORTED').length);
+    return {
+      imported: Math.max(0, imported || 0),
+      failed: Math.max(0, failed || 0),
+      duplicatesCount: Number(data.duplicatesCount ?? results.filter((x: any) => x.status === 'DUPLICATE').length),
+      results,
+      event_id: data.event_id ? String(data.event_id) : undefined,
+    };
   }
+
+  // ==================== CSV / SPREADSHEET IMPORT ====================
 
   public importParticipants(
     rows: any[],
