@@ -8,6 +8,7 @@ import { apiTransport } from './apiTransport';
 import { eventService } from './eventService';
 import { authService } from './authService';
 import { participantService } from './participantService';
+import { resolveGoogleDriveImageUrl } from '../utils/googleDriveImage';
 
 export const PEER_APPRECIATIONS: { type: PeerAppreciationType; xp: number; icon: string; label: string }[] = [
   { type: 'Helpful', xp: 25, icon: 'Handshake', label: 'Siaga Menolong' },
@@ -61,7 +62,11 @@ class PointService {
       id: String(entry.id || ''),
       name: String(entry.name || 'Peserta'),
       contingentName: String(entry.contingentName || ''),
-      avatar: String(entry.avatar || ''),
+      avatar: resolveGoogleDriveImageUrl(
+        entry.avatar || entry.profile_photo_url || entry.profilePhotoUrl || entry.photo_url || entry.photoUrl || entry.avatar_url || '',
+        entry.profile_photo_file_id || entry.photo_file_id || entry.profilePhotoFileId || '',
+        1000,
+      ),
       role: String(entry.role || 'Peserta'),
       xp: Number(entry.xp || 0),
       level: Number(entry.level || (Math.floor(Number(entry.xp || 0) / 200) + 1)),
