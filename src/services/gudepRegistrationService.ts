@@ -28,8 +28,10 @@ export type GudepDetail = {
   gudep: GudepRecord; regu: GudepRegu[]; advisors: GudepAdvisor[]; operators: GudepOperator[];
   participantLinks: Array<{ id: string; participant_id: string; regu_id: string; gudep_id: string; status: string }>;
   advisorRegu: unknown[];
+  participants?: Array<{ id: string; name: string; gender: string; regu_id: string; gudep_id?: string; membership_number?: string; profile_photo_url?: string; profile_photo_file_id?: string; status?: string }>;
   eligibleParticipants?: Array<{ id: string; name: string; gender: string; membership_number?: string; profile_photo_url?: string; profile_photo_file_id?: string; institution?: string; contingent_id?: string; status?: string }>;
 };
+export type GudepParticipantCandidate = { id: string; name: string; gender: string; membership_number?: string; profile_photo_url?: string; profile_photo_file_id?: string; institution?: string; contingent_id?: string; status?: string };
 
 const send = async <T>(action: string, payload: Record<string, unknown>): Promise<T> => {
   const result = await apiTransport.send<T>(action, payload, { timeoutMs: 45000 });
@@ -67,6 +69,8 @@ export const gudepRegistrationService = {
   linkExistingParticipant: (data: { gudep_id: string; regu_id: string; participant_id: string }) =>
     send<{ link: { id: string; gudep_id: string; regu_id: string; participant_id: string }; alreadyExists?: boolean }>(
       'gudep.participant.link', data),
+  participantCandidates: (data: { gudep_id: string; regu_id: string }) =>
+    send<{ candidates: GudepParticipantCandidate[] }>('gudep.participant.candidates', data),
   assignExistingUser: (data: { gudep_id: string; user_id: string }) =>
     send<{ assignment_id: string; status: string }>('gudep.operator.assign', data),
   activateGudep: (gudep_id: string, activation_status: 'ACTIVE' | 'INACTIVE') => send<{gudep_id:string;activation_status:string;regu_updated:number}>('gudep.registration.activate',{gudep_id,activation_status}),
