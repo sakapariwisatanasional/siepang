@@ -30,6 +30,7 @@ import { participantService } from './participantService';
 import { eventStudioService } from './eventStudioService';
 import { authService } from './authService';
 import { agendaAttendanceService } from './agendaAttendanceService';
+import { apiTransport } from './apiTransport';
 
 export interface ScanResult {
   success: boolean;
@@ -194,10 +195,27 @@ class ActivityQrService {
   public async scanActivityQr(tokenInput: string, _participantIdOrCode?: string): Promise<ScanResult> {
     // Production agenda attendance: ignore browser-supplied participant IDs.
     // Legacy ACT_ / CP_ sample tokens do not authorize attendance or XP.
-    if (!/^AGENDA_[a-f0-9]{64}$/i.test(tokenInput.trim())) {
-      throw new Error('Gunakan QR agenda resmi yang diterbitkan panitia dari GAS.');
+    const token = tokenInput.trim();
+    if (/^SIEPANG-CP-[A-Z0-9]+$/i.test(token)) {
+      const result = await apiTransport.send<any>('checkpoint.attendance.scan', { qr_code: token });
+      if (!result.ok || !result.data?.success || !result.data?.attendance_recorded) {
+        throw new Error(result.error?.message || 'GAS belum mengonfirmasi scan pos.');
+      }
+      return {
+        success: true,
+        message: result.data.duplicate
+          ? 'Kehadiran di pos ini sudah tercatat. XP tidak ditambahkan lagi.'
+          : `Pos berhasil dicatat. Anda memperoleh ${Number(result.data.xp_awarded || 0)} XP.`,
+        activityTitle: String(result.data.activity_title || 'Pos kegiatan'),
+        xpAwarded: Number(result.data.xp_awarded || 0),
+        isDuplicate: Boolean(result.data.duplicate),
+        attendanceRecorded: Boolean(result.data.attendance_recorded),
+      };
     }
-    const result = await agendaAttendanceService.scan(tokenInput);
+    if (!/^AGENDA_[a-f0-9]{64}$/i.test(token)) {
+      throw new Error('Gunakan QR agenda atau QR pos resmi yang diterbitkan panitia dari GAS.');
+    }
+    const result = await agendaAttendanceService.scan(token);
     return {
       success: true,
       message: result.duplicate ? 'Kehadiran sudah tercatat. XP tidak ditambahkan lagi.' :
