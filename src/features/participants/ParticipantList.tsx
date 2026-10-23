@@ -138,6 +138,12 @@ export const ParticipantList: React.FC = () => {
   const [rawCsvText, setRawCsvText] = useState('');
   const [importRows, setImportRows] = useState<Array<{sourceRow:number; raw:any; mapped:any; selected:boolean; error:string}>>([]);
   const [importBusy, setImportBusy] = useState(false);
+  const [importGudepOptions, setImportGudepOptions] = useState<GudepRecord[]>([]);
+  const [importGudepId, setImportGudepId] = useState('');
+  const [importReguOptions, setImportReguOptions] = useState<GudepRegu[]>([]);
+  const [importReguId, setImportReguId] = useState('');
+  const [importTargetLoading, setImportTargetLoading] = useState(false);
+  const [importTargetError, setImportTargetError] = useState('');
   const [importResult, setImportResult] = useState<{
     accepted: number; needsReview: number; rejected: number; duplicatesCount: number;
     details?: Array<{row:number; status:string; participant_id?:string; message?:string}>;
@@ -469,6 +475,50 @@ export const ParticipantList: React.FC = () => {
     });
   };
 
+  // Import target options come from the authoritative GAS Gudep endpoints.
+  useEffect(() => {
+    if (!showImportModal) return;
+    let active = true;
+    setImportTargetLoading(true);
+    setImportTargetError('');
+    gudepRegistrationService.listForParticipantRegistration().then(({ gudep }) => {
+      if (!active) return;
+      const available = (gudep || []).filter(g => {
+        const verification = String(g.verification_status || '').trim().toUpperCase();
+        const activation = String(g.activation_status || '').trim().toUpperCase();
+        const contingentVerification = String(g.contingent_verification_status || '').trim().toUpperCase();
+        return verification === 'VERIFIED' && (!activation || activation === 'ACTIVE') && (!contingentVerification || contingentVerification === 'VERIFIED');
+      });
+      setImportGudepOptions(available);
+    }).catch((err:any) => {
+      if (active) { setImportGudepOptions([]); setImportTargetError(err?.message || 'Daftar kontingen/sekolah tidak dapat dimuat dari GAS.'); }
+    }).finally(() => { if (active) setImportTargetLoading(false); });
+    return () => { active = false; };
+  }, [showImportModal]);
+
+  useEffect(() => {
+    if (!showImportModal || !importGudepId) {
+      setImportReguOptions([]);
+      setImportReguId('');
+      return;
+    }
+    let active = true;
+    setImportTargetLoading(true);
+    setImportTargetError('');
+    gudepRegistrationService.detail(importGudepId).then(detail => {
+      if (!active) return;
+      const available = (detail.regu || []).filter(r => {
+        const verification = String(r.verification_status || '').trim().toUpperCase();
+        const activation = String(r.activation_status || '').trim().toUpperCase();
+        return verification === 'VERIFIED' && (!activation || activation === 'ACTIVE');
+      });
+      setImportReguOptions(available);
+    }).catch((err:any) => {
+      if (active) { setImportReguOptions([]); setImportTargetError(err?.message || 'Daftar regu tidak dapat dimuat dari GAS.'); }
+    }).finally(() => { if (active) setImportTargetLoading(false); });
+    return () => { active = false; };
+  }, [showImportModal, importGudepId]);
+
   // Import file parsing is client-side only; authoritative validation and persistence stay in GAS.
   const normalizeImportHeader = (value: any) => String(value ?? '').trim().toLocaleLowerCase('id-ID').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
   const mapImportRow = (row: Record<string, any>) => {
@@ -541,7 +591,7 @@ export const ParticipantList: React.FC = () => {
     if (!selected.length) { showToast('Pilih minimal satu baris valid untuk diimpor.'); return; }
     setImportBusy(true);
     try {
-      const res = await participantService.importParticipantsToGas(selected.map(row => ({ ...row.mapped, source_row: row.sourceRow })));
+      const res = await participantService.importParticipantsToGas(selected.map(row => ({ ...row.mapped, source_row: row.sourceRow })), { gudepId: importGudepId, reguId: importReguId });
       setImportResult({ accepted: res.accepted, needsReview: 0, rejected: res.rejected, duplicatesCount: res.duplicatesCount, details: res.details });
       setImportStep('result');
       showToast(`Impor selesai: ${res.accepted} berhasil, ${res.rejected} gagal.`);
@@ -1708,6 +1758,27 @@ export const ParticipantList: React.FC = () => {
                     Validasi & Pratinjau
                   </button>
                 </div>
+              </div>
+            )}
+
+            {importStep === 'preview' && (
+              <div className="rounded-2xl border border-sky-200 dark:border-sky-900 bg-sky-50/70 dark:bg-sky-950/20 p-3 space-y-3">
+                <div className="font-bold text-slate-800 dark:text-slate-100">Tujuan peserta setelah import</div>
+                <p className="text-slate-600 dark:text-slate-300">Pilih sekolah/Gudep yang sudah diverifikasi. Regu bersifat opsional; jika dipilih, GAS akan menautkan peserta ke regu setelah validasi gender dan kuota.</p>
+                <label className="block text-slate-700 dark:text-slate-200">Kontingen / Sekolah (Gudep)
+                  <select value={importGudepId} disabled={importTargetLoading || importBusy} onChange={e=>{setImportGudepId(e.target.value);setImportReguId('');}} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#242428] p-2.5 text-slate-900 dark:text-white">
+                    <option value="">Tidak menetapkan sekolah/kontingen sekarang</option>
+                    {importGudepOptions.map(g=><option key={g.gudep_id} value={g.gudep_id}>{g.institution_name || g.gudep_name} · {g.gudep_number}</option>)}
+                  </select>
+                </label>
+                {importGudepId && <label className="block text-slate-700 dark:text-slate-200">Regu (opsional)
+                  <select value={importReguId} disabled={importTargetLoading || importBusy || !importGudepId} onChange={e=>setImportReguId(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#242428] p-2.5 text-slate-900 dark:text-white">
+                    <option value="">Hanya tetapkan sekolah/kontingen, belum masuk regu</option>
+                    {importReguOptions.map(r=><option key={r.regu_id} value={r.regu_id}>{r.regu_name} · {r.gender} · kuota {r.quota}</option>)}
+                  </select>
+                </label>}
+                {importTargetLoading && <p className="text-sky-700 dark:text-sky-300">Memuat pilihan dari GAS…</p>}
+                {importTargetError && <p role="alert" className="text-rose-600">{importTargetError}</p>}
               </div>
             )}
 
