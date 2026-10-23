@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
 import { apiTransport } from '../../services/apiTransport';
 import { ArrowLeft, Printer, RefreshCw } from 'lucide-react';
+import { resolveGoogleDriveImageUrl } from '../../utils/googleDriveImage';
 
 type Element = { id: string; field: string; x: number; y: number; w: number; h: number; fontSize: number; color: string; align: 'left' | 'center' | 'right'; text: string };
 type Template = { id: string; name: string; category: string; status: string; widthMm: number; heightMm: number; backgroundUrl: string; elements: Element[] };
@@ -16,11 +17,9 @@ const get = (r: RecordRow, ...keys: string[]) => {
   return '';
 };
 const extractImage = (url: string, cacheKey?: number) => {
-  const value = url.trim();
-  const match = value.match(/(?:\/file\/d\/|[?&]id=)([\w-]+)/);
-  const resolved = match ? `https://drive.google.com/thumbnail?id=${encodeURIComponent(match[1])}&sz=w1600` : value;
-  if (!cacheKey) return resolved;
-  // A new query string forces the browser/CDN to request the latest photo after GAS refresh.
+  const resolved = resolveGoogleDriveImageUrl(url, '', 1600);
+  if (!resolved || !cacheKey) return resolved;
+  // Cache-bust only the resolved image URL; keep existing parameters intact.
   return `${resolved}${resolved.includes('?') ? '&' : '?'}siepang_photo_v=${cacheKey}`;
 };
 const getId = (r: RecordRow) => get(r, 'id', 'participant_id', 'user_id', 'userId');
