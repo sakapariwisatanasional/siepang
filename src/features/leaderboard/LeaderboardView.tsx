@@ -11,6 +11,7 @@ import { Trophy, Medal, Zap, Users, Flame, ChevronRight, Calculator, SlidersHori
 import { pointService } from '../../services/pointService';
 import { participantService } from '../../services/participantService';
 import { LeaderboardEntry } from '../../types';
+import { ParticipantAvatar } from '../../components/ParticipantAvatar';
 
 export const LeaderboardView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'individual' | 'contingent'>('individual');
@@ -133,7 +134,7 @@ export const LeaderboardView: React.FC = () => {
                 <div className="flex flex-col items-center space-y-2">
                   <div className="relative">
                     <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-slate-300 shadow-md">
-                      {rank2.avatar ? <img src={rank2.avatar} alt={rank2.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-sky-100 text-sky-800 font-black">{rank2.name.trim().split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase()}</div>}
+                      <ParticipantAvatar name={rank2.name} src={rank2.avatar} className="w-full h-full object-cover" fallbackClassName="w-full h-full flex items-center justify-center bg-sky-100 text-sky-800 font-black" />
                     </div>
                     <span className="absolute -top-2.5 -right-2 text-xl drop-shadow">🥈</span>
                   </div>
@@ -156,7 +157,7 @@ export const LeaderboardView: React.FC = () => {
                 <div className="flex flex-col items-center space-y-2 -mt-4">
                   <div className="relative">
                     <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-amber-400 shadow-lg ring-4 ring-amber-400/20">
-                      {rank1.avatar ? <img src={rank1.avatar} alt={rank1.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-amber-100 text-amber-800 font-black">{rank1.name.trim().split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase()}</div>}
+                      <ParticipantAvatar name={rank1.name} src={rank1.avatar} className="w-full h-full object-cover" fallbackClassName="w-full h-full flex items-center justify-center bg-amber-100 text-amber-800 font-black" />
                     </div>
                     <span className="absolute -top-3.5 -right-2.5 text-2xl drop-shadow">🥇</span>
                   </div>
@@ -177,7 +178,7 @@ export const LeaderboardView: React.FC = () => {
                 <div className="flex flex-col items-center space-y-2">
                   <div className="relative">
                     <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-amber-600/60 shadow-md">
-                      {rank3.avatar ? <img src={rank3.avatar} alt={rank3.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-orange-100 text-orange-800 font-black">{rank3.name.trim().split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase()}</div>}
+                      <ParticipantAvatar name={rank3.name} src={rank3.avatar} className="w-full h-full object-cover" fallbackClassName="w-full h-full flex items-center justify-center bg-orange-100 text-orange-800 font-black" />
                     </div>
                     <span className="absolute -top-2.5 -right-2 text-xl drop-shadow">🥉</span>
                   </div>
@@ -203,11 +204,7 @@ export const LeaderboardView: React.FC = () => {
               <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#208C60] to-[#F47743] text-white flex items-center justify-center font-black text-xs font-mono shadow-xs">
                 #{currentUserEntry.rank}
               </div>
-              {currentUserEntry.avatar ? (
-                <img src={currentUserEntry.avatar} alt={currentUserEntry.name} className="w-10 h-10 rounded-xl object-cover border border-[#ECECEF] dark:border-white/20" />
-              ) : (
-                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold border border-[#ECECEF] dark:border-white/20">{currentUserEntry.name.trim().split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase()}</div>
-              )}
+              <ParticipantAvatar name={currentUserEntry.name} src={currentUserEntry.avatar} className="w-10 h-10 rounded-xl object-cover border border-[#ECECEF] dark:border-white/20" fallbackClassName="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold border border-[#ECECEF] dark:border-white/20" />
               <div>
                 <div className="text-xs font-bold text-[#171717] dark:text-white flex items-center gap-1.5">
                   <span>{currentUserEntry.name}</span>
@@ -239,11 +236,7 @@ export const LeaderboardView: React.FC = () => {
                   <span className="w-6 text-center font-mono font-bold text-[#6B7280] dark:text-slate-400">
                     {entry.rank}
                   </span>
-                  {entry.avatar ? (
-                    <img src={entry.avatar} alt={entry.name} className="w-9 h-9 rounded-xl object-cover border border-[#ECECEF] dark:border-white/10 shrink-0" />
-                  ) : (
-                    <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-800 flex items-center justify-center font-bold border border-[#ECECEF] dark:border-white/10 shrink-0">{entry.name.trim().split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase()}</div>
-                  )}
+                  <ParticipantAvatar name={entry.name} src={entry.avatar} className="w-9 h-9 rounded-xl object-cover border border-[#ECECEF] dark:border-white/10 shrink-0" fallbackClassName="w-9 h-9 rounded-xl bg-sky-100 text-sky-800 flex items-center justify-center font-bold border border-[#ECECEF] dark:border-white/10 shrink-0" />
                   <div className="min-w-0">
                     <div className="font-bold text-[#171717] dark:text-white truncate">{entry.name}</div>
                     <div className="text-[11px] text-[#6B7280] dark:text-slate-400 truncate">{entry.contingentName}</div>
