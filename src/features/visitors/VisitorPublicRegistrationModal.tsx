@@ -36,6 +36,21 @@ interface VisitorPublicRegistrationModalProps {
 export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationModalProps> = ({
   onClose,
 }) => {
+  const VISITOR_CATEGORIES: Array<{ value: VisitorCategory; label: string }> = [
+    { value: 'Orang Tua / Wali', label: 'Orang Tua / Wali' },
+    { value: 'Keluarga', label: 'Keluarga' },
+    { value: 'Tamu Undangan', label: 'Tamu Undangan' },
+    { value: 'Umum', label: 'Masyarakat Umum' },
+    { value: 'Alumni', label: 'Purna / Alumni' },
+    { value: 'Mabiran', label: 'Mabiran' },
+    { value: 'Mabigus', label: 'Mabigus' },
+    { value: 'Mitra', label: 'Mitra / Sponsor' },
+    { value: 'Media', label: 'Media' },
+    { value: 'VIP', label: 'VIP' },
+    { value: 'VVIP', label: 'VVIP' },
+    { value: 'Lainnya', label: 'Lainnya' },
+  ];
+
   const currentEvent = eventService.getCurrentEvent();
   const eventName = currentEvent.name && currentEvent.name !== 'Belum Dikonfigurasi'
     ? currentEvent.name
@@ -72,6 +87,23 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
   const [selectedPerson, setSelectedPerson] = useState<PersonBeingVisited | null>(null);
   const [relationship, setRelationship] = useState('Keluarga / Kerabat');
 
+  const categoryConfig: Record<string, { description: string; organizationLabel: string; organizationRequired: boolean; purposeLabel: string; purposePlaceholder: string; showPerson: boolean; showRelationship: boolean; relationshipLabel: string }> = {
+    'Orang Tua / Wali': { description: 'Lengkapi hubungan dengan peserta yang akan dikunjungi.', organizationLabel: 'Sekolah / Gudep / Asal Daerah (Opsional)', organizationRequired: false, purposeLabel: 'Keperluan kunjungan', purposePlaceholder: 'Contoh: mengunjungi putra/putri peserta', showPerson: true, showRelationship: true, relationshipLabel: 'Hubungan dengan peserta' },
+    'Keluarga': { description: 'Pilih peserta yang akan dikunjungi dan jelaskan hubungan keluarga.', organizationLabel: 'Asal Daerah (Opsional)', organizationRequired: false, purposeLabel: 'Keperluan kunjungan', purposePlaceholder: 'Contoh: kunjungan keluarga', showPerson: true, showRelationship: true, relationshipLabel: 'Hubungan keluarga' },
+    'Tamu Undangan': { description: 'Cantumkan instansi pengundang atau pihak yang menjadi tujuan kunjungan.', organizationLabel: 'Instansi / Asal Undangan', organizationRequired: true, purposeLabel: 'Agenda / tujuan undangan', purposePlaceholder: 'Tuliskan agenda atau alasan undangan', showPerson: true, showRelationship: false, relationshipLabel: '' },
+    'Umum': { description: 'Formulir kunjungan umum untuk keperluan di area perkemahan.', organizationLabel: 'Instansi / Asal Daerah (Opsional)', organizationRequired: false, purposeLabel: 'Tujuan kunjungan', purposePlaceholder: 'Tuliskan tujuan kunjungan', showPerson: true, showRelationship: false, relationshipLabel: '' },
+    'Alumni': { description: 'Cantumkan asal pangkalan atau angkatan jika relevan.', organizationLabel: 'Pangkalan / Angkatan / Asal Daerah', organizationRequired: false, purposeLabel: 'Tujuan kunjungan alumni', purposePlaceholder: 'Contoh: silaturahmi atau kunjungan alumni', showPerson: true, showRelationship: false, relationshipLabel: '' },
+    'Mabiran': { description: 'Untuk kunjungan unsur Majelis Pembimbing Ranting.', organizationLabel: 'Kwartir Ranting / Instansi', organizationRequired: true, purposeLabel: 'Agenda kunjungan', purposePlaceholder: 'Tuliskan agenda kedinasan atau koordinasi', showPerson: true, showRelationship: true, relationshipLabel: 'Jabatan / peran' },
+    'Mabigus': { description: 'Untuk kunjungan unsur Majelis Pembimbing Gugus Depan.', organizationLabel: 'Gugus Depan / Sekolah / Instansi', organizationRequired: true, purposeLabel: 'Agenda kunjungan', purposePlaceholder: 'Tuliskan agenda pembinaan atau koordinasi', showPerson: true, showRelationship: true, relationshipLabel: 'Jabatan / peran' },
+    'Mitra': { description: 'Untuk mitra, sponsor, atau pihak kerja sama kegiatan.', organizationLabel: 'Nama Mitra / Perusahaan / Instansi', organizationRequired: true, purposeLabel: 'Agenda kerja sama', purposePlaceholder: 'Tuliskan tujuan pertemuan atau bentuk kerja sama', showPerson: true, showRelationship: false, relationshipLabel: '' },
+    'Media': { description: 'Untuk wartawan atau perwakilan media yang melakukan peliputan.', organizationLabel: 'Nama Media / Redaksi', organizationRequired: true, purposeLabel: 'Agenda peliputan', purposePlaceholder: 'Tuliskan kegiatan atau agenda yang akan diliput', showPerson: true, showRelationship: true, relationshipLabel: 'Nama narahubung / koordinator' },
+    'VIP': { description: 'Untuk tamu VIP; isi instansi dan jabatan agar penerimaan dapat dikoordinasikan.', organizationLabel: 'Instansi / Lembaga', organizationRequired: true, purposeLabel: 'Agenda kunjungan VIP', purposePlaceholder: 'Tuliskan agenda kunjungan', showPerson: true, showRelationship: true, relationshipLabel: 'Jabatan / protokol pendamping' },
+    'VVIP': { description: 'Untuk tamu VVIP; lengkapi informasi protokol dan jadwal kunjungan.', organizationLabel: 'Instansi / Lembaga', organizationRequired: true, purposeLabel: 'Agenda kunjungan VVIP', purposePlaceholder: 'Tuliskan agenda resmi dan kebutuhan penerimaan', showPerson: true, showRelationship: true, relationshipLabel: 'Jabatan / petugas protokol' },
+    'Lainnya': { description: 'Jelaskan kategori atau kebutuhan kunjungan secara spesifik.', organizationLabel: 'Instansi / Asal Daerah (Opsional)', organizationRequired: false, purposeLabel: 'Rincian tujuan kunjungan', purposePlaceholder: 'Jelaskan kategori dan tujuan kunjungan secara spesifik', showPerson: false, showRelationship: false, relationshipLabel: '' },
+  };
+  const activeCategory = categoryConfig[category] || categoryConfig['Umum'];
+  const isFamilyVisit = category === 'Orang Tua / Wali' || category === 'Keluarga';
+
   const handleSearchPerson = (q: string) => {
     setPersonSearchQuery(q);
     const results = visitorManagementService.searchPersonToVisit(q);
@@ -81,6 +113,9 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !phone.trim() || submitLock.current) return;
+    if (activeCategory.organizationRequired && !organization.trim()) { setSubmitError('Instansi wajib diisi untuk kategori kunjungan ini.'); return; }
+    if (isFamilyVisit && !selectedPerson) { setSubmitError('Pilih peserta yang akan dikunjungi untuk kategori ini.'); return; }
+    if ((category === 'Lainnya' || category === 'Media' || category === 'Mitra' || category === 'VIP' || category === 'VVIP' || category === 'Mabiran' || category === 'Mabigus' || category === 'Tamu Undangan') && !purpose.trim()) { setSubmitError('Tujuan atau agenda kunjungan wajib diisi untuk kategori ini.'); return; }
     if (visitType === 'SPEAKER' && !speakerAgenda.trim()) { setSubmitError('Agenda yang diisi narasumber wajib disebutkan.'); return; }
     submitLock.current = true;
     setIsSubmitting(true);
@@ -200,35 +235,46 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
                   <label className="text-slate-600 dark:text-slate-400 font-semibold block mb-1">Kategori Kunjungan:</label>
                   <select
                     value={category}
-                    onChange={e => setCategory(e.target.value as VisitorCategory)}
+                    onChange={e => {
+                      const nextCategory = e.target.value as VisitorCategory;
+                      setCategory(nextCategory);
+                      setSubmitError('');
+                      if (nextCategory === 'Lainnya') {
+                        setSelectedPerson(null);
+                        setPersonSearchQuery('');
+                        setSearchResults([]);
+                      }
+                    }}
                     className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-semibold outline-none"
                   >
-                    <option value="Orang Tua / Wali">Orang Tua / Wali</option>
-                    <option value="Keluarga">Keluarga</option>
-                    <option value="Tamu Undangan">Tamu Undangan</option>
-                    <option value="Umum">Masyarakat Umum</option>
-                    <option value="Alumni">Purna / Alumni</option>
-                    <option value="Mitra">Mitra / Sponsor</option>
+                    {VISITOR_CATEGORIES.map(option => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="text-slate-600 dark:text-slate-400 font-semibold block mb-1">Instansi / Asal Daerah:</label>
+                  <label className="text-slate-600 dark:text-slate-400 font-semibold block mb-1">{activeCategory.organizationLabel}{activeCategory.organizationRequired ? ' *' : ''}:</label>
                   <input
                     type="text"
+                    required={activeCategory.organizationRequired}
                     value={organization}
                     onChange={e => setOrganization(e.target.value)}
-                    placeholder="Nama Instansi / Kwartir / Sekolah"
+                    placeholder={activeCategory.organizationRequired ? activeCategory.organizationLabel.replace(/ \(Opsional\)/, '') : 'Nama Instansi / Kwartir / Sekolah (jika ada)'}
                     className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none focus:border-[#C62828] focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/40"
                   />
                 </div>
               </div>
+              <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.03] px-3 py-2.5">
+                <div className="font-semibold text-slate-800 dark:text-slate-200">Formulir {VISITOR_CATEGORIES.find(option => option.value === category)?.label || category}</div>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">{activeCategory.description}</p>
+              </div>
             </div>
 
-            {/* Step 2: Person Being Visited */}
-            <div className="space-y-2.5 pt-2 border-t border-[#ECECEF] dark:border-white/10">
+            {/* Step 2: Person Being Visited - shown only for relevant categories */}
+            {activeCategory.showPerson && <div className="space-y-2.5 pt-2 border-t border-[#ECECEF] dark:border-white/10">
               <h4 className="font-bold text-[#171717] dark:text-white uppercase text-[11px] tracking-wider">
-                2. {visitType === 'SPEAKER' ? 'Pihak Koordinasi di Perkemahan (Opsional)' : 'Siapa yang Dikunjungi di Perkemahan? (Opsional)'}
+                2. {category === 'Media' ? 'Narahubung / Koordinator Peliputan' : category === 'VIP' || category === 'VVIP' ? 'Pihak Penerima / Protokol (Opsional)' : visitType === 'SPEAKER' ? 'Pihak Koordinasi di Perkemahan (Opsional)' : 'Siapa yang Dikunjungi di Perkemahan? (Opsional)'}
               </h4>
 
               <div className="space-y-2">
@@ -238,7 +284,7 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
                     type="text"
                     value={personSearchQuery}
                     onChange={e => handleSearchPerson(e.target.value)}
-                    placeholder="Cari nama peserta atau kontingen..."
+                    placeholder={category === 'Media' ? 'Cari narahubung atau koordinator...' : category === 'VIP' || category === 'VVIP' ? 'Cari pihak penerima atau petugas protokol...' : 'Cari nama peserta atau kontingen...'}
                     className="w-full pl-8 pr-3 py-2 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white text-xs placeholder:text-slate-400 outline-none focus:border-[#C62828] focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/40"
                   />
                 </div>
@@ -275,22 +321,22 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
                   </div>
                 ) : (
                   <p className="text-[11px] text-amber-600 dark:text-amber-400">
-                    * Silakan cari dan pilih peserta/panitia yang ingin dikunjungi di atas.
+                    {isFamilyVisit ? '* Untuk kategori keluarga, pilih peserta yang akan dikunjungi.' : '* Pilihan pihak yang dikunjungi bersifat opsional.'}
                   </p>
                 )}
 
-                <div>
-                  <label className="text-slate-600 dark:text-slate-400 font-semibold block mb-1">Hubungan dengan yang dikunjungi:</label>
+                {activeCategory.showRelationship && <div>
+                  <label className="text-slate-600 dark:text-slate-400 font-semibold block mb-1">{activeCategory.relationshipLabel}:</label>
                   <input
                     type="text"
                     value={relationship}
                     onChange={e => setRelationship(e.target.value)}
-                    placeholder="Contoh: Orang Tua, Pembina, Kerabat..."
+                    placeholder={category === 'Media' ? 'Nama koordinator peliputan' : category === 'VIP' || category === 'VVIP' ? 'Jabatan atau petugas protokol' : category === 'Mabiran' || category === 'Mabigus' ? 'Jabatan atau peran dalam kwartir/gudep' : 'Contoh: Orang Tua, Pembina, Kerabat...'}
                     className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none focus:border-[#C62828] focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/40"
                   />
-                </div>
+                </div>}
               </div>
-            </div>
+            </div>}
 
             {/* Step 3: Visit Details */}
             <div className="space-y-2.5 pt-2 border-t border-[#ECECEF] dark:border-white/10">
@@ -353,16 +399,18 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
               </div>
 
               <div>
-                <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">Tujuan Kunjungan:</label>
+                <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">{activeCategory.purposeLabel}:</label>
                 <input
                   type="text"
                   value={purpose}
                   onChange={e => setPurpose(e.target.value)}
-                  placeholder="Keperluan kunjungan..."
+                  placeholder={activeCategory.purposePlaceholder}
                   className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none"
                 />
               </div>
             </div>
+
+            {submitError && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">{submitError}</div>}
 
             <div className="flex justify-end gap-2 pt-3 border-t border-[#ECECEF] dark:border-white/10">
               <button
