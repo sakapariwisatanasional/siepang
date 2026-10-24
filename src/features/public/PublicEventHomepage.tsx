@@ -299,6 +299,37 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
 
   const [publicLeaderboard, setPublicLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [leaderboardLoadError, setLeaderboardLoadError] = useState('');
+  const [publicParticipantCount, setPublicParticipantCount] = useState<number | null>(null);
+
+  // The public homepage receives only an aggregate count from GAS. Never load
+  // the private participant list just to populate the public summary card.
+  useEffect(() => {
+    if (!isConfigured) {
+      setPublicParticipantCount(null);
+      return;
+    }
+
+    let mounted = true;
+    const loadPublicParticipantCount = async () => {
+      try {
+        const response = await apiTransport.send<{ registeredCount: number }>(
+          'participants.public.count',
+          {},
+          { skipAuth: true },
+        );
+        if (!response.ok || !Number.isFinite(Number(response.data?.registeredCount))) {
+          throw new Error(response.error?.message || 'Jumlah peserta belum dapat dimuat.');
+        }
+        if (mounted) setPublicParticipantCount(Math.max(0, Number(response.data.registeredCount)));
+      } catch (error) {
+        console.warn('Jumlah peserta publik belum dapat dimuat:', error);
+        if (mounted) setPublicParticipantCount(null);
+      }
+    };
+
+    void loadPublicParticipantCount();
+    return () => { mounted = false; };
+  }, [isConfigured]);
 
   useEffect(() => {
     if (!isConfigured || !features.leaderboard) {
@@ -688,7 +719,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
           {[
             { label: 'Lokasi', value: eventLocation, icon: MapPin, tone: 'text-red-600 bg-red-50' },
             { label: 'Tanggal', value: eventDate, icon: Calendar, tone: 'text-amber-600 bg-amber-50' },
-            { label: 'Peserta', value: `${event.registeredCount || 0} terdaftar`, icon: Users, tone: 'text-purple-600 bg-purple-50' },
+            { label: 'Peserta', value: publicParticipantCount === null ? 'Jumlah belum tersedia' : `${publicParticipantCount} terdaftar`, icon: Users, tone: 'text-purple-600 bg-purple-50' },
             { label: 'Penyelenggara', value: event.organizer || event.organizationalLevel || 'Kwartir', icon: ShieldCheck, tone: 'text-emerald-600 bg-emerald-50' },
           ].map(item => {
             const Icon = item.icon;
