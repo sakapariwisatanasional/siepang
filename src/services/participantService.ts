@@ -459,13 +459,17 @@ class ParticipantService {
       const successful = ['IMPORTED', 'IMPORTED_TO_CONTINGENT', 'IMPORTED_AND_LINKED', 'SUCCESS', 'OK'].includes(rawStatus);
       const duplicate = rawStatus === 'DUPLICATE' || /sudah terdaftar|DUPLICATE|ALREADY_EXISTS/i.test(String(item?.error || item?.message || ''));
       return {
-        row: Number(item?.row) || index + 2,
+        row: Number(item?.row) || Number(rows[index]?.source_row) || index + 2,
         status: successful ? 'IMPORTED' : duplicate ? 'DUPLICATE' : 'REJECTED',
         participant_id: item?.participant_id ? String(item.participant_id) : undefined,
-        name: item?.name ? String(item.name) : undefined,
+        name: item?.name ? String(item.name) : String(rows.find(row => Number(row.source_row) === Number(item?.row))?.name || rows[index]?.name || ''),
         error: successful ? undefined : String(item?.error || item?.message || (duplicate ? 'Peserta sudah terdaftar.' : 'Baris ditolak backend.')),
       };
     });
+    const expectedRows = new Set(rows.map((row,index) => Number(row.source_row) || index + 2));
+    if (results.length !== rows.length || new Set(results.map((row: {row:number}) => row.row)).size !== rows.length || results.some((row: {row:number}) => !expectedRows.has(row.row))) {
+      throw new Error('GAS belum mengonfirmasi seluruh baris. Periksa spreadsheet sebelum mengimpor ulang.');
+    }
     const imported = Number.isFinite(Number(data.imported)) ? Number(data.imported) : Number(data.accepted ?? results.filter((x: any) => x.status === 'IMPORTED').length);
     const failed = Number.isFinite(Number(data.failed)) ? Number(data.failed) : Number(data.rejected ?? results.filter((x: any) => x.status !== 'IMPORTED').length);
     return {
