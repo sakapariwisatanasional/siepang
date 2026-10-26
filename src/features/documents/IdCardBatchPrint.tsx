@@ -33,9 +33,12 @@ const getRole = (r: RecordRow) => {
   if (Array.isArray(roles)) return roles.map(String).filter(Boolean).join(', ');
   return direct;
 };
+// For participants, the Participants sheet `id` is the canonical identifier
+// used for selection, QR generation, validation, and printing. `pramuka_id`
+// is a separate membership number and must not replace the participant ID.
 const getSerial = (r: RecordRow, source: DataSource) => source === 'committee'
   ? get(r, 'staff_number', 'employee_number', 'serial_number', 'serialNumber', 'user_id', 'userId', 'id', 'email')
-  : get(r, 'serial_number', 'serialNumber', 'participant_number', 'participantNumber', 'code', 'participant_code');
+  : get(r, 'id', 'participant_id', 'serial_number', 'serialNumber', 'participant_number', 'participantNumber', 'code', 'participant_code');
 const isInactive = (r: RecordRow) => ['inactive', 'archived', 'disabled', 'suspended', 'deleted', 'blocked'].includes(get(r, 'status', 'active_status', 'activeStatus').toLowerCase());
 const COMMITTEE_ROLES = new Set(['committee', 'organizer', 'event_admin', 'workspace_admin', 'registration_officer', 'verification_officer', 'attendance_officer', 'health_officer', 'logistic_officer', 'ceremony_officer', 'documentation_officer', 'publication_officer']);
 const isCommitteeUser = (r: RecordRow) => {
