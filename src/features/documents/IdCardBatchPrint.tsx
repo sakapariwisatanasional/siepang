@@ -8,6 +8,7 @@ type Element = { id: string; field: string; x: number; y: number; w: number; h: 
 type Template = { id: string; name: string; category: string; status: string; widthMm: number; heightMm: number; backgroundUrl: string; elements: Element[] };
 type RecordRow = Record<string, unknown>;
 type DataSource = 'participants' | 'committee';
+type PrintOrientation = 'portrait' | 'landscape';
 
 const get = (r: RecordRow, ...keys: string[]) => {
   for (const key of keys) {
@@ -59,6 +60,7 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
   const [selected, setSelected] = useState<string[]>([]);
   const [qr, setQr] = useState<Record<string, string>>({});
   const [photoCacheKey, setPhotoCacheKey] = useState<number>(() => Date.now());
+  const [printOrientation, setPrintOrientation] = useState<PrintOrientation>('portrait');
 
   // Keep the data source synchronized whenever the selected template changes.
   // useState(defaultSource) only initializes once, so it cannot handle switching
@@ -156,7 +158,7 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
   const toggle = (id: string) => setSelected(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id]);
 
   return <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-4 text-slate-900 dark:text-white">
-    <style>{`@media print { body * { visibility:hidden!important; } #siepang-idcard-print, #siepang-idcard-print * {visibility:visible!important;} #siepang-idcard-print {position:absolute;left:0;top:0;width:100%;display:flex!important;gap:0!important;flex-wrap:wrap!important;} .siepang-print-card {break-inside:avoid;page-break-inside:avoid;print-color-adjust:exact;-webkit-print-color-adjust:exact;} @page {size:A4; margin:8mm;} }`}</style>
+    <style>{`@media print { body * { visibility:hidden!important; } #siepang-idcard-print, #siepang-idcard-print * {visibility:visible!important;} #siepang-idcard-print {position:absolute;left:0;top:0;width:100%;display:flex!important;gap:0!important;flex-wrap:wrap!important;} .siepang-print-card {break-inside:avoid;page-break-inside:avoid;print-color-adjust:exact;-webkit-print-color-adjust:exact;} @page {size:A4 ${printOrientation}; margin:8mm;} }`}</style>
     <div className="print:hidden flex flex-wrap justify-between gap-3 items-center">
       <div><h1 className="font-bold text-xl">Cetak ID Card Massal</h1><p className="text-sm text-slate-500">Template: {template.name} · Pilih sumber data dari GAS.</p></div>
       <div className="flex gap-2"><button type="button" onClick={onBack} className="border rounded-xl px-4 py-2 flex gap-2 items-center"><ArrowLeft size={16}/> Kembali</button><button type="button" onClick={() => void refresh()} disabled={loading} className="border rounded-xl px-4 py-2 flex gap-2 items-center disabled:opacity-50"><RefreshCw size={16}/> Muat Ulang GAS</button></div>
@@ -185,7 +187,16 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
       {!loading && !error && filtered.length === 0 && <p className="mt-3 text-sm text-slate-500">Tidak ada data pada sumber ini atau akun tidak memenuhi filter.</p>}
     </div>
     {!serialOk && selectedRows.length > 0 && <p role="alert" className="print:hidden text-amber-600 text-sm">Satu atau beberapa nomor identitas tidak tersedia/duplikat di GAS. Cetak ditahan agar tidak menghasilkan nomor palsu.</p>}
-    <button type="button" disabled={!selectedRows.length || !serialOk || !qrReady || !!error || loading} onClick={() => window.print()} className="print:hidden px-5 py-3 rounded-xl bg-emerald-600 text-white disabled:opacity-50 flex gap-2 items-center"><Printer size={18}/> Cetak {selectedRows.length} Kartu A4</button>
+    <div className="print:hidden flex flex-wrap items-end gap-3 rounded-xl border p-3">
+      <label className="text-sm font-semibold">Orientasi kertas
+        <select aria-label="Orientasi kertas cetak" className="mt-1 block min-w-48 rounded-lg p-2 border bg-white text-slate-900" value={printOrientation} onChange={event => setPrintOrientation(event.target.value as PrintOrientation)}>
+          <option value="portrait">Portrait (tegak)</option>
+          <option value="landscape">Landscape (mendatar)</option>
+        </select>
+      </label>
+      <p className="text-xs text-slate-500">Ukuran kertas A4. Orientasi ini diterapkan saat dialog cetak dibuka; pengaturan printer/browser tetap dapat menimpanya.</p>
+      <button type="button" disabled={!selectedRows.length || !serialOk || !qrReady || !!error || loading} onClick={() => window.print()} className="px-5 py-3 rounded-xl bg-emerald-600 text-white disabled:opacity-50 flex gap-2 items-center"><Printer size={18}/> Cetak {selectedRows.length} Kartu A4</button>
+    </div>
     <div id="siepang-idcard-print" className="flex flex-wrap items-start content-start gap-2 bg-white p-3 rounded-lg text-black">{selectedRows.map(person => <div key={getId(person)} className="siepang-print-card relative border border-slate-300 overflow-hidden shrink-0 bg-white" style={{ width: `${template.widthMm}mm`, height: `${template.heightMm}mm` }}>{template.backgroundUrl && <img src={extractImage(template.backgroundUrl)} alt="Latar kartu" className="absolute inset-0 w-full h-full"/>}{template.elements.map(element => <div key={element.id} className="absolute flex items-center justify-center overflow-hidden whitespace-pre-wrap" style={{ left: `${element.x}%`, top: `${element.y}%`, width: `${element.w}%`, height: `${element.h}%`, fontSize: `${element.fontSize}pt`, color: element.color, textAlign: element.align }}>{field(element, person)}</div>)}</div>)}</div>
     <p className="print:hidden text-xs text-slate-500">Nomor identitas dan QR dibaca/dibuat berdasarkan ID sumber yang dipilih. Untuk panitia, pastikan template memakai field yang sesuai; field Gudep/Regu dapat kosong jika akun panitia tidak memiliki data tersebut.</p>
   </div>;
