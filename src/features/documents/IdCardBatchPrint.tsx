@@ -158,7 +158,42 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
   const toggle = (id: string) => setSelected(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id]);
 
   return <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-4 text-slate-900 dark:text-white">
-    <style>{`@media print { body * { visibility:hidden!important; } #siepang-idcard-print, #siepang-idcard-print * {visibility:visible!important;} #siepang-idcard-print {position:absolute;left:0;top:0;width:100%;display:flex!important;gap:0!important;flex-wrap:wrap!important;} .siepang-print-card {break-inside:avoid;page-break-inside:avoid;print-color-adjust:exact;-webkit-print-color-adjust:exact;} @page {size:A4 ${printOrientation}; margin:8mm;} }`}</style>
+    <style>{`
+      /* Explicit physical page dimensions are more consistently honored by Save to PDF
+         than the shorthand "A4 landscape" in some browser/print-driver combinations. */
+      @page {
+        size: ${printOrientation === 'landscape' ? '297mm 210mm' : '210mm 297mm'};
+        margin: 8mm;
+      }
+      @media print {
+        html, body { width: auto !important; height: auto !important; }
+        body * { visibility: hidden !important; }
+        #siepang-idcard-print, #siepang-idcard-print * { visibility: visible !important; }
+        #siepang-idcard-print {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100% !important;
+          min-height: 0 !important;
+          display: flex !important;
+          flex-direction: row !important;
+          align-items: flex-start !important;
+          align-content: flex-start !important;
+          gap: 2mm !important;
+          flex-wrap: wrap !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          background: #fff !important;
+        }
+        .siepang-print-card {
+          flex: 0 0 auto !important;
+          break-inside: avoid !important;
+          page-break-inside: avoid !important;
+          print-color-adjust: exact;
+          -webkit-print-color-adjust: exact;
+        }
+      }
+    `}</style>
     <div className="print:hidden flex flex-wrap justify-between gap-3 items-center">
       <div><h1 className="font-bold text-xl">Cetak ID Card Massal</h1><p className="text-sm text-slate-500">Template: {template.name} · Pilih sumber data dari GAS.</p></div>
       <div className="flex gap-2"><button type="button" onClick={onBack} className="border rounded-xl px-4 py-2 flex gap-2 items-center"><ArrowLeft size={16}/> Kembali</button><button type="button" onClick={() => void refresh()} disabled={loading} className="border rounded-xl px-4 py-2 flex gap-2 items-center disabled:opacity-50"><RefreshCw size={16}/> Muat Ulang GAS</button></div>
