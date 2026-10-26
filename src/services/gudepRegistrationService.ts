@@ -7,8 +7,9 @@
  */
 import { apiTransport } from './apiTransport';
 
-export type ContingentRecord = { id: string; event_id?: string; name: string; region?: string; leader_name?: string; verification_status?: string; };
+export type ContingentRecord = { id: string; event_id?: string; name: string; region?: string; leader_name?: string; verification_status?: string; participant_count?: number; };
 export type GudepRecord = {
+  contingent_id?: string;
   gudep_id: string; event_id: string; gudep_name: string; gudep_number: string;
   institution_name?: string; registration_status: string; verification_status: string; activation_status?: 'ACTIVE' | 'INACTIVE';
   contingent_verification_status?: string; contingent_verification_notes?: string;
