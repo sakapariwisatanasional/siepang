@@ -55,7 +55,7 @@ const ROLE_ALLOWED_TABS: Record<UserRole, ReadonlyArray<NavTab>> = {
   superadmin: ['home', 'public_home', 'public_gallery', 'gallery_admin', 'admin_dashboard', 'event_studio', 'superadmin', 'branding_settings', 'database_storage', 'installation', 'system_update', 'organizations', 'users', 'schedule', 'participants', 'contingent_regus', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
   workspace_admin: ['home', 'public_home', 'public_gallery', 'gallery_admin', 'admin_dashboard', 'event_studio', 'branding_settings', 'database_storage', 'installation', 'system_update', 'organizations', 'users', 'schedule', 'participants', 'contingent_regus', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
   event_admin: ['home', 'public_home', 'public_gallery', 'gallery_admin', 'admin_dashboard', 'event_studio', 'installation', 'organizations', 'schedule', 'participants', 'contingent_regus', 'competitions', 'judge', 'attendance', 'leaderboard', 'profile', 'templates', 'health', 'logistics'],
-  kontingen_admin: ['home', 'public_home', 'public_gallery', 'schedule', 'participants', 'competitions', 'leaderboard', 'profile'],
+  kontingen_admin: ['home', 'public_home', 'public_gallery', 'schedule', 'participants', 'contingent_regus', 'competitions', 'leaderboard', 'profile'],
   registration_officer: ['home', 'public_home', 'public_gallery', 'schedule', 'participants', 'contingent_regus', 'attendance', 'profile', 'templates'],
   attendance_officer: ['home', 'public_home', 'public_gallery', 'schedule', 'attendance', 'participants', 'profile'],
   judge: ['home', 'public_home', 'public_gallery', 'schedule', 'judge', 'competitions', 'profile'],
