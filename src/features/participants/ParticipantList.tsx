@@ -518,6 +518,10 @@ export const ParticipantList: React.FC = () => {
       contingentId: get(['contingent id', 'id kontingen', 'contingent_id']),
       birthPlace: get(['tempat lahir', 'birth place', 'birthplace']),
       birthDate: get(['tanggal lahir', 'tgl lahir', 'birth date', 'birthdate']),
+      // Link foto Google Drive disimpan oleh GAS sebagai profile_photo_url.
+      // Beragam nama header CSV didukung agar file lama tetap kompatibel.
+      profile_photo_url: get(['foto profil', 'foto', 'photo', 'photo url', 'photo_url', 'photourl', 'profile photo', 'profile photo url', 'profile_photo_url', 'foto profil url', 'url foto', 'link foto', 'link foto profil', 'avatar url', 'avatar_url', 'google drive photo', 'gdrive photo', 'link gdrive']),
+      profile_photo_file_id: get(['profile photo file id', 'profile_photo_file_id', 'photo file id', 'photo_file_id', 'id file foto', 'id foto drive']),
     };
   };
 
@@ -1751,7 +1755,7 @@ export const ParticipantList: React.FC = () => {
             {importStep === 'upload' && (
               <div className="space-y-3 text-xs">
                 <p className="text-[#6B7280] dark:text-slate-300">
-                  Tempelkan baris data CSV dengan kolom: <code className="text-[#C62828] font-mono bg-red-50 dark:bg-red-950/40 px-1 py-0.5 rounded">Nama Lengkap, Jenis Kelamin, Tingkatan, NTA, Kontingen, Telepon</code>.
+                  Tempelkan data CSV dengan kolom nama, jenis kelamin, dan data peserta lainnya. Foto profil opsional dapat menggunakan kolom <code className="text-[#C62828] font-mono bg-red-50 dark:bg-red-950/40 px-1 py-0.5 rounded">Foto Profil</code> atau <code className="text-[#C62828] font-mono bg-red-50 dark:bg-red-950/40 px-1 py-0.5 rounded">profile_photo_url</code> berisi link Google Drive.
                 </p>
                 <label className="flex items-center gap-3 p-3 rounded-xl border border-dashed border-sky-300 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-950/20 cursor-pointer">
                   <Upload size={18} className="text-sky-600" />
