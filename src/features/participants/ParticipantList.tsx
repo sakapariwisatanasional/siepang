@@ -60,6 +60,9 @@ function makeRequestKey(): string {
 
 export const ParticipantList: React.FC = () => {
   const currentUser = authService.getCurrentUser();
+  const importAuth = authService.getAuthState();
+  const importRoles = [...(importAuth.effectiveRoles || []), importAuth.role].map(role => String(role || '').toLowerCase());
+  const canImportParticipants = importRoles.some(role => ['superadmin','workspace_admin'].includes(role));
   const currentActorName = currentUser?.name || 'Petugas Registrasi';
   const [activeView, setActiveView] = useState<'directory' | 'verification'>('directory');
   const [search, setSearch] = useState('');
@@ -88,6 +91,12 @@ export const ParticipantList: React.FC = () => {
   const [importNotes, setImportNotes] = useState<string[]>([]);
   const [importSheets, setImportSheets] = useState<Record<string,string>>({});
   const [importSheetName, setImportSheetName] = useState('');
+  const [importGudep, setImportGudep] = useState<GudepRecord[]>([]);
+  const [importRegu, setImportRegu] = useState<GudepRegu[]>([]);
+  const [importGudepId, setImportGudepId] = useState('');
+  const [importReguId, setImportReguId] = useState('');
+  const [importTargetsLoading, setImportTargetsLoading] = useState(false);
+  const [importTargetError, setImportTargetError] = useState('');
   const importLock = useRef(false);
   const [importPreviewRows, setImportPreviewRows] = useState<Record<string, string>[]>([]);
   const [selectedImportIndexes, setSelectedImportIndexes] = useState<number[]>([]);
@@ -164,6 +173,29 @@ export const ParticipantList: React.FC = () => {
     setToast(msg);
     setTimeout(() => setToast(null), 3500);
   };
+
+  useEffect(() => {
+    if (!showImportModal || !canImportParticipants) return;
+    let open = true;
+    setImportTargetsLoading(true); setImportTargetError('');
+    gudepRegistrationService.listForParticipantRegistration().then(result => {
+      if (open) setImportGudep((result.gudep || []).filter(g => g.verification_status === 'VERIFIED' && (!g.activation_status || g.activation_status === 'ACTIVE') && (!g.contingent_verification_status || g.contingent_verification_status === 'VERIFIED')));
+    }).catch(e => {if (open) setImportTargetError(e?.message || 'Gagal memuat tujuan Gudep.');})
+      .finally(() => {if (open) setImportTargetsLoading(false);});
+    return () => {open = false;};
+  }, [showImportModal, canImportParticipants]);
+
+  useEffect(() => {
+    setImportRegu([]); setImportReguId('');
+    if (!showImportModal || !importGudepId) return;
+    let open = true;
+    setImportTargetsLoading(true); setImportTargetError('');
+    gudepRegistrationService.detail(importGudepId).then(result => {
+      if (open) setImportRegu((result.regu || []).filter(r => r.verification_status === 'VERIFIED' && (!r.activation_status || r.activation_status === 'ACTIVE')));
+    }).catch(e => {if (open) setImportTargetError(e?.message || 'Gagal memuat regu tujuan.');})
+      .finally(() => {if (open) setImportTargetsLoading(false);});
+    return () => {open = false;};
+  }, [showImportModal, importGudepId]);
 
   // Memuat ulang dari GAS saat layar dibuka, bukan dari state kosong setelah refresh.
   const [, forceRefresh] = useState(0);
@@ -486,6 +518,7 @@ export const ParticipantList: React.FC = () => {
 
   const resetImportFlow = () => {
     setImportStep('upload');
+    setImportGudepId(''); setImportReguId(''); setImportGudep([]); setImportRegu([]); setImportTargetError('');
     setImportError(''); setImportNotes([]); setImportSheets({}); setImportSheetName('');
     setRawCsvText('');
     setImportFileName('');
@@ -523,8 +556,11 @@ export const ParticipantList: React.FC = () => {
   };
 
   const handleProcessImport = async () => {
-    if (importLock.current || importBusy) return;
+    if (importLock.current || importBusy || importTargetsLoading) return;
     setImportError('');
+    if (!canImportParticipants) {setImportError('Impor massal hanya tersedia untuk Superadmin/Admin Workspace sesuai izin GAS.'); return;}
+    if (importTargetError) {setImportError('Tujuan impor belum dapat diverifikasi. Tutup dan buka kembali dialog untuk memuat ulang.'); return;}
+    if (importGudepId && !importGudep.some(g => g.gudep_id === importGudepId)) {setImportError('Gudep tujuan tidak tersedia. Pilih ulang tujuan.'); return;}
     if (importStep === 'upload') {
       try {
         const { rows, notes } = parseParticipantImportText(rawCsvText);
@@ -549,12 +585,16 @@ export const ParticipantList: React.FC = () => {
       return;
     }
     const rows = selectedRows.map(({ raw, index }) => normalizeImportRow(raw, index));
+    const destinationRegu = importRegu.find(r => r.regu_id === importReguId);
+    if (importReguId && (!destinationRegu || rows.some(row => row.gender !== (destinationRegu.gender === 'PUTRA' ? 'M' : 'F')))) {
+      setImportError('Jenis kelamin peserta tidak sesuai regu tujuan. Pilih peserta satu kategori atau gunakan tujuan Gudep tanpa regu.'); return;
+    }
     importLock.current = true;
     setImportBusy(true);
     setImportResult(null);
     setImportRowResults([]);
     try {
-      const response = await participantService.importParticipantsToGas(rows, importBatchId);
+      const response = await participantService.importParticipantsToGas(rows, importBatchId, importGudepId ? {gudep_id:importGudepId, regu_id:importReguId || undefined} : undefined);
       const results = Array.isArray(response.results) ? response.results : [];
       const imported = Number(response.imported || 0);
       const failed = results.filter((item: any) => String(item.status || '').toUpperCase() !== 'IMPORTED');
@@ -673,7 +713,7 @@ export const ParticipantList: React.FC = () => {
             <span className="hidden sm:inline">+ Gudep / Regu</span>
           </button>
 
-          <button
+          {canImportParticipants && <button
             type="button"
             onClick={() => { resetImportFlow(); setShowImportModal(true); }}
             className="flex items-center justify-center p-2.5 sm:px-3 sm:py-2 bg-[#FAFAFA] hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 text-[#6B7280] dark:text-slate-300 rounded-xl text-xs font-semibold border border-[#ECECEF] dark:border-white/10 transition-colors min-w-[44px] min-h-[44px] cursor-pointer"
@@ -682,7 +722,7 @@ export const ParticipantList: React.FC = () => {
           >
             <Upload className="w-4 h-4 text-sky-500" />
             <span className="hidden sm:inline sm:ml-1.5">Impor CSV</span>
-          </button>
+          </button>}
 
           <button
             type="button"
@@ -1719,6 +1759,14 @@ export const ParticipantList: React.FC = () => {
 
             {importError && <div role="alert" className="whitespace-pre-line rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800 dark:bg-rose-950 dark:text-rose-200">{importError}</div>}
             {importNotes.length > 0 && <div className="space-y-1 rounded-xl bg-sky-50 p-3 text-xs text-sky-900 dark:bg-sky-950 dark:text-sky-100">{importNotes.map(note => <p key={note}>{note}</p>)}</div>}
+            {importStep !== 'result' && <section className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-slate-800">
+              <h4 className="font-bold">Tujuan penyimpanan peserta</h4>
+              <label className="block">Gudep / sekolah<select disabled={importBusy || importTargetsLoading} value={importGudepId} onChange={e => {setImportGudepId(e.target.value); setImportReguId(''); setImportRegu([]);}} className="mt-1 w-full rounded-lg border bg-white p-2"><option value="">Gunakan sekolah/kontingen dari file</option>{importGudep.map(g => <option key={g.gudep_id} value={g.gudep_id}>{g.institution_name || g.gudep_name} · {g.gudep_number}</option>)}</select></label>
+              <label className="block">Regu<select disabled={importBusy || importTargetsLoading || !importGudepId} value={importReguId} onChange={e => setImportReguId(e.target.value)} className="mt-1 w-full rounded-lg border bg-white p-2"><option value="">Belum ditautkan ke regu</option>{importRegu.map(r => <option key={r.regu_id} value={r.regu_id}>{r.regu_name} · {r.gender} · Kuota {r.quota}</option>)}</select></label>
+              <p>{importGudepId ? 'Identitas sekolah dan ID kontingen peserta mengikuti Gudep tujuan, menggantikan sekolah dari file. Jika regu dipilih, GAS sekaligus menautkan peserta dengan validasi gender dan kuota.' : 'Sekolah mengikuti file. ID kontingen hanya terisi bila tersedia dalam file. Pilih Gudep untuk memastikan relasi ID resmi.'}</p>
+              {importTargetsLoading && <p role="status">Memuat tujuan dari GAS…</p>}
+              {importTargetError && <p role="alert" className="text-red-700">{importTargetError} Tutup dan buka kembali dialog.</p>}
+            </section>}
             {importStep === 'upload' && (
               <div className="space-y-3 text-xs">
                 <p className="text-[#6B7280] dark:text-slate-300">
@@ -1779,7 +1827,8 @@ export const ParticipantList: React.FC = () => {
                         const name = String(canonical.name || '');
                         const gender = canonical.gender;
                         const nta = canonical.membershipNumber;
-                        const school = canonical.schoolPangkalan;
+                        const destination = importGudep.find(g => g.gudep_id === importGudepId);
+                        const school = destination ? destination.institution_name || destination.gudep_name : canonical.schoolPangkalan;
                         return <tr key={index} className="border-t border-[#ECECEF] dark:border-white/10">
                           <td className="p-2"><input disabled={importBusy || issues.length > 0} type="checkbox" checked={selectedImportIndexes.includes(index)} onChange={e => setSelectedImportIndexes(old => e.target.checked ? [...old, index] : old.filter(i => i !== index))} /> {canonical.source_row}</td>
                           <td className="p-2">{name || <span className="text-rose-500">Nama kosong</span>}</td>
@@ -1794,7 +1843,7 @@ export const ParticipantList: React.FC = () => {
                 <p className="text-amber-700 dark:text-amber-300">Data yang gagal validasi backend akan dilaporkan setelah impor. Peserta yang sudah terdaftar tidak akan ditimpa.</p>
                 <div className="flex justify-between gap-2">
                   <button disabled={importBusy} onClick={() => {setImportStep('upload'); setImportError('');}} className="px-4 py-2 rounded-xl border border-[#ECECEF] dark:border-white/10">Kembali</button>
-                  <button disabled={importBusy || selectedImportIndexes.length === 0} onClick={() => void handleProcessImport()} className="px-5 py-2.5 bg-[#C62828] disabled:opacity-60 text-white font-bold rounded-xl">
+                  <button disabled={importBusy || importTargetsLoading || !!importTargetError || selectedImportIndexes.length === 0} onClick={() => void handleProcessImport()} className="px-5 py-2.5 bg-[#C62828] disabled:opacity-60 text-white font-bold rounded-xl">
                     {importBusy ? 'Menyimpan ke GAS…' : `Import ${selectedImportIndexes.length} baris ke GAS`}
                   </button>
                 </div>
