@@ -434,7 +434,7 @@ class ParticipantService {
 
   // Persist imported participants through the authoritative GAS admin endpoint.
   // The legacy local-only importParticipants method remains for compatibility but is not used by the UI flow.
-  public async importParticipantsToGas(rows: Record<string, any>[], importBatchId = ''): Promise<{
+  public async importParticipantsToGas(rows: Record<string, any>[], importBatchId = '', target?: {gudep_id: string; regu_id?: string}): Promise<{
     imported: number;
     failed: number;
     results: Array<{row:number;status:string;participant_id?:string;name?:string;error?:string}>;
@@ -445,6 +445,8 @@ class ParticipantService {
     const result = await apiTransport.send<any>('participants.admin.import', {
       rows,
       import_batch_id: importBatchId || undefined,
+      gudep_id: target?.gudep_id || undefined,
+      regu_id: target?.regu_id || undefined,
       event_id: eventService.getCurrentEvent()?.id || '',
     });
     if (!result.ok) throw new Error(result.error?.message || 'GAS menolak proses impor peserta.');
