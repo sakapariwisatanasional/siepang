@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Search, Users, UserRound, RefreshCw, ShieldCheck, ImageOff, UserPlus, X, LoaderCircle, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Search, Users, UserRound, RefreshCw, ShieldCheck, ImageOff, UserPlus, X, LoaderCircle } from 'lucide-react';
 import { gudepRegistrationService, ContingentRecord, GudepRecord, GudepDetail, GudepRegu, GudepParticipantCandidate } from '../../services/gudepRegistrationService';
 import { resolveGoogleDriveImageUrl } from '../../utils/googleDriveImage';
 
@@ -42,6 +42,9 @@ export const ContingentReguDirectory: React.FC = () => {
   const [candidateQuery, setCandidateQuery] = useState('');
   const [candidateLoading, setCandidateLoading] = useState(false);
   const [linkingId, setLinkingId] = useState('');
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
+  const [linkProgress, setLinkProgress] = useState('');
+  const [linkSucceeded, setLinkSucceeded] = useState(false);
   const [linkMessage, setLinkMessage] = useState('');
 
   const loadList = useCallback(async () => {
@@ -80,7 +83,7 @@ export const ContingentReguDirectory: React.FC = () => {
 
   const openLinkDialog = async (bundle: DetailBundle, regu: GudepRegu) => {
     setLinkTarget({ gudep: bundle.gudep, regu });
-    setCandidates([]); setCandidateQuery(''); setLinkMessage(''); setError(''); setCandidateLoading(true);
+    setCandidates([]); setSelectedCandidateIds([]); setLinkProgress(''); setLinkSucceeded(false); setCandidateQuery(''); setLinkMessage(''); setError(''); setCandidateLoading(true);
     try {
       const result = await gudepRegistrationService.participantCandidates({ gudep_id: bundle.gudep.gudep_id, regu_id: regu.regu_id });
       setCandidates(result.candidates || []);
@@ -89,25 +92,54 @@ export const ContingentReguDirectory: React.FC = () => {
     } finally { setCandidateLoading(false); }
   };
 
-  const linkCandidate = async (candidate: GudepParticipantCandidate) => {
-    if (!linkTarget || linkingId) return;
-    setLinkingId(candidate.id); setLinkMessage('');
+  const linkCandidates = async () => {
+    if (!linkTarget || linkingId || candidateLoading || !selectedCandidateIds.length) return;
+    const target = linkTarget;
+    const chosen = candidates.filter(p => selectedCandidateIds.includes(p.id));
+    if (!chosen.length) return;
+    setLinkingId('batch'); setLinkMessage(''); setLinkSucceeded(false);
+    const succeeded: string[] = [];
+    const failures: string[] = [];
+    // Reuse the canonical GAS endpoint sequentially: every participant receives
+    // the existing access, event, school, gender, duplicate and quota validation.
+    for (const [index, candidate] of chosen.entries()) {
+      setLinkProgress(`Memproses ${index + 1}/${chosen.length}: ${candidate.name}`);
+      try {
+        await gudepRegistrationService.linkExistingParticipant({ gudep_id: target.gudep.gudep_id, regu_id: target.regu.regu_id, participant_id: candidate.id });
+        succeeded.push(candidate.id);
+      } catch (e) {
+        failures.push(`${candidate.name}: ${e instanceof Error ? e.message : 'Gagal menautkan peserta.'}`);
+      }
+    }
+    // Confirmed successes are removed from selection; failures can be retried.
+    setSelectedCandidateIds(ids => ids.filter(id => !succeeded.includes(id)));
+    setCandidates(rows => rows.filter(p => !succeeded.includes(p.id)));
+    const refreshErrors: string[] = [];
     try {
-      await gudepRegistrationService.linkExistingParticipant({ gudep_id: linkTarget.gudep.gudep_id, regu_id: linkTarget.regu.regu_id, participant_id: candidate.id });
-      setLinkMessage(`${candidate.name} berhasil ditautkan ke Regu ${linkTarget.regu.regu_name}.`);
-      // Reload from GAS so the visible membership list remains backend truth.
+      const result = await gudepRegistrationService.participantCandidates({ gudep_id: target.gudep.gudep_id, regu_id: target.regu.regu_id });
+      const rows = result.candidates || [];
+      setCandidates(rows);
+      setSelectedCandidateIds(ids => ids.filter(id => rows.some(p => p.id === id)));
+    } catch {
+      refreshErrors.push('Daftar kandidat gagal dimuat ulang. Tutup dan buka kembali dialog untuk memeriksa data terbaru.');
+    }
+    try {
       if (selected) {
         const loaded = await Promise.all(gudep.filter(g => clean(g.contingent_id || g.gudep_id) === selected.id).map(async g => ({ gudep: g, detail: await gudepRegistrationService.detail(g.gudep_id) })));
         setBundles(loaded);
       }
-      const result = await gudepRegistrationService.participantCandidates({ gudep_id: linkTarget.gudep.gudep_id, regu_id: linkTarget.regu.regu_id });
-      setCandidates(result.candidates || []);
-    } catch (e) {
-      setLinkMessage(e instanceof Error ? e.message : 'Gagal menautkan peserta.');
-    } finally { setLinkingId(''); }
+    } catch {
+      refreshErrors.push('Susunan anggota gagal dimuat ulang. Buka kembali kontingen untuk memeriksa data terbaru.');
+    }
+    setLinkSucceeded(!failures.length && !refreshErrors.length);
+    setLinkMessage([`${succeeded.length} dari ${chosen.length} peserta berhasil ditautkan ke Regu ${target.regu.regu_name}.`, ...failures, ...refreshErrors].join('\n'));
+    setLinkProgress(''); setLinkingId('');
   };
 
   const visibleCandidates = candidates.filter(p => [p.name, p.membership_number, p.id].some(v => clean(v).toLocaleLowerCase('id').includes(candidateQuery.trim().toLocaleLowerCase('id'))));
+
+  const allVisibleSelected = visibleCandidates.length > 0 && visibleCandidates.every(p => selectedCandidateIds.includes(p.id));
+  const someVisibleSelected = visibleCandidates.some(p => selectedCandidateIds.includes(p.id));
 
   const renderRegu = (gender: 'PUTRA' | 'PUTRI') => {
     const rows = bundles.flatMap(bundle => bundle.detail.regu
@@ -158,10 +190,19 @@ export const ContingentReguDirectory: React.FC = () => {
     {linkTarget && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-3 sm:p-5" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget && !linkingId) setLinkTarget(null); }}>
       <section role="dialog" aria-modal="true" aria-labelledby="participant-link-title" className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <header className="flex items-start justify-between gap-3 border-b border-slate-200 p-4 sm:p-5"><div><p className="text-xs font-bold uppercase tracking-wider text-emerald-700">Penautan anggota</p><h2 id="participant-link-title" className="mt-1 text-lg font-extrabold text-slate-900 sm:text-xl">Pilih peserta dari sekolah/kontingen</h2><p className="mt-1 text-sm text-slate-600">{linkTarget.gudep.institution_name || linkTarget.gudep.gudep_name} · Regu {linkTarget.regu.regu_name}</p></div><button type="button" disabled={!!linkingId} onClick={() => setLinkTarget(null)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-40" aria-label="Tutup"><X className="h-5 w-5"/></button></header>
-        <div className="border-b border-slate-100 p-4"><label className="relative block"><Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"/><input value={candidateQuery} onChange={e => setCandidateQuery(e.target.value)} placeholder="Cari nama atau nomor anggota..." className="w-full rounded-xl border border-slate-200 py-3 pl-10 pr-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"/></label><p className="mt-2 text-xs text-slate-500">Hanya peserta terdaftar pada sekolah/kontingen ini, sesuai kategori regu, dan belum tertaut ke regu lain.</p></div>
-        {linkMessage && <div role="status" className={`mx-4 mt-3 rounded-lg p-3 text-sm ${linkMessage.includes('berhasil') ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}`}>{linkMessage}</div>}
-        <div className="min-h-40 flex-1 space-y-2 overflow-y-auto p-4">{candidateLoading ? <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500"><LoaderCircle className="h-5 w-5 animate-spin"/> Memuat peserta yang sesuai...</div> : visibleCandidates.length === 0 ? <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center"><Users className="mx-auto mb-2 h-8 w-8 text-slate-300"/><p className="font-semibold text-slate-700">{candidates.length ? 'Peserta tidak ditemukan' : 'Tidak ada peserta yang dapat ditautkan'}</p><p className="mt-1 text-sm text-slate-500">Periksa data sekolah, gender, atau status penautan peserta di GAS.</p></div> : visibleCandidates.map(candidate => { const url = photoUrl(candidate as any); return <div key={candidate.id} className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 transition hover:border-emerald-200 hover:bg-emerald-50/30"><div className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-slate-100">{url ? <img src={url} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={e => { e.currentTarget.style.display='none'; const n=e.currentTarget.nextElementSibling as HTMLElement|null; if(n)n.style.display='flex'; }}/> : null}<div style={{display:url?'none':'flex'}} className="h-full w-full items-center justify-center font-bold text-slate-500">{initials(candidate.name)}</div></div><div className="min-w-0 flex-1"><p className="break-words text-sm font-semibold text-slate-900">{candidate.name}</p><p className="mt-0.5 text-xs text-slate-500">{candidate.membership_number || candidate.id}</p></div><button type="button" disabled={!!linkingId} onClick={() => void linkCandidate(candidate)} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60">{linkingId === candidate.id ? <><LoaderCircle className="h-4 w-4 animate-spin"/> Menautkan</> : <><UserPlus className="h-4 w-4"/> Tautkan</>}</button></div>; })}</div>
-        <footer className="flex items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 p-3 sm:p-4"><span className="text-xs text-slate-500">{visibleCandidates.length} peserta tersedia</span><button type="button" onClick={() => setLinkTarget(null)} disabled={!!linkingId} className="min-h-10 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 disabled:opacity-50">Selesai</button></footer>
+        <div className="border-b border-slate-100 p-4"><label className="relative block"><Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"/><input disabled={!!linkingId || candidateLoading} value={candidateQuery} onChange={e => setCandidateQuery(e.target.value)} placeholder="Cari nama atau nomor anggota..." className="w-full rounded-xl border border-slate-200 py-3 pl-10 pr-3 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"/></label><p className="mt-2 text-xs text-slate-500">Hanya peserta terdaftar pada sekolah/kontingen ini, sesuai kategori regu, dan belum tertaut ke regu lain.</p></div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-800"><input type="checkbox" aria-label="Pilih semua hasil pencarian" checked={allVisibleSelected} ref={el => { if (el) el.indeterminate = someVisibleSelected && !allVisibleSelected; }} disabled={candidateLoading || !!linkingId || !visibleCandidates.length} onChange={e => {
+            const visibleIds = visibleCandidates.map(p => p.id);
+            setSelectedCandidateIds(ids => e.target.checked ? [...new Set([...ids, ...visibleIds])] : ids.filter(id => !visibleIds.includes(id)));
+          }} className="h-4 w-4 accent-emerald-700"/> Pilih semua hasil pencarian</label>
+          <span className="text-xs text-slate-600">{selectedCandidateIds.length} dipilih (termasuk di luar pencarian)</span>
+          <button type="button" disabled={!!linkingId || !selectedCandidateIds.length} onClick={() => setSelectedCandidateIds([])} className="text-xs font-semibold text-slate-600 disabled:opacity-40">Hapus pilihan</button>
+        </div>
+        {linkProgress && <p role="status" aria-live="polite" className="px-4 pt-3 text-sm text-emerald-800">{linkProgress}</p>}
+        {linkMessage && <div role="status" className={`mx-4 mt-3 whitespace-pre-line rounded-lg p-3 text-sm ${linkSucceeded ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}`}>{linkMessage}</div>}
+        <div className="min-h-40 flex-1 space-y-2 overflow-y-auto p-4">{candidateLoading ? <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500"><LoaderCircle className="h-5 w-5 animate-spin"/> Memuat peserta yang sesuai...</div> : visibleCandidates.length === 0 ? <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center"><Users className="mx-auto mb-2 h-8 w-8 text-slate-300"/><p className="font-semibold text-slate-700">{candidates.length ? 'Peserta tidak ditemukan' : 'Tidak ada peserta yang dapat ditautkan'}</p><p className="mt-1 text-sm text-slate-500">Periksa data sekolah, gender, atau status penautan peserta di GAS.</p></div> : visibleCandidates.map(candidate => { const url = photoUrl(candidate as any); return <div key={candidate.id} className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 transition hover:border-emerald-200 hover:bg-emerald-50/30"><div className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-slate-100">{url ? <img src={url} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={e => { e.currentTarget.style.display='none'; const n=e.currentTarget.nextElementSibling as HTMLElement|null; if(n)n.style.display='flex'; }}/> : null}<div style={{display:url?'none':'flex'}} className="h-full w-full items-center justify-center font-bold text-slate-500">{initials(candidate.name)}</div></div><div className="min-w-0 flex-1"><p className="break-words text-sm font-semibold text-slate-900">{candidate.name}</p><p className="mt-0.5 text-xs text-slate-500">{candidate.membership_number || candidate.id}</p></div><input type="checkbox" aria-label={`Pilih ${candidate.name}`} checked={selectedCandidateIds.includes(candidate.id)} disabled={!!linkingId || candidateLoading} onChange={e => setSelectedCandidateIds(ids => e.target.checked ? [...new Set([...ids, candidate.id])] : ids.filter(id => id !== candidate.id))} className="h-5 w-5 shrink-0 accent-emerald-700"/></div>; })}</div>
+        <footer className="flex items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 p-3 sm:p-4"><span className="text-xs text-slate-500">{visibleCandidates.length} peserta tersedia</span><button type="button" onClick={() => void linkCandidates()} disabled={!!linkingId || candidateLoading || !selectedCandidateIds.length} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{linkingId ? <LoaderCircle className="h-4 w-4 animate-spin"/> : <UserPlus className="h-4 w-4"/>}{linkingId ? 'Memproses…' : `Tautkan ${selectedCandidateIds.length} peserta`}</button><button type="button" onClick={() => setLinkTarget(null)} disabled={!!linkingId} className="min-h-10 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 disabled:opacity-50">Selesai</button></footer>
       </section>
     </div>}
   </div>;
