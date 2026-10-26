@@ -113,9 +113,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         {
           id: 'contingent_regus' as NavTab,
           label: 'Data Kontingen per Regu',
-          description: 'Foto & daftar anggota',
           icon: Users,
-          roles: ['superadmin', 'workspace_admin', 'event_admin', 'registration_officer'],
+          roles: ['superadmin', 'workspace_admin', 'event_admin', 'registration_officer', 'kontingen_admin'],
         },
         {
           id: 'schedule',
