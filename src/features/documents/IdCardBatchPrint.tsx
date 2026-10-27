@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { apiTransport } from '../../services/apiTransport';
 import { ArrowLeft, Printer, RefreshCw } from 'lucide-react';
 import { resolveGoogleDriveImageUrl } from '../../utils/googleDriveImage';
@@ -53,6 +55,8 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
   const [rows, setRows] = useState<RecordRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState('');
   const [gudep, setGudep] = useState('');
   const [regu, setRegu] = useState('');
   const [role, setRole] = useState('');
@@ -206,6 +210,66 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
       default: return '';
     }
   };
+  const exportPdf = async () => {
+    if (!selectedRows.length || !serialOk || !qrReady || loading || pdfLoading) return;
+    setPdfLoading(true);
+    setPdfError('');
+    try {
+      // Capture the same rendered card nodes shown in the application preview,
+      // then place those images on a PDF page with exact physical dimensions.
+      const cardNodes = Array.from(document.querySelectorAll<HTMLElement>('[data-siepang-pdf-card="true"]'));
+      if (cardNodes.length !== selectedRows.length) {
+        throw new Error('Jumlah kartu pada preview tidak cocok dengan peserta yang dipilih. Muat ulang halaman lalu coba lagi.');
+      }
+
+      const cardImages: string[] = [];
+      for (const node of cardNodes) {
+        const canvas = await html2canvas(node, {
+          scale: 3,
+          useCORS: true,
+          allowTaint: false,
+          backgroundColor: '#ffffff',
+          logging: false,
+          imageTimeout: 20000,
+        });
+        cardImages.push(canvas.toDataURL('image/png'));
+      }
+
+      const pdf = new jsPDF({
+        orientation: printOrientation,
+        unit: 'mm',
+        format: [printLayout.paperWidthMm, printLayout.paperHeightMm],
+        compress: true,
+        putOnlyUsedFonts: true,
+      });
+      const gridWidth = printLayout.columns * printLayout.cardWidthMm + (printLayout.columns - 1) * printLayout.gapMm;
+      const gridHeight = printLayout.rowsPerPage * printLayout.cardHeightMm + (printLayout.rowsPerPage - 1) * printLayout.gapMm;
+      const startX = printLayout.left + (printLayout.contentWidthMm - gridWidth) / 2 + printOffsetXmm;
+      const startY = printLayout.top + (printLayout.contentHeightMm - gridHeight) / 2 + printOffsetYmm;
+
+      cardImages.forEach((image, index) => {
+        const pageIndex = Math.floor(index / 10);
+        const slot = index % 10;
+        if (pageIndex > 0 && slot === 0) {
+          pdf.addPage([printLayout.paperWidthMm, printLayout.paperHeightMm], printOrientation);
+        }
+        const col = slot % printLayout.columns;
+        const row = Math.floor(slot / printLayout.columns);
+        const x = startX + col * (printLayout.cardWidthMm + printLayout.gapMm);
+        const y = startY + row * (printLayout.cardHeightMm + printLayout.gapMm);
+        pdf.addImage(image, 'PNG', x, y, printLayout.cardWidthMm, printLayout.cardHeightMm, undefined, 'FAST');
+      });
+
+      const safeName = (template.name || 'kartu-peserta').replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'kartu-peserta';
+      pdf.save(`${safeName}.pdf`);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'PDF gagal dibuat.';
+      setPdfError(`PDF gagal dibuat: ${message}`);
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   const toggle = (id: string) => setSelected(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id]);
 
   return <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-4 text-slate-900 dark:text-white">
@@ -290,6 +354,7 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
       {!loading && !error && filtered.length === 0 && <p className="mt-3 text-sm text-slate-500">Tidak ada data pada sumber ini atau akun tidak memenuhi filter.</p>}
     </div>
     {!serialOk && selectedRows.length > 0 && <p role="alert" className="print:hidden text-amber-600 text-sm">Satu atau beberapa nomor identitas tidak tersedia/duplikat di GAS. Cetak ditahan agar tidak menghasilkan nomor palsu.</p>}
+    {pdfError && <p role="alert" className="print:hidden rounded-lg border border-rose-400 bg-rose-50 text-rose-700 p-3 text-sm">{pdfError}</p>}
     <div className="print:hidden flex flex-wrap items-end gap-3 rounded-xl border p-3">
       <label className="text-sm font-semibold">Ukuran kertas
         <select aria-label="Ukuran kertas cetak" className="mt-1 block min-w-36 rounded-lg p-2 border bg-white text-slate-900" value={paperSize} onChange={event => setPaperSize(event.target.value as typeof paperSize)}>
@@ -318,9 +383,10 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
         <input aria-label="Geser cetakan vertikal dalam milimeter" type="number" min={-20} max={20} step={0.5} value={printOffsetY} onChange={event => setPrintOffsetY(event.target.value)} className="mt-1 block w-36 rounded-lg p-2 border bg-white text-slate-900" />
       </label>
       <p className="text-xs text-slate-500">PDF menggunakan ukuran kertas, orientasi, dan margin yang ditentukan di sini. Margin dalam mm; offset digunakan untuk penyelarasan halus. Pilih ukuran/orientasi yang sama pada dialog cetak dan gunakan skala 100%.</p>
-      <button type="button" disabled={!selectedRows.length || !serialOk || !qrReady || !!error || loading} onClick={() => window.print()} className="px-5 py-3 rounded-xl bg-emerald-600 text-white disabled:opacity-50 flex gap-2 items-center"><Printer size={18}/> Cetak {selectedRows.length} Kartu</button>
+      <button type="button" disabled={!selectedRows.length || !serialOk || !qrReady || !!error || loading || pdfLoading} onClick={() => void exportPdf()} className="px-5 py-3 rounded-xl bg-emerald-700 text-white disabled:opacity-50 flex gap-2 items-center"><Printer size={18}/> {pdfLoading ? 'Membuat PDF…' : `Buat PDF ${selectedRows.length} Kartu`}</button>
+      <button type="button" disabled={!selectedRows.length || !serialOk || !qrReady || !!error || loading || pdfLoading} onClick={() => window.print()} className="px-4 py-3 rounded-xl border disabled:opacity-50 flex gap-2 items-center"><Printer size={18}/> Cetak via Browser</button>
     </div>
-    <div id="siepang-idcard-print" className="flex flex-wrap items-start content-start gap-2 bg-white p-3 rounded-lg text-black">{selectedRows.map(person => <div key={getId(person)} className="relative border border-slate-300 overflow-hidden shrink-0 bg-white" style={{ width: `${template.widthMm}mm`, height: `${template.heightMm}mm` }}>{template.backgroundUrl && <img src={extractImage(template.backgroundUrl)} alt="Latar kartu" className="absolute inset-0 w-full h-full"/>}{template.elements.map(element => <div key={element.id} className="absolute flex items-center justify-center overflow-hidden whitespace-pre-wrap" style={{ left: `${element.x}%`, top: `${element.y}%`, width: `${element.w}%`, height: `${element.h}%`, fontSize: `${element.fontSize}pt`, color: element.color, textAlign: element.align }}>{field(element, person)}</div>)}</div>)}</div>
+    <div id="siepang-idcard-print" className="flex flex-wrap items-start content-start gap-2 bg-white p-3 rounded-lg text-black">{selectedRows.map(person => <div key={getId(person)} data-siepang-pdf-card="true" className="relative border border-slate-300 overflow-hidden shrink-0 bg-white" style={{ width: `${template.widthMm}mm`, height: `${template.heightMm}mm` }}>{template.backgroundUrl && <img src={extractImage(template.backgroundUrl)} alt="Latar kartu" className="absolute inset-0 w-full h-full"/>}{template.elements.map(element => <div key={element.id} className="absolute flex items-center justify-center overflow-hidden whitespace-pre-wrap" style={{ left: `${element.x}%`, top: `${element.y}%`, width: `${element.w}%`, height: `${element.h}%`, fontSize: `${element.fontSize}pt`, color: element.color, textAlign: element.align }}>{field(element, person)}</div>)}</div>)}</div>
     <div id="siepang-idcard-print-pages" className="siepang-print-only" aria-hidden="true">{printPages.map((page, pageIndex) => <section className="siepang-print-page" key={`print-page-${pageIndex}`}>{page.map(person => <div key={getId(person)} className="siepang-print-card relative border border-slate-300 overflow-hidden bg-white">{template.backgroundUrl && <img src={extractImage(template.backgroundUrl)} alt="Latar kartu" className="absolute inset-0 w-full h-full"/>}{template.elements.map(element => <div key={element.id} className="absolute flex items-center justify-center overflow-hidden whitespace-pre-wrap" style={{ left: `${element.x}%`, top: `${element.y}%`, width: `${element.w}%`, height: `${element.h}%`, fontSize: `${element.fontSize * (printLayout.cardWidthMm / template.widthMm)}pt`, color: element.color, textAlign: element.align }}>{field(element, person)}</div>)}</div>)}</section>)}</div>
     <p className="print:hidden text-xs text-slate-500">Nomor identitas dan QR dibaca/dibuat berdasarkan ID sumber yang dipilih. Untuk panitia, pastikan template memakai field yang sesuai; field Gudep/Regu dapat kosong jika akun panitia tidak memiliki data tersebut.</p>
   </div>;
