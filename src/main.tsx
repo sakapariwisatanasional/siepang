@@ -4,6 +4,7 @@ import App from './App.tsx';
 import { dynamicManifestService } from './services/dynamicManifestService';
 import { authService } from './services/authService';
 import './index.css';
+import { AndroidInstallBanner } from './components/pwa/AndroidInstallBanner';
 
 type BoundaryState = { error: Error | null };
 
@@ -58,5 +59,6 @@ if (!rootElement) {
 createRoot(rootElement).render(
   <AppErrorBoundary>
     <App />
+    <AndroidInstallBanner />
   </AppErrorBoundary>
 );
