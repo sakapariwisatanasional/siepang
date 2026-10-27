@@ -23,7 +23,9 @@
     "dotenv": "^17.2.3",
     "motion": "^12.23.24",
     "qrcode": "^1.5.4",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^3.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
