@@ -171,18 +171,21 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
   return <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-4 text-slate-900 dark:text-white">
     <style>{`
       /* Physical A4 dimensions and a deterministic 10-card grid prevent browser PDF reflow. */
-      @page { size: ${printOrientation === 'landscape' ? '297mm 210mm' : '210mm 297mm'}; margin: 5mm; }
+      @page {
+         size: ${printOrientation === 'landscape' ? '297mm 210mm' : '210mm 297mm'};
+         margin: 5mm 5mm 5mm 5mm;
+       }
       @media print {
         html, body { margin: 0 !important; padding: 0 !important; width: auto !important; height: auto !important; }
         body * { visibility: hidden !important; }
         #siepang-idcard-print, #siepang-idcard-print * { visibility: visible !important; }
         #siepang-idcard-print {
-          position: static !important; display: block !important; width: 100% !important;
+          position: static !important; display: block !important; width: ${printOrientation === 'landscape' ? '287mm' : '200mm'} !important;
           padding: 0 !important; margin: 0 !important; background: #fff !important;
           overflow: visible !important;
         }
         .siepang-print-page {
-          box-sizing: border-box !important; width: 100% !important;
+          box-sizing: border-box !important; width: ${printOrientation === 'landscape' ? '287mm' : '200mm'} !important;
           height: ${printOrientation === 'landscape' ? '200mm' : '287mm'} !important;
           min-height: 0 !important; max-height: ${printOrientation === 'landscape' ? '200mm' : '287mm'} !important;
           display: grid !important;
@@ -242,7 +245,7 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
           <option value="landscape">Landscape (mendatar)</option>
         </select>
       </label>
-      <p className="text-xs text-slate-500">Ukuran A4, 10 kartu per halaman. Landscape memakai susunan 5×2; portrait 2×5 dengan skala kartu menyesuaikan. Pada dialog cetak pilih A4, skala 100%, margin Default/None sesuai driver, dan matikan Headers and footers.</p>
+      <p className="text-xs text-slate-500">Ukuran A4, 10 kartu per halaman. Landscape memakai susunan 5×2; portrait 2×5 dengan skala kartu menyesuaikan. Margin cetak diatur 5 mm (0,5 cm) pada semua sisi. Pilih A4 dan skala 100%; bila dialog browser menimpa margin CSS, pilih Margins > Custom lalu isi 0,2 inci (≈ 0,5 cm) pada keempat sisi. Matikan Headers and footers.</p>
       <button type="button" disabled={!selectedRows.length || !serialOk || !qrReady || !!error || loading} onClick={() => window.print()} className="px-5 py-3 rounded-xl bg-emerald-600 text-white disabled:opacity-50 flex gap-2 items-center"><Printer size={18}/> Cetak {selectedRows.length} Kartu A4</button>
     </div>
     <div id="siepang-idcard-print" className="bg-white text-black">{printPages.map((page, pageIndex) => <div key={`print-page-${pageIndex}`} className="siepang-print-page" style={{ gridTemplateColumns: `repeat(${printColumns}, ${printCardWidthMm}mm)` }}>{page.map(person => <div key={getId(person)} className="siepang-print-card relative border border-slate-300 overflow-hidden bg-white" style={{ width: `${template.widthMm}mm`, height: `${template.heightMm}mm`, aspectRatio: `${template.widthMm} / ${template.heightMm}` }}>{template.backgroundUrl && <img src={extractImage(template.backgroundUrl)} alt="Latar kartu" className="absolute inset-0 w-full h-full"/>}{template.elements.map(element => <div key={element.id} className="absolute flex items-center justify-center overflow-hidden whitespace-pre-wrap" style={{ left: `${element.x}%`, top: `${element.y}%`, width: `${element.w}%`, height: `${element.h}%`, fontSize: `${element.fontSize}pt`, color: element.color, textAlign: element.align }}>{field(element, person)}</div>)}</div>)}</div>)}</div>
