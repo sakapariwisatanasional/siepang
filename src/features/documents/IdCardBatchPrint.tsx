@@ -61,6 +61,13 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
   const [qr, setQr] = useState<Record<string, string>>({});
   const [photoCacheKey, setPhotoCacheKey] = useState<number>(() => Date.now());
   const [printOrientation, setPrintOrientation] = useState<PrintOrientation>('landscape');
+  const [paperSize, setPaperSize] = useState<'A4' | 'A5' | 'Letter' | 'Legal' | 'custom'>('A4');
+  const [customPaperWidth, setCustomPaperWidth] = useState('210');
+  const [customPaperHeight, setCustomPaperHeight] = useState('297');
+  const [marginTop, setMarginTop] = useState('5');
+  const [marginRight, setMarginRight] = useState('5');
+  const [marginBottom, setMarginBottom] = useState('5');
+  const [marginLeft, setMarginLeft] = useState('5');
   // Browser print-dialog margins cannot be negative; these offsets shift the printed sheet content instead.
   const [printOffsetX, setPrintOffsetX] = useState('0');
   const [printOffsetY, setPrintOffsetY] = useState('0');
@@ -131,33 +138,40 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
   const uniqueSerials = new Set(selectedSerials.filter(Boolean));
   const serialOk = selectedRows.every(person => !!getSerial(person, source)) && uniqueSerials.size === selectedRows.length;
   const qrReady = selectedRows.every(person => !!qr[getId(person)]);
-  // Print in physical A4 pages, exactly 10 cards per page. Landscape preserves
-  // the editor's 5x2 card layout; portrait scales cards down to fit a 2x5 grid.
+  // Calculate physical paper dimensions and card grid from the user's print settings.
   const printLayout = useMemo(() => {
+    const sizes = {
+      A4: [210, 297],
+      A5: [148, 210],
+      Letter: [215.9, 279.4],
+      Legal: [215.9, 355.6],
+    } as const;
+    const customW = Math.max(50, Number.parseFloat(customPaperWidth) || 297);
+    const customH = Math.max(50, Number.parseFloat(customPaperHeight) || 210);
+    const base = paperSize === 'custom' ? [customW, customH] : sizes[paperSize];
+    const paperWidthMm = printOrientation === 'landscape' ? base[1] : base[0];
+    const paperHeightMm = printOrientation === 'landscape' ? base[0] : base[1];
+    const top = Math.max(0, Math.min(50, Number.parseFloat(marginTop) || 0));
+    const right = Math.max(0, Math.min(50, Number.parseFloat(marginRight) || 0));
+    const bottom = Math.max(0, Math.min(50, Number.parseFloat(marginBottom) || 0));
+    const left = Math.max(0, Math.min(50, Number.parseFloat(marginLeft) || 0));
+    const contentWidthMm = Math.max(10, paperWidthMm - left - right);
+    const contentHeightMm = Math.max(10, paperHeightMm - top - bottom);
     const columns = printOrientation === 'landscape' ? 5 : 2;
     const rowsPerPage = 10 / columns;
-    const paperWidthMm = printOrientation === 'landscape' ? 297 : 210;
-    const paperHeightMm = printOrientation === 'landscape' ? 210 : 297;
-    const pageWidthMm = paperWidthMm - 10; // 5 mm internal safe area on both sides
-    const pageHeightMm = paperHeightMm - 10; // 5 mm internal safe area on top and bottom
     const gapMm = 2;
     const scale = Math.min(
       1,
-      (pageWidthMm - gapMm * (columns - 1)) / (template.widthMm * columns),
-      (pageHeightMm - gapMm * (rowsPerPage - 1)) / (template.heightMm * rowsPerPage),
+      (contentWidthMm - gapMm * (columns - 1)) / (template.widthMm * columns),
+      (contentHeightMm - gapMm * (rowsPerPage - 1)) / (template.heightMm * rowsPerPage),
     );
     return {
-      columns,
-      rowsPerPage,
-      paperWidthMm,
-      paperHeightMm,
+      columns, rowsPerPage, paperWidthMm, paperHeightMm,
       cardWidthMm: template.widthMm * scale,
       cardHeightMm: template.heightMm * scale,
-      pageWidthMm,
-      pageHeightMm,
-      gapMm,
+      contentWidthMm, contentHeightMm, top, right, bottom, left, gapMm,
     };
-  }, [printOrientation, template.widthMm, template.heightMm]);
+  }, [printOrientation, paperSize, customPaperWidth, customPaperHeight, marginTop, marginRight, marginBottom, marginLeft, template.widthMm, template.heightMm]);
   const printPages = useMemo(() => {
     const pages: RecordRow[][] = [];
     for (let index = 0; index < selectedRows.length; index += 10) pages.push(selectedRows.slice(index, index + 10));
@@ -197,7 +211,7 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
   return <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-4 text-slate-900 dark:text-white">
     <style>{`
       @page {
-        size: A4 ${printOrientation};
+        size: ${printLayout.paperWidthMm}mm ${printLayout.paperHeightMm}mm;
         margin: 0;
       }
       .siepang-print-only { display: none; }
@@ -222,7 +236,7 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
           width: ${printLayout.paperWidthMm}mm !important;
           height: ${printLayout.paperHeightMm}mm !important;
           margin: 0 !important;
-          padding: 5mm !important;
+          padding: ${printLayout.top}mm ${printLayout.right}mm ${printLayout.bottom}mm ${printLayout.left}mm !important;
           display: grid !important;
           grid-template-columns: repeat(${printLayout.columns}, ${printLayout.cardWidthMm}mm) !important;
           grid-template-rows: repeat(${printLayout.rowsPerPage}, ${printLayout.cardHeightMm}mm) !important;
@@ -277,20 +291,34 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
     </div>
     {!serialOk && selectedRows.length > 0 && <p role="alert" className="print:hidden text-amber-600 text-sm">Satu atau beberapa nomor identitas tidak tersedia/duplikat di GAS. Cetak ditahan agar tidak menghasilkan nomor palsu.</p>}
     <div className="print:hidden flex flex-wrap items-end gap-3 rounded-xl border p-3">
-      <label className="text-sm font-semibold">Orientasi kertas
-        <select aria-label="Orientasi kertas cetak" className="mt-1 block min-w-48 rounded-lg p-2 border bg-white text-slate-900" value={printOrientation} onChange={event => setPrintOrientation(event.target.value as PrintOrientation)}>
-          <option value="portrait">Portrait (tegak)</option>
-          <option value="landscape">Landscape (mendatar)</option>
+      <label className="text-sm font-semibold">Ukuran kertas
+        <select aria-label="Ukuran kertas cetak" className="mt-1 block min-w-36 rounded-lg p-2 border bg-white text-slate-900" value={paperSize} onChange={event => setPaperSize(event.target.value as typeof paperSize)}>
+          <option value="A4">A4</option><option value="A5">A5</option><option value="Letter">Letter</option><option value="Legal">Legal</option><option value="custom">Kustom</option>
         </select>
       </label>
+      <label className="text-sm font-semibold">Orientasi
+        <select aria-label="Orientasi kertas cetak" className="mt-1 block min-w-36 rounded-lg p-2 border bg-white text-slate-900" value={printOrientation} onChange={event => setPrintOrientation(event.target.value as PrintOrientation)}>
+          <option value="portrait">Portrait</option><option value="landscape">Landscape</option>
+        </select>
+      </label>
+      {paperSize === 'custom' && <>
+        <label className="text-sm">Lebar kertas (mm)<input type="number" min={50} max={1000} value={customPaperWidth} onChange={event => setCustomPaperWidth(event.target.value)} className="mt-1 block w-32 rounded-lg p-2 border bg-white text-slate-900"/></label>
+        <label className="text-sm">Tinggi kertas (mm)<input type="number" min={50} max={1000} value={customPaperHeight} onChange={event => setCustomPaperHeight(event.target.value)} className="mt-1 block w-32 rounded-lg p-2 border bg-white text-slate-900"/></label>
+      </>}
+      {([
+        ['Atas (mm)', marginTop, setMarginTop], ['Kanan (mm)', marginRight, setMarginRight],
+        ['Bawah (mm)', marginBottom, setMarginBottom], ['Kiri (mm)', marginLeft, setMarginLeft],
+      ] as const).map(([label, value, setter]) => <label key={label} className="text-sm font-semibold">{label}
+        <input aria-label={`Margin ${label}`} type="number" min={0} max={50} step={0.5} value={value} onChange={event => setter(event.target.value)} className="mt-1 block w-28 rounded-lg p-2 border bg-white text-slate-900"/>
+      </label>)}
       <label className="text-sm font-semibold">Geser horizontal (mm)
         <input aria-label="Geser cetakan horizontal dalam milimeter" type="number" min={-20} max={20} step={0.5} value={printOffsetX} onChange={event => setPrintOffsetX(event.target.value)} className="mt-1 block w-36 rounded-lg p-2 border bg-white text-slate-900" />
       </label>
       <label className="text-sm font-semibold">Geser vertikal (mm)
         <input aria-label="Geser cetakan vertikal dalam milimeter" type="number" min={-20} max={20} step={0.5} value={printOffsetY} onChange={event => setPrintOffsetY(event.target.value)} className="mt-1 block w-36 rounded-lg p-2 border bg-white text-slate-900" />
       </label>
-      <p className="text-xs text-slate-500">Kertas A4. Margin aman 5 mm; gunakan geser horizontal/vertikal bernilai negatif atau positif untuk menyelaraskan hasil PDF. Cetak 10 kartu per halaman.</p>
-      <button type="button" disabled={!selectedRows.length || !serialOk || !qrReady || !!error || loading} onClick={() => window.print()} className="px-5 py-3 rounded-xl bg-emerald-600 text-white disabled:opacity-50 flex gap-2 items-center"><Printer size={18}/> Cetak {selectedRows.length} Kartu A4</button>
+      <p className="text-xs text-slate-500">PDF menggunakan ukuran kertas, orientasi, dan margin yang ditentukan di sini. Margin dalam mm; offset digunakan untuk penyelarasan halus. Pilih ukuran/orientasi yang sama pada dialog cetak dan gunakan skala 100%.</p>
+      <button type="button" disabled={!selectedRows.length || !serialOk || !qrReady || !!error || loading} onClick={() => window.print()} className="px-5 py-3 rounded-xl bg-emerald-600 text-white disabled:opacity-50 flex gap-2 items-center"><Printer size={18}/> Cetak {selectedRows.length} Kartu</button>
     </div>
     <div id="siepang-idcard-print" className="flex flex-wrap items-start content-start gap-2 bg-white p-3 rounded-lg text-black">{selectedRows.map(person => <div key={getId(person)} className="relative border border-slate-300 overflow-hidden shrink-0 bg-white" style={{ width: `${template.widthMm}mm`, height: `${template.heightMm}mm` }}>{template.backgroundUrl && <img src={extractImage(template.backgroundUrl)} alt="Latar kartu" className="absolute inset-0 w-full h-full"/>}{template.elements.map(element => <div key={element.id} className="absolute flex items-center justify-center overflow-hidden whitespace-pre-wrap" style={{ left: `${element.x}%`, top: `${element.y}%`, width: `${element.w}%`, height: `${element.h}%`, fontSize: `${element.fontSize}pt`, color: element.color, textAlign: element.align }}>{field(element, person)}</div>)}</div>)}</div>
     <div id="siepang-idcard-print-pages" className="siepang-print-only" aria-hidden="true">{printPages.map((page, pageIndex) => <section className="siepang-print-page" key={`print-page-${pageIndex}`}>{page.map(person => <div key={getId(person)} className="siepang-print-card relative border border-slate-300 overflow-hidden bg-white">{template.backgroundUrl && <img src={extractImage(template.backgroundUrl)} alt="Latar kartu" className="absolute inset-0 w-full h-full"/>}{template.elements.map(element => <div key={element.id} className="absolute flex items-center justify-center overflow-hidden whitespace-pre-wrap" style={{ left: `${element.x}%`, top: `${element.y}%`, width: `${element.w}%`, height: `${element.h}%`, fontSize: `${element.fontSize * (printLayout.cardWidthMm / template.widthMm)}pt`, color: element.color, textAlign: element.align }}>{field(element, person)}</div>)}</div>)}</section>)}</div>
