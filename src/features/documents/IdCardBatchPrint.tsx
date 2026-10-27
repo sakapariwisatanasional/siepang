@@ -60,7 +60,7 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
   const [selected, setSelected] = useState<string[]>([]);
   const [qr, setQr] = useState<Record<string, string>>({});
   const [photoCacheKey, setPhotoCacheKey] = useState<number>(() => Date.now());
-  const [printOrientation, setPrintOrientation] = useState<PrintOrientation>('portrait');
+  const [printOrientation, setPrintOrientation] = useState<PrintOrientation>('landscape');
 
   // Keep the data source synchronized whenever the selected template changes.
   // useState(defaultSource) only initializes once, so it cannot handle switching
@@ -126,17 +126,34 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
   const uniqueSerials = new Set(selectedSerials.filter(Boolean));
   const serialOk = selectedRows.every(person => !!getSerial(person, source)) && uniqueSerials.size === selectedRows.length;
   const qrReady = selectedRows.every(person => !!qr[getId(person)]);
-  // A4 layout: always paginate in groups of 10. Landscape uses 5x2; portrait uses 2x5.
+  // Print in physical A4 pages, exactly 10 cards per page. Landscape preserves
+  // the editor's 5x2 card layout; portrait scales cards down to fit a 2x5 grid.
+  const printLayout = useMemo(() => {
+    const columns = printOrientation === 'landscape' ? 5 : 2;
+    const rowsPerPage = 10 / columns;
+    const pageWidthMm = printOrientation === 'landscape' ? 287 : 200; // A4 less 5 mm margins
+    const pageHeightMm = printOrientation === 'landscape' ? 200 : 287;
+    const gapMm = 2;
+    const scale = Math.min(
+      1,
+      (pageWidthMm - gapMm * (columns - 1)) / (template.widthMm * columns),
+      (pageHeightMm - gapMm * (rowsPerPage - 1)) / (template.heightMm * rowsPerPage),
+    );
+    return {
+      columns,
+      rowsPerPage,
+      cardWidthMm: template.widthMm * scale,
+      cardHeightMm: template.heightMm * scale,
+      pageWidthMm,
+      pageHeightMm,
+      gapMm,
+    };
+  }, [printOrientation, template.widthMm, template.heightMm]);
   const printPages = useMemo(() => {
     const pages: RecordRow[][] = [];
-    for (let i = 0; i < selectedRows.length; i += 10) pages.push(selectedRows.slice(i, i + 10));
+    for (let index = 0; index < selectedRows.length; index += 10) pages.push(selectedRows.slice(index, index + 10));
     return pages;
   }, [selectedRows]);
-  const cardRatio = template.widthMm > 0 && template.heightMm > 0 ? template.widthMm / template.heightMm : 0.67;
-  const printCardWidthMm = printOrientation === 'landscape'
-    ? Math.min((287 - 4) / 5, ((200 - 1) / 2) * cardRatio)
-    : Math.min((200 - 1) / 2, ((287 - 4) / 5) * cardRatio);
-  const printColumns = printOrientation === 'landscape' ? 5 : 2;
 
   useEffect(() => {
     let canceled = false;
@@ -170,44 +187,53 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
 
   return <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-4 text-slate-900 dark:text-white">
     <style>{`
-      /* Physical A4 dimensions and a deterministic 10-card grid prevent browser PDF reflow. */
       @page {
-         size: ${printOrientation === 'landscape' ? '297mm 210mm' : '210mm 297mm'};
-         margin: 5mm 5mm 5mm 5mm;
-       }
+        size: A4 ${printOrientation};
+        margin: 5mm;
+      }
+      .siepang-print-only { display: none; }
       @media print {
-        html, body { margin: 0 !important; padding: 0 !important; width: auto !important; height: auto !important; }
+        html, body, #root { width: auto !important; height: auto !important; margin: 0 !important; padding: 0 !important; }
         body * { visibility: hidden !important; }
-        #siepang-idcard-print, #siepang-idcard-print * { visibility: visible !important; }
-        #siepang-idcard-print {
-          position: static !important; display: block !important; width: ${printOrientation === 'landscape' ? '287mm' : '200mm'} !important;
-          padding: 0 !important; margin: 0 !important; background: #fff !important;
-          overflow: visible !important;
+        #siepang-idcard-print-pages, #siepang-idcard-print-pages * { visibility: visible !important; }
+        #siepang-idcard-print-pages {
+          display: block !important;
+          position: absolute !important;
+          inset: 0 auto auto 0 !important;
+          width: ${printLayout.pageWidthMm}mm !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: #fff !important;
         }
         .siepang-print-page {
-          box-sizing: border-box !important; width: ${printOrientation === 'landscape' ? '287mm' : '200mm'} !important;
-          height: ${printOrientation === 'landscape' ? '200mm' : '287mm'} !important;
-          min-height: 0 !important; max-height: ${printOrientation === 'landscape' ? '200mm' : '287mm'} !important;
+          box-sizing: border-box !important;
+          width: ${printLayout.pageWidthMm}mm !important;
+          height: ${printLayout.pageHeightMm}mm !important;
+          margin: 0 !important;
+          padding: 0 !important;
           display: grid !important;
-          grid-template-columns: repeat(${printColumns}, ${printCardWidthMm.toFixed(2)}mm) !important;
-          grid-template-rows: repeat(${printOrientation === 'landscape' ? 2 : 5}, ${((printOrientation === 'landscape' ? 200 - 1 : 287 - 4) / (printOrientation === 'landscape' ? 2 : 5)).toFixed(2)}mm) !important;
-          gap: 1mm !important; justify-content: center !important; align-content: center !important;
-          break-after: page !important; page-break-after: always !important; overflow: hidden !important;
+          grid-template-columns: repeat(${printLayout.columns}, ${printLayout.cardWidthMm}mm) !important;
+          grid-template-rows: repeat(${printLayout.rowsPerPage}, ${printLayout.cardHeightMm}mm) !important;
+          column-gap: ${printLayout.gapMm}mm !important;
+          row-gap: ${printLayout.gapMm}mm !important;
+          justify-content: center !important;
+          align-content: center !important;
+          overflow: hidden !important;
+          break-after: page !important;
+          page-break-after: always !important;
         }
         .siepang-print-page:last-child { break-after: auto !important; page-break-after: auto !important; }
         .siepang-print-card {
-          box-sizing: border-box !important; width: ${printCardWidthMm.toFixed(2)}mm !important;
-          height: auto !important; aspect-ratio: ${cardRatio.toFixed(5)} !important;
-          min-width: 0 !important; max-width: ${printCardWidthMm.toFixed(2)}mm !important;
-          position: relative !important; align-self: center !important; flex: none !important; overflow: hidden !important;
-          break-inside: avoid !important; page-break-inside: avoid !important;
-          print-color-adjust: exact !important; -webkit-print-color-adjust: exact !important;
+          box-sizing: border-box !important;
+          width: ${printLayout.cardWidthMm}mm !important;
+          height: ${printLayout.cardHeightMm}mm !important;
+          margin: 0 !important;
+          flex: none !important;
+          break-inside: avoid !important;
+          page-break-inside: avoid !important;
+          print-color-adjust: exact !important;
+          -webkit-print-color-adjust: exact !important;
         }
-        .siepang-print-card > img { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important; object-fit: fill !important; }
-      }
-      @media screen {
-        #siepang-idcard-print { display: flex; flex-wrap: wrap; align-items: flex-start; align-content: flex-start; gap: 2mm; }
-        .siepang-print-page { display: contents; }
       }
     `}</style>
     <div className="print:hidden flex flex-wrap justify-between gap-3 items-center">
@@ -245,10 +271,11 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
           <option value="landscape">Landscape (mendatar)</option>
         </select>
       </label>
-      <p className="text-xs text-slate-500">Ukuran A4, 10 kartu per halaman. Landscape memakai susunan 5×2; portrait 2×5 dengan skala kartu menyesuaikan. Margin cetak diatur 5 mm (0,5 cm) pada semua sisi. Pilih A4 dan skala 100%; bila dialog browser menimpa margin CSS, pilih Margins &gt; Custom lalu isi 0,2 inci (≈ 0,5 cm) pada keempat sisi. Matikan Headers and footers.</p>
+      <p className="text-xs text-slate-500">Kertas A4 dengan margin 5 mm. Landscape mencetak 10 kartu per halaman (5×2); portrait menskalakan kartu agar 10 tetap muat (2×5).</p>
       <button type="button" disabled={!selectedRows.length || !serialOk || !qrReady || !!error || loading} onClick={() => window.print()} className="px-5 py-3 rounded-xl bg-emerald-600 text-white disabled:opacity-50 flex gap-2 items-center"><Printer size={18}/> Cetak {selectedRows.length} Kartu A4</button>
     </div>
-    <div id="siepang-idcard-print" className="bg-white text-black">{printPages.map((page, pageIndex) => <div key={`print-page-${pageIndex}`} className="siepang-print-page" style={{ gridTemplateColumns: `repeat(${printColumns}, ${printCardWidthMm}mm)` }}>{page.map(person => <div key={getId(person)} className="siepang-print-card relative border border-slate-300 overflow-hidden bg-white" style={{ width: `${template.widthMm}mm`, height: `${template.heightMm}mm`, aspectRatio: `${template.widthMm} / ${template.heightMm}` }}>{template.backgroundUrl && <img src={extractImage(template.backgroundUrl)} alt="Latar kartu" className="absolute inset-0 w-full h-full"/>}{template.elements.map(element => <div key={element.id} className="absolute flex items-center justify-center overflow-hidden whitespace-pre-wrap" style={{ left: `${element.x}%`, top: `${element.y}%`, width: `${element.w}%`, height: `${element.h}%`, fontSize: `${element.fontSize}pt`, color: element.color, textAlign: element.align }}>{field(element, person)}</div>)}</div>)}</div>)}</div>
+    <div id="siepang-idcard-print" className="flex flex-wrap items-start content-start gap-2 bg-white p-3 rounded-lg text-black">{selectedRows.map(person => <div key={getId(person)} className="relative border border-slate-300 overflow-hidden shrink-0 bg-white" style={{ width: `${template.widthMm}mm`, height: `${template.heightMm}mm` }}>{template.backgroundUrl && <img src={extractImage(template.backgroundUrl)} alt="Latar kartu" className="absolute inset-0 w-full h-full"/>}{template.elements.map(element => <div key={element.id} className="absolute flex items-center justify-center overflow-hidden whitespace-pre-wrap" style={{ left: `${element.x}%`, top: `${element.y}%`, width: `${element.w}%`, height: `${element.h}%`, fontSize: `${element.fontSize}pt`, color: element.color, textAlign: element.align }}>{field(element, person)}</div>)}</div>)}</div>
+    <div id="siepang-idcard-print-pages" className="siepang-print-only" aria-hidden="true">{printPages.map((page, pageIndex) => <section className="siepang-print-page" key={`print-page-${pageIndex}`}>{page.map(person => <div key={getId(person)} className="siepang-print-card relative border border-slate-300 overflow-hidden bg-white">{template.backgroundUrl && <img src={extractImage(template.backgroundUrl)} alt="Latar kartu" className="absolute inset-0 w-full h-full"/>}{template.elements.map(element => <div key={element.id} className="absolute flex items-center justify-center overflow-hidden whitespace-pre-wrap" style={{ left: `${element.x}%`, top: `${element.y}%`, width: `${element.w}%`, height: `${element.h}%`, fontSize: `${element.fontSize * (printLayout.cardWidthMm / template.widthMm)}pt`, color: element.color, textAlign: element.align }}>{field(element, person)}</div>)}</div>)}</section>)}</div>
     <p className="print:hidden text-xs text-slate-500">Nomor identitas dan QR dibaca/dibuat berdasarkan ID sumber yang dipilih. Untuk panitia, pastikan template memakai field yang sesuai; field Gudep/Regu dapat kosong jika akun panitia tidak memiliki data tersebut.</p>
   </div>;
 };
