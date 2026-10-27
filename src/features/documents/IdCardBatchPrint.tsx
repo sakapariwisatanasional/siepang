@@ -61,6 +61,11 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
   const [qr, setQr] = useState<Record<string, string>>({});
   const [photoCacheKey, setPhotoCacheKey] = useState<number>(() => Date.now());
   const [printOrientation, setPrintOrientation] = useState<PrintOrientation>('landscape');
+  // Browser print-dialog margins cannot be negative; these offsets shift the printed sheet content instead.
+  const [printOffsetX, setPrintOffsetX] = useState('0');
+  const [printOffsetY, setPrintOffsetY] = useState('0');
+  const printOffsetXmm = Math.max(-20, Math.min(20, Number.parseFloat(printOffsetX) || 0));
+  const printOffsetYmm = Math.max(-20, Math.min(20, Number.parseFloat(printOffsetY) || 0));
 
   // Keep the data source synchronized whenever the selected template changes.
   // useState(defaultSource) only initializes once, so it cannot handle switching
@@ -131,8 +136,10 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
   const printLayout = useMemo(() => {
     const columns = printOrientation === 'landscape' ? 5 : 2;
     const rowsPerPage = 10 / columns;
-    const pageWidthMm = printOrientation === 'landscape' ? 287 : 200; // A4 less 5 mm margins
-    const pageHeightMm = printOrientation === 'landscape' ? 200 : 287;
+    const paperWidthMm = printOrientation === 'landscape' ? 297 : 210;
+    const paperHeightMm = printOrientation === 'landscape' ? 210 : 297;
+    const pageWidthMm = paperWidthMm - 10; // 5 mm internal safe area on both sides
+    const pageHeightMm = paperHeightMm - 10; // 5 mm internal safe area on top and bottom
     const gapMm = 2;
     const scale = Math.min(
       1,
@@ -142,6 +149,8 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
     return {
       columns,
       rowsPerPage,
+      paperWidthMm,
+      paperHeightMm,
       cardWidthMm: template.widthMm * scale,
       cardHeightMm: template.heightMm * scale,
       pageWidthMm,
@@ -189,7 +198,7 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
     <style>{`
       @page {
         size: A4 ${printOrientation};
-        margin: 5mm;
+        margin: 0;
       }
       .siepang-print-only { display: none; }
       @media print {
@@ -200,17 +209,20 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
           display: block !important;
           position: absolute !important;
           inset: 0 auto auto 0 !important;
-          width: ${printLayout.pageWidthMm}mm !important;
+          width: ${printLayout.paperWidthMm}mm !important;
           margin: 0 !important;
           padding: 0 !important;
           background: #fff !important;
         }
         .siepang-print-page {
           box-sizing: border-box !important;
-          width: ${printLayout.pageWidthMm}mm !important;
-          height: ${printLayout.pageHeightMm}mm !important;
+          position: relative !important;
+          left: ${printOffsetXmm}mm !important;
+          top: ${printOffsetYmm}mm !important;
+          width: ${printLayout.paperWidthMm}mm !important;
+          height: ${printLayout.paperHeightMm}mm !important;
           margin: 0 !important;
-          padding: 0 !important;
+          padding: 5mm !important;
           display: grid !important;
           grid-template-columns: repeat(${printLayout.columns}, ${printLayout.cardWidthMm}mm) !important;
           grid-template-rows: repeat(${printLayout.rowsPerPage}, ${printLayout.cardHeightMm}mm) !important;
@@ -271,7 +283,13 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
           <option value="landscape">Landscape (mendatar)</option>
         </select>
       </label>
-      <p className="text-xs text-slate-500">Kertas A4 dengan margin 5 mm. Landscape mencetak 10 kartu per halaman (5×2); portrait menskalakan kartu agar 10 tetap muat (2×5).</p>
+      <label className="text-sm font-semibold">Geser horizontal (mm)
+        <input aria-label="Geser cetakan horizontal dalam milimeter" type="number" min={-20} max={20} step={0.5} value={printOffsetX} onChange={event => setPrintOffsetX(event.target.value)} className="mt-1 block w-36 rounded-lg p-2 border bg-white text-slate-900" />
+      </label>
+      <label className="text-sm font-semibold">Geser vertikal (mm)
+        <input aria-label="Geser cetakan vertikal dalam milimeter" type="number" min={-20} max={20} step={0.5} value={printOffsetY} onChange={event => setPrintOffsetY(event.target.value)} className="mt-1 block w-36 rounded-lg p-2 border bg-white text-slate-900" />
+      </label>
+      <p className="text-xs text-slate-500">Kertas A4. Margin aman 5 mm; gunakan geser horizontal/vertikal bernilai negatif atau positif untuk menyelaraskan hasil PDF. Cetak 10 kartu per halaman.</p>
       <button type="button" disabled={!selectedRows.length || !serialOk || !qrReady || !!error || loading} onClick={() => window.print()} className="px-5 py-3 rounded-xl bg-emerald-600 text-white disabled:opacity-50 flex gap-2 items-center"><Printer size={18}/> Cetak {selectedRows.length} Kartu A4</button>
     </div>
     <div id="siepang-idcard-print" className="flex flex-wrap items-start content-start gap-2 bg-white p-3 rounded-lg text-black">{selectedRows.map(person => <div key={getId(person)} className="relative border border-slate-300 overflow-hidden shrink-0 bg-white" style={{ width: `${template.widthMm}mm`, height: `${template.heightMm}mm` }}>{template.backgroundUrl && <img src={extractImage(template.backgroundUrl)} alt="Latar kartu" className="absolute inset-0 w-full h-full"/>}{template.elements.map(element => <div key={element.id} className="absolute flex items-center justify-center overflow-hidden whitespace-pre-wrap" style={{ left: `${element.x}%`, top: `${element.y}%`, width: `${element.w}%`, height: `${element.h}%`, fontSize: `${element.fontSize}pt`, color: element.color, textAlign: element.align }}>{field(element, person)}</div>)}</div>)}</div>
