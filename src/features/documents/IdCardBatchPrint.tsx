@@ -231,6 +231,37 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
           backgroundColor: '#ffffff',
           logging: false,
           imageTimeout: 20000,
+          onclone: clonedDocument => {
+            // html2canvas currently cannot parse modern CSS color functions such as
+            // oklch()/oklab(). Inline the browser-computed styles for this card,
+            // then remove stylesheets from the cloned document so unrelated
+            // Tailwind rules do not trigger the parser error.
+            const clonedCards = Array.from(clonedDocument.querySelectorAll<HTMLElement>('[data-siepang-pdf-card="true"]'));
+            const clonedCard = clonedCards[cardNodes.indexOf(node)];
+            if (!clonedCard) return;
+            const sourceElements = [node, ...Array.from(node.querySelectorAll<HTMLElement>('*'))];
+            const clonedElements = [clonedCard, ...Array.from(clonedCard.querySelectorAll<HTMLElement>('*'))];
+            const safeColor = (property: string, value: string) => {
+              if (!/(oklch|oklab|color\()/i.test(value)) return value;
+              if (property === 'color' || property === 'fill' || property === 'caret-color') return '#111827';
+              if (property.includes('border') || property.includes('outline') || property === 'stroke') return '#cbd5e1';
+              if (property.includes('background')) return 'transparent';
+              if (property.includes('shadow')) return 'none';
+              return 'transparent';
+            };
+            sourceElements.forEach((sourceElement, index) => {
+              const targetElement = clonedElements[index];
+              if (!targetElement) return;
+              const computed = window.getComputedStyle(sourceElement);
+              for (let i = 0; i < computed.length; i += 1) {
+                const property = computed.item(i);
+                const value = computed.getPropertyValue(property);
+                if (!value) continue;
+                targetElement.style.setProperty(property, safeColor(property, value));
+              }
+            });
+            clonedDocument.querySelectorAll('style, link[rel="stylesheet"]').forEach(sheet => sheet.remove());
+          },
         });
         cardImages.push(canvas.toDataURL('image/png'));
       }
