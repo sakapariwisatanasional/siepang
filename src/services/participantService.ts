@@ -53,6 +53,7 @@ class ParticipantService {
   // Hanya mempercepat tampilan identitas QR. Operasi tulis tetap divalidasi GAS.
   private scannerLastLoadedAt = 0;
   private scannerLoadedEventId = '';
+  private scannerIdentityCache = new Map<string, { expiresAt: number; participant: Participant }>();
 
   /** Gunakan hasil pembacaan baru untuk scanner; setelah TTL, periksa kembali GAS. */
   public ensureScannerParticipantsFresh(maxAgeMs = 90000): Promise<void> {
@@ -64,6 +65,85 @@ class ParticipantService {
       return Promise.resolve();
     }
     return this.loadParticipants();
+  }
+
+  /**
+   * Resolve one QR identity through GAS instead of loading the entire participant roster.
+   * A short in-memory cache only accelerates repeated scans in this tab; write actions
+   * must still be validated by GAS. Cache keys include event and actor to avoid reuse
+   * across events or signed-in users.
+   */
+  public async resolveScannerParticipant(code: string, actorId: string, maxAgeMs = 45000): Promise<Participant> {
+    const token = String(code || '').trim();
+    if (!token) throw new Error('Kode QR peserta kosong.');
+    const eventId = String(eventService.getCurrentEvent()?.id || '').trim();
+    if (!eventId) throw new Error('Event aktif tidak ditemukan.');
+    const actorKey = String(actorId || 'unknown-actor').trim();
+    const cacheKey = `${eventId}::${actorKey}::${token.toLowerCase()}`;
+    const cached = this.scannerIdentityCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return { ...cached.participant };
+    if (cached) this.scannerIdentityCache.delete(cacheKey);
+
+    const result = await apiTransport.send<any>('participants.resolveQr', {
+      code: token,
+      event_id: eventId,
+    }, { timeoutMs: 12000 });
+    if (!result.ok) throw new Error(result.error?.message || 'GAS gagal mencari identitas peserta dari QR.');
+    const raw = result.data?.participant || result.data?.data?.participant;
+    if (!raw || !String(raw.id || '').trim()) {
+      throw new Error('GAS tidak mengembalikan identitas peserta yang valid.');
+    }
+    if (String(raw.eventId || raw.event_id || '') !== eventId) {
+      throw new Error('QR peserta bukan milik event aktif.');
+    }
+    const rawStatus = String(raw.verification_status || raw.verificationStatus || raw.status || 'SUBMITTED').toUpperCase();
+    const status: ParticipantStatus = rawStatus === 'APPROVED' || rawStatus === 'APPROVED' ? 'approved'
+      : rawStatus === 'VERIFIED' || rawStatus === 'VERIFIED' ? 'verified'
+      : rawStatus === 'REJECTED' || rawStatus === 'REJECTED' ? 'rejected'
+      : rawStatus === 'REVISION' || rawStatus === 'NEEDS_REVISION' || rawStatus === 'revision' ? 'revision'
+      : rawStatus === 'DRAFT' || rawStatus === 'draft' ? 'draft' : 'submitted';
+    const photoUrl = resolveParticipantPhotoUrl(raw);
+    const participant: Participant = {
+      id: String(raw.id),
+      eventId,
+      code: String(raw.code || raw.participantCode || raw.participant_code || raw.pramuka_id || raw.pramukaId || raw.id),
+      name: String(raw.name || raw.fullName || raw.full_name || ''),
+      gender: String(raw.gender || 'M').toUpperCase() === 'F' ? 'F' : 'M',
+      role: String(raw.role || raw.scoutLevel || raw.scout_level || 'Penggalang') as Participant['role'],
+      contingentId: String(raw.contingentId || raw.contingent_id || ''),
+      contingentName: String(raw.contingentName || raw.contingent_name || raw.institution || '-'),
+      subCamp: String(raw.subCamp || raw.subcamp || '-'),
+      tentNumber: String(raw.tentNumber || raw.lotNumber || raw.lot_number || '-'),
+      photoUrl,
+      profile_photo_file_id: String(raw.profile_photo_file_id || ''),
+      profile_photo_url: photoUrl,
+      profile_photo_status: raw.profile_photo_status || 'NOT_UPLOADED',
+      status,
+      checkedIn: raw.checkedIn === true || raw.checked_in === true || String(raw.checked_in).toLowerCase() === 'true' || String(raw.checked_in) === '1',
+      checkInTime: raw.checkInTime || raw.checked_in_at || raw.checkedInAt || undefined,
+      xp: Number(raw.xp ?? raw.points ?? 0),
+      level: Number(raw.level || 1),
+      rank: Number(raw.rank || 0),
+      attendanceCount: Number(raw.attendanceCount || 0),
+      badges: Array.isArray(raw.badges) ? raw.badges : [],
+      membershipNumber: String(raw.membershipNumber || raw.pramuka_id || raw.pramukaId || ''),
+      email: String(raw.email || ''),
+      phone: String(raw.phone || ''),
+      schoolPangkalan: String(raw.schoolPangkalan || raw.institution || ''),
+    };
+    this.scannerIdentityCache.set(cacheKey, { participant, expiresAt: Date.now() + maxAgeMs });
+    return { ...participant };
+  }
+
+  /** Invalidate cached scanner identity after a write changes attendance or points. */
+  public invalidateScannerIdentityCache(participantId?: string): void {
+    if (!participantId) {
+      this.scannerIdentityCache.clear();
+      return;
+    }
+    for (const [key, entry] of this.scannerIdentityCache.entries()) {
+      if (entry.participant.id === participantId) this.scannerIdentityCache.delete(key);
+    }
   }
 
   /** Load daftar peserta dari GAS; jangan menganggap array lokal sebagai sumber data utama. */
@@ -159,37 +239,6 @@ class ParticipantService {
     }
 
     return result;
-  }
-
-  /** Resolve a scanned participant QR through a narrow GAS endpoint without downloading the full roster. */
-  public async resolveScannerParticipant(code: string): Promise<Participant | undefined> {
-    const result = await apiTransport.send<{ participant?: any }>('participants.resolveQr', { code });
-    if (!result.ok) {
-      if (result.error?.code === 'PARTICIPANT_NOT_FOUND') return undefined;
-      throw new Error(result.error?.message || 'Gagal membaca identitas QR peserta dari GAS.');
-    }
-    const r = result.data?.participant;
-    if (!r || !r.id) return undefined;
-    const rawStatus = String(r.status || r.verification_status || 'SUBMITTED').toLowerCase();
-    const status: ParticipantStatus = (['approved','verified','rejected','revision','draft'].includes(rawStatus)
-      ? rawStatus : 'submitted') as ParticipantStatus;
-    const photoUrl = String(r.photoUrl || r.profile_photo_url || '');
-    return {
-      id: String(r.id), eventId: String(r.eventId || r.event_id || ''),
-      code: String(r.code || r.pramuka_id || r.id), name: String(r.name || ''),
-      gender: String(r.gender || 'M').toUpperCase() === 'F' ? 'F' : 'M',
-      role: (r.role || r.scout_level || 'Penggalang') as Participant['role'],
-      contingentId: String(r.contingentId || r.contingent_id || ''),
-      contingentName: String(r.contingentName || r.contingent_name || r.institution || '-'),
-      subCamp: String(r.subCamp || r.subcamp || '-'), tentNumber: String(r.tentNumber || r.lot_number || '-'),
-      photoUrl, profile_photo_file_id: String(r.profile_photo_file_id || ''), profile_photo_url: photoUrl,
-      profile_photo_status: String(r.profile_photo_status || 'NOT_UPLOADED'), status,
-      checkedIn: r.checkedIn === true || r.checked_in === true || ['true','1'].includes(String(r.checked_in).toLowerCase()),
-      checkInTime: String(r.checkInTime || r.checked_in_at || '') || undefined,
-      xp: Number(r.xp ?? r.points ?? 0), level: 1, rank: Number(r.rank || 0), attendanceCount: 0, badges: [],
-      membershipNumber: String(r.membershipNumber || r.pramuka_id || ''), email: String(r.email || ''),
-      phone: String(r.phone || ''), schoolPangkalan: String(r.schoolPangkalan || r.institution || '')
-    };
   }
 
   public getParticipantByCode(code: string): Participant | undefined {
