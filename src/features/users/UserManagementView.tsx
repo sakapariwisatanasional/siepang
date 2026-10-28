@@ -155,6 +155,14 @@ export const UserManagementView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('ALL');
   const [activeTab, setActiveTab] = useState<'users' | 'matrix' | 'session'>('users');
+  const [rolePermissions, setRolePermissions] = useState<Record<UserRole, string[]>>(() => Object.fromEntries(
+    (Object.keys(ROLE_PERMISSION_MAP) as UserRole[]).map(role => [role, [...(ROLE_PERMISSION_MAP[role] || [])]])
+  ) as Record<UserRole, string[]>);
+  const [rbacConfigured, setRbacConfigured] = useState(false);
+  const [rbacLoading, setRbacLoading] = useState(false);
+  const [rbacSaving, setRbacSaving] = useState(false);
+  const [rbacMessage, setRbacMessage] = useState('');
+  const [rbacError, setRbacError] = useState('');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -204,6 +212,7 @@ export const UserManagementView: React.FC = () => {
       setUsers(userManagementService.getUsers());
     });
     void loadRegisteredUsers();
+    void loadRolePermissions();
     return () => unsub();
   }, []);
 
@@ -217,6 +226,57 @@ export const UserManagementView: React.FC = () => {
       setUsersError(error?.message || 'Gagal mengambil daftar pengguna dari GAS.');
     } finally {
       setIsLoadingUsers(false);
+    }
+  };
+
+  const loadRolePermissions = async () => {
+    setRbacLoading(true);
+    setRbacError('');
+    try {
+      const result = await userManagementService.getRolePermissions();
+      const next = { ...rolePermissions };
+      (Object.keys(ROLE_PERMISSION_MAP) as UserRole[]).forEach(role => {
+        next[role] = [...(result.permissionsByRole[role] || [])];
+      });
+      setRolePermissions(next);
+      setRbacConfigured(result.configured);
+      if (!result.configured) {
+        setRbacMessage('Belum ada matriks tersimpan. Baseline kompatibilitas dikirim oleh GAS; tinjau lalu tekan Simpan Otoritas untuk mengaktifkannya.');
+      }
+    } catch (error: any) {
+      setRbacError(error?.message || 'Gagal membaca otoritas dari GAS. Perubahan tidak dapat disimpan.');
+    } finally {
+      setRbacLoading(false);
+    }
+  };
+
+  const toggleRolePermission = (role: UserRole, code: string, enabled: boolean) => {
+    setRolePermissions(previous => {
+      const current = previous[role] || [];
+      const nextCodes = enabled ? Array.from(new Set([...current, code])) : current.filter(item => item !== code);
+      return { ...previous, [role]: nextCodes };
+    });
+    setRbacMessage('');
+  };
+
+  const saveRolePermissionMatrix = async () => {
+    if (!confirm('Simpan matriks otoritas untuk semua role ke GAS? Perubahan akan memengaruhi tindakan backend yang sudah dipetakan ke izin ini.')) return;
+    setRbacSaving(true);
+    setRbacError('');
+    setRbacMessage('');
+    try {
+      const result = await userManagementService.saveRolePermissions(rolePermissions);
+      const next = { ...rolePermissions };
+      (Object.keys(ROLE_PERMISSION_MAP) as UserRole[]).forEach(role => {
+        next[role] = [...(result.permissionsByRole[role] || [])];
+      });
+      setRolePermissions(next);
+      setRbacConfigured(true);
+      setRbacMessage('Matriks otoritas berhasil disimpan dan dikonfirmasi oleh GAS.');
+    } catch (error: any) {
+      setRbacError(error?.message || 'Gagal menyimpan matriks otoritas.');
+    } finally {
+      setRbacSaving(false);
     }
   };
 
@@ -648,8 +708,19 @@ export const UserManagementView: React.FC = () => {
                   </option>
                 ))}
               </select>
+              <button type="button" onClick={() => void loadRolePermissions()} disabled={rbacLoading || rbacSaving}
+                className="px-3 py-2 rounded-xl border text-xs font-semibold disabled:opacity-50">
+                {rbacLoading ? 'Memuat…' : 'Muat dari GAS'}
+              </button>
+              <button type="button" onClick={() => void saveRolePermissionMatrix()} disabled={rbacLoading || rbacSaving}
+                className="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold disabled:opacity-50">
+                {rbacSaving ? 'Menyimpan…' : 'Simpan Otoritas'}
+              </button>
             </div>
           </div>
+          {rbacError && <div role="alert" className="p-3 rounded-xl border border-rose-300 bg-rose-50 text-rose-700 text-xs">{rbacError}</div>}
+          {rbacMessage && <div role="status" className="p-3 rounded-xl border border-sky-200 bg-sky-50 text-sky-800 text-xs">{rbacMessage}</div>}
+          {!rbacConfigured && <div className="p-3 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 text-xs">Mode kompatibilitas: tampilan awal berasal dari kebijakan role lama. Setelah disimpan, matriks tersimpan di GAS menjadi sumber izin untuk tindakan backend yang telah dipetakan.</div>}
 
           {/* Active role overview banner */}
           <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-between gap-4">
@@ -667,7 +738,7 @@ export const UserManagementView: React.FC = () => {
             <div className="text-right shrink-0">
               <div className="text-xs text-slate-400">Total Izin Aktif</div>
               <div className="text-xl font-black text-emerald-400 font-mono">
-                {ROLE_PERMISSION_MAP[matrixRole]?.length || 0} Izin
+                {rolePermissions[matrixRole]?.length || 0} Izin
               </div>
             </div>
           </div>
@@ -676,7 +747,7 @@ export const UserManagementView: React.FC = () => {
           <div className="space-y-3">
             {PERMISSION_GROUPS.map(group => {
               const isExpanded = expandedGroup === group.id;
-              const rolePerms = ROLE_PERMISSION_MAP[matrixRole] || [];
+              const rolePerms = rolePermissions[matrixRole] || [];
               const groupPermCodes = group.permissions.map(p => p.code);
               const grantedInGroup = groupPermCodes.filter(c => rolePerms.includes(c));
 
@@ -731,11 +802,12 @@ export const UserManagementView: React.FC = () => {
                               }`}
                             >
                               <div className="mt-0.5">
-                                {isGranted ? (
-                                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                                ) : (
-                                  <XCircle className="w-4 h-4 text-[#9CA3AF] shrink-0" />
-                                )}
+                                <input type="checkbox"
+                                  aria-label={`${isGranted ? 'Cabut' : 'Berikan'} izin ${perm.label} untuk ${ROLE_LABELS[matrixRole]?.label || matrixRole}`}
+                                  checked={isGranted}
+                                  onChange={event => toggleRolePermission(matrixRole, perm.code, event.target.checked)}
+                                  disabled={rbacLoading || rbacSaving}
+                                  className="w-4 h-4 accent-emerald-600 cursor-pointer disabled:cursor-not-allowed" />
                               </div>
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center justify-between gap-1">
