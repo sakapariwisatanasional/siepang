@@ -202,7 +202,7 @@ export const ROLE_PERMISSION_MAP: Record<UserRole, string[]> = {
     'health.manage', 'health.emergency',
     'logistics.manage',
     'audit.view',
-    'settings.workspace', 'settings.users',,
+    'settings.workspace', 'settings.users',
     'qr.identity.scan'
   ],
   workspace_admin: [
@@ -218,7 +218,7 @@ export const ROLE_PERMISSION_MAP: Record<UserRole, string[]> = {
     'health.manage',
     'logistics.manage',
     'audit.view',
-    'settings.workspace', 'settings.users',,
+    'settings.workspace', 'settings.users',
     'qr.identity.scan'
   ],
   event_admin: [
@@ -231,7 +231,7 @@ export const ROLE_PERMISSION_MAP: Record<UserRole, string[]> = {
     'points.award', 'attendance.scan', 'badge.manage',
     'document.id_card', 'document.verify',
     'health.manage',
-    'logistics.manage',,
+    'logistics.manage',
     'qr.identity.scan'
   ],
   kontingen_admin: [
@@ -247,46 +247,46 @@ export const ROLE_PERMISSION_MAP: Record<UserRole, string[]> = {
     'event.view',
     'participant.view', 'participant.verify', 'participant.approve',
     'document.id_card', 'document.verify',
-    'schedule.view',,
+    'schedule.view',
     'qr.identity.scan'
   ],
   judge: [
     'event.view',
     'competition.view', 'judge.score', 'judge.lock',
-    'schedule.view',,
+    'schedule.view',
     'qr.identity.scan'
   ],
   attendance_officer: [
     'event.view',
     'attendance.scan', 'points.award',
     'participant.view',
-    'schedule.view',,
+    'schedule.view',
     'qr.identity.scan'
   ],
   health_officer: [
     'event.view',
     'health.manage', 'health.emergency',
     'participant.view',
-    'schedule.view',,
+    'schedule.view',
     'qr.identity.scan'
   ],
   logistic_officer: [
     'event.view',
     'logistics.manage',
-    'campsite.view',,
+    'campsite.view',
     'qr.identity.scan'
   ],
   ceremony_officer: [
     'event.view',
     'schedule.view',
-    'attendance.scan',,
+    'attendance.scan',
     'qr.identity.scan'
   ],
   committee: [
     'event.view',
     'schedule.view',
     'attendance.scan',
-    'points.award',,
+    'points.award',
     'qr.identity.scan'
   ],
   viewer: [
@@ -309,7 +309,7 @@ export const ROLE_PERMISSION_MAP: Record<UserRole, string[]> = {
     'documentation.update',
     'documentation.publish',
     'documentation.archive',
-    'documentation.manage',,
+    'documentation.manage',
     'qr.identity.scan'
   ],
   publication_officer: [
@@ -325,10 +325,18 @@ export const ROLE_PERMISSION_MAP: Record<UserRole, string[]> = {
     'sponsor.create',
     'sponsor.update',
     'sponsor.publish',
-    'sponsor.manage',,
+    'sponsor.manage',
     'qr.identity.scan'
   ],
 };
+
+
+/** Normalizes legacy role maps and removes sparse-array entries before sending to GAS. */
+export function getNormalizedRolePermissions(role: UserRole): string[] {
+  return Array.from(new Set((ROLE_PERMISSION_MAP[role] || []).filter(
+    (code): code is string => typeof code === 'string' && code.trim().length > 0
+  )));
+}
 
 export class UserManagementService {
   private users: ManagedUser[] = [];
