@@ -202,25 +202,20 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
       }
     }
 
-    // 3. Resolve only the scanned participant via GAS; avoid downloading the full roster.
+    // 3. Resolve only this participant through GAS. A short in-memory cache
+    // avoids repeat lookups in the same event/session; no full roster download is
+    // required for scanner identity. All write actions are still authorized by GAS.
     try {
-      const lookupStartedAt = performance.now();
-      const found = await participantService.resolveScannerParticipant(code);
-      console.info('[SiEpang] QR participant lookup', { elapsed_ms: Math.round(performance.now() - lookupStartedAt), found: Boolean(found) });
-      if (found) {
-        setScannedParticipant(found);
-      } else {
-        setActionErrorMessage(
-          `QR tidak dikenali sebagai QR peserta, agenda, pos, Gudep, panitia, atau pengunjung yang valid. Kode '${code}' tidak ditemukan pada data Participants di GAS. Pastikan QR berasal dari SIEPANG dan event yang aktif.`
-        );
-      }
+      const actorId = String((currentUser as any)?.id || (currentUser as any)?.user_id || '');
+      const found = await participantService.resolveScannerParticipant(code, actorId);
+      setScannedParticipant(found);
     } catch (error: any) {
       setActionErrorMessage(`Gagal memeriksa peserta ke GAS: ${error?.message || 'Koneksi tidak tersedia'}. Silakan coba lagi.`);
     }
     } finally { setIsResolving(false); }
   };
 
-  // Scanner resolves only the token read by the camera; no full-roster prefetch is needed here.
+  // Scanner resolves one participant on demand; it no longer preloads the full roster.
 
   // Start each fresh opening with an active scanner, not the previous result state.
   useEffect(() => {
@@ -365,6 +360,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     if (!scannedParticipant) return;
     try {
       const res = await attendanceService.recordAttendance(scannedParticipant.code);
+      participantService.invalidateScannerIdentityCache(scannedParticipant.id);
       setActionSuccessMessage(
         `✅ Presensi tersimpan di GAS untuk ${scannedParticipant.name}. XP hanya diberikan setelah transaksi poin tercatat.`
       );
@@ -406,6 +402,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     if (!scannedParticipant) return;
     try {
       await pointService.givePeerAppreciation(scannedParticipant.id, scannedParticipant.name, type);
+      participantService.invalidateScannerIdentityCache(scannedParticipant.id);
       setGivenTypes(prev => new Set(prev).add(type));
       setShowPeerModal(false);
       setActionSuccessMessage(`⚜️ Apresiasi "${type}" tersimpan di GAS (PointTransactions).`);
