@@ -24,6 +24,7 @@ class PointService {
   private badges: Badge[] = [];
   private listeners: Set<() => void> = new Set();
   private inFlight = new Set<string>();
+  private appreciationStatusCache = new Map<string, { expiresAt: number; types: PeerAppreciationType[] }>();
 
   public getBadges(): Badge[] {
     return this.badges;
@@ -174,18 +175,42 @@ class PointService {
     }
   }
 
-  /** Read the server ledger and return types already granted by the logged-in giver. */
+  /**
+   * Read appreciation status from the dedicated GAS endpoint. A very short in-memory
+   * cache avoids repeated reads while the modal is opened/reopened. GAS remains
+   * authoritative and validates duplicate grants on every write.
+   */
   public async getGivenAppreciationTypes(participantId: string): Promise<PeerAppreciationType[]> {
     const actor = authService.getCurrentUser();
     if (!actor?.id) throw new Error('Silakan login sebelum memberi apresiasi.');
+    const eventId = String(eventService.getCurrentEvent()?.id || '');
+    if (!eventId) throw new Error('Event aktif tidak ditemukan.');
+    const cacheKey = `${eventId}::${actor.id}::${participantId}`;
+    const cached = this.appreciationStatusCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return [...cached.types];
+    if (cached) this.appreciationStatusCache.delete(cacheKey);
+
     const result = await apiTransport.send<{ reasons: string[] }>('points.peerAppreciationStatus', {
       participant_id: participantId,
-    });
+      event_id: eventId,
+    }, { timeoutMs: 12000 });
     if (!result.ok || !Array.isArray(result.data?.reasons)) {
-      throw new Error(result.error?.message || 'Riwayat apresiasi belum berhasil dibaca dari GAS.');
+      throw new Error(result.error?.message || 'Riwayat apresiasi belum berhasil dibaca dari GAS. Pastikan endpoint points.peerAppreciationStatus sudah terpasang.');
     }
-    const reasons = new Set(result.data.reasons.map((reason: any) => String(reason || '')));
-    return PEER_APPRECIATIONS.filter(a => reasons.has(`Apresiasi Kawan: ${a.label}`)).map(a => a.type);
+    const reasons = new Set(result.data.reasons.map(reason => String(reason || '')));
+    const types = PEER_APPRECIATIONS.filter(a => reasons.has(`Apresiasi Kawan: ${a.label}`)).map(a => a.type);
+    this.appreciationStatusCache.set(cacheKey, { types, expiresAt: Date.now() + 5000 });
+    return [...types];
+  }
+
+  public invalidateAppreciationStatusCache(participantId?: string): void {
+    if (!participantId) {
+      this.appreciationStatusCache.clear();
+      return;
+    }
+    for (const key of this.appreciationStatusCache.keys()) {
+      if (key.endsWith(`::${participantId}`)) this.appreciationStatusCache.delete(key);
+    }
   }
 
   public async givePeerAppreciation(
@@ -195,13 +220,15 @@ class PointService {
   ): Promise<XPTransaction> {
     const config = PEER_APPRECIATIONS.find(a => a.type === type);
     if (!config) throw new Error('Jenis apresiasi tidak dikenal.');
-    return this.awardXP(
+    const saved = await this.awardXP(
       targetParticipantId,
       targetParticipantName,
       config.xp,
       `Apresiasi Kawan: ${config.label}`,
       'peer_appreciation'
     );
+    this.invalidateAppreciationStatusCache(targetParticipantId);
+    return saved;
   }
 
   public subscribe(cb: () => void) {
