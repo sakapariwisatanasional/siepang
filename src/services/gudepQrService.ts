@@ -5,6 +5,8 @@ export type GudepQrInfo = {
   gudep_id: string; gudep_name: string; gudep_number: string;
   verification_status: string; activation_status: string;
   gate_status: GudepGateStatus; token_present: boolean; qr_token: string;
+  /** Computed by GAS from the authenticated caller's active roles. */
+  can_scan?: boolean;
 };
 export type GudepGateLog = {
   log_id: string; event_id: string; gudep_id: string;
