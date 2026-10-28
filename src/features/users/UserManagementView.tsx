@@ -43,6 +43,7 @@ import {
   ManagedUser,
   PERMISSION_GROUPS,
   ROLE_PERMISSION_MAP,
+  getNormalizedRolePermissions,
 } from '../../services/userManagementService';
 import { workspaceService } from '../../services/workspaceService';
 import { organizationService } from '../../services/organizationService';
@@ -156,7 +157,7 @@ export const UserManagementView: React.FC = () => {
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('ALL');
   const [activeTab, setActiveTab] = useState<'users' | 'matrix' | 'session'>('users');
   const [rolePermissions, setRolePermissions] = useState<Record<UserRole, string[]>>(() => Object.fromEntries(
-    (Object.keys(ROLE_PERMISSION_MAP) as UserRole[]).map(role => [role, [...(ROLE_PERMISSION_MAP[role] || [])]])
+    (Object.keys(ROLE_PERMISSION_MAP) as UserRole[]).map(role => [role, [...getNormalizedRolePermissions(role)]])
   ) as Record<UserRole, string[]>);
   const [rbacConfigured, setRbacConfigured] = useState(false);
   const [rbacLoading, setRbacLoading] = useState(false);
@@ -236,7 +237,7 @@ export const UserManagementView: React.FC = () => {
       const result = await userManagementService.getRolePermissions();
       const next = { ...rolePermissions };
       (Object.keys(ROLE_PERMISSION_MAP) as UserRole[]).forEach(role => {
-        next[role] = [...(result.permissionsByRole[role] || [])];
+        next[role] = (result.permissionsByRole[role] || []).filter((code): code is string => typeof code === 'string' && code.trim().length > 0);
       });
       setRolePermissions(next);
       setRbacConfigured(result.configured);
@@ -265,10 +266,18 @@ export const UserManagementView: React.FC = () => {
     setRbacError('');
     setRbacMessage('');
     try {
-      const result = await userManagementService.saveRolePermissions(rolePermissions);
+      const cleanMatrix = Object.fromEntries(
+        (Object.keys(ROLE_PERMISSION_MAP) as UserRole[]).map(role => [
+          role,
+          Array.from(new Set((rolePermissions[role] || []).filter(
+            (code): code is string => typeof code === 'string' && code.trim().length > 0
+          )))
+        ])
+      ) as Record<UserRole, string[]>;
+      const result = await userManagementService.saveRolePermissions(cleanMatrix);
       const next = { ...rolePermissions };
       (Object.keys(ROLE_PERMISSION_MAP) as UserRole[]).forEach(role => {
-        next[role] = [...(result.permissionsByRole[role] || [])];
+        next[role] = (result.permissionsByRole[role] || []).filter((code): code is string => typeof code === 'string' && code.trim().length > 0);
       });
       setRolePermissions(next);
       setRbacConfigured(true);
