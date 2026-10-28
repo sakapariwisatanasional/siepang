@@ -456,15 +456,50 @@ export class UserManagementService {
   public async grantAdditionalRoles(userId:string, roles:UserRole[], scopeType:'EVENT'|'WORKSPACE'='EVENT'): Promise<void> {
     const unique = Array.from(new Set(roles));
     if (!unique.length) throw new Error('Pilih minimal satu role.');
+
+    // GAS is authoritative: read current assignments first so a retry does not
+    // append a duplicate if the previous request already succeeded.
+    let current = await this.listActiveRoleAssignments(userId);
+
     for (const role of unique) {
-      const res = await apiTransport.send<{assignment_id:string;user_id:string;role:UserRole;scope_type:string;scope_id:string;verified:boolean}>('users.assignRole',
-        {user_id:userId,role,scope_type:scopeType}, {timeoutMs:60000});
-      if (!res.ok || res.data?.user_id !== userId || res.data?.role !== role || res.data?.verified !== true)
-        throw new Error(`Role ${role} belum dapat diverifikasi: ${res.error?.message || 'Periksa Spreadsheet sebelum mencoba ulang.'}`);
-      const current = await this.listActiveRoleAssignments(userId);
-      if (!current.some(a=>a.role===role && a.scope_type===scopeType))
-        throw new Error(`Penugasan ${role} belum ditemukan saat pembacaan ulang. Jangan ulangi sebelum memeriksa GAS.`);
+      const alreadyAssigned = current.some(a => a.role === role && a.scope_type === scopeType);
+      if (alreadyAssigned) continue;
+
+      const res = await apiTransport.send<{
+        assignment_id: string;
+        user_id: string;
+        role: UserRole;
+        scope_type?: string;
+        scope_id?: string;
+        verified?: boolean;
+      }>(
+        'users.assignRole',
+        { user_id: userId, role, scope_type: scopeType },
+        { timeoutMs: 60000 }
+      );
+
+      // The current GAS endpoint returns assignment_id/user_id/role, but does
+      // not return `verified`. Do not treat the missing optional field as failure:
+      // verify by reading the persisted assignment back from GAS below.
+      if (
+        !res.ok ||
+        !res.data?.assignment_id ||
+        res.data.user_id !== userId ||
+        res.data.role !== role
+      ) {
+        throw new Error(
+          `Role ${role} gagal diberikan oleh GAS: ${res.error?.message || 'Respons GAS tidak mengonfirmasi penugasan. Periksa UserRoleAssignments sebelum mencoba ulang.'}`
+        );
+      }
+
+      current = await this.listActiveRoleAssignments(userId);
+      if (!current.some(a => a.role === role && a.scope_type === scopeType)) {
+        throw new Error(
+          `Role ${role} belum ditemukan pada pembacaan ulang dari GAS. Jangan ulangi dulu; periksa sheet UserRoleAssignments.`
+        );
+      }
     }
+
     await this.refreshUsers();
   }
 
