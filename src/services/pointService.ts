@@ -178,16 +178,14 @@ class PointService {
   public async getGivenAppreciationTypes(participantId: string): Promise<PeerAppreciationType[]> {
     const actor = authService.getCurrentUser();
     if (!actor?.id) throw new Error('Silakan login sebelum memberi apresiasi.');
-    const result = await apiTransport.send<{ records: any[] }>('admin.entity.list', {
-      entity: 'pointTransactions', filters: { participant_id: participantId },
+    const result = await apiTransport.send<{ reasons: string[] }>('points.peerAppreciationStatus', {
+      participant_id: participantId,
     });
-    if (!result.ok || !Array.isArray(result.data?.records)) {
+    if (!result.ok || !Array.isArray(result.data?.reasons)) {
       throw new Error(result.error?.message || 'Riwayat apresiasi belum berhasil dibaca dari GAS.');
     }
-    return PEER_APPRECIATIONS.filter(a => result.data!.records.some((r: any) =>
-      String(r.source_type) === 'peer_appreciation' && String(r.created_by) === actor.id &&
-      String(r.reason) === `Apresiasi Kawan: ${a.label}`
-    )).map(a => a.type);
+    const reasons = new Set(result.data.reasons.map((reason: any) => String(reason || '')));
+    return PEER_APPRECIATIONS.filter(a => reasons.has(`Apresiasi Kawan: ${a.label}`)).map(a => a.type);
   }
 
   public async givePeerAppreciation(
