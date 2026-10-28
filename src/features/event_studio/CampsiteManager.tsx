@@ -37,7 +37,18 @@ type CampsiteAssignmentLot = { id: string; lot_code: string; subcamp_name: strin
 type CampsiteAssignmentOptions = { lots: CampsiteAssignmentLot[]; regus: CampsiteAssignmentRegu[] };
 
 export const CampsiteManager: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'map' | 'lots' | 'assignment' | 'facilities' | 'generator'>('map');
+  const [lotQuery, setLotQuery] = useState('');
+  const [campFilter, setCampFilter] = useState('');
+  const [genderFilter, setGenderFilter] = useState('');
+  const [lotStatusFilter, setLotStatusFilter] = useState('');
+  const [lotEditor, setLotEditor] = useState('');
+  const [lotDrafts, setLotDrafts] = useState<Record<string,string>>({});
+  const [capacityEditor, setCapacityEditor] = useState('');
+  const [capacityDraft, setCapacityDraft] = useState('');
+  const [capacityBusy, setCapacityBusy] = useState(false);
+  const [lotFeedback, setLotFeedback] = useState<Record<string,{error?:string;notice?:string}>>({});
+  const [refreshingLots, setRefreshingLots] = useState(false);
+  const lotMutationLock = useRef(false);
   const [lots, setLots] = useState<CampsiteLot[]>(eventStudioService.getCampsiteLots());
   const [facilities, setFacilities] = useState<CampFacility[]>(eventStudioService.getFacilities());
   // GAS is the sole source of truth. No generated demo records are inserted locally.
@@ -134,7 +145,6 @@ export const CampsiteManager: React.FC = () => {
   const [assignmentOptionsLoading, setAssignmentOptionsLoading] = useState(false);
   const [assignmentLotBusy, setAssignmentLotBusy] = useState<string | null>(null);
   const [assignmentError, setAssignmentError] = useState('');
-  const [assignmentNotice, setAssignmentNotice] = useState('');
 
   const loadCampsiteAssignmentOptions = async () => {
     setAssignmentOptionsLoading(true);
@@ -143,32 +153,61 @@ export const CampsiteManager: React.FC = () => {
       const response = await apiTransport.send<CampsiteAssignmentOptions>('participants.admin.campsiteOptions', {}, { timeoutMs: 45000 });
       if (!response.ok || !response.data) throw new Error(response.error?.message || 'Gagal memuat pilihan Gudep dan regu dari GAS.');
       setCampsiteAssignmentOptions({ lots: response.data.lots || [], regus: response.data.regus || [] });
+      return true;
     } catch (error: any) {
       setAssignmentError(error?.message || 'Gagal memuat pilihan regu.');
+      return false;
     } finally { setAssignmentOptionsLoading(false); }
   };
 
   useEffect(() => { void loadCampsiteAssignmentOptions(); }, [eventId]);
 
+  const feedbackFor = (lotId: string, feedback: {error?:string;notice?:string}) => setLotFeedback(old => ({...old,[lotId]:feedback}));
   const handleAssignReguToLot = async (lotId: string, reguId: string) => {
-    if (!reguId) return;
+    if (!reguId || lotMutationLock.current) return;
     const regu = campsiteAssignmentOptions.regus.find(r => r.regu_id === reguId);
     const lot = campsiteAssignmentOptions.lots.find(l => l.id === lotId);
-    if (!regu || !lot) { setAssignmentError('Data kavling atau regu tidak ditemukan. Muat ulang daftar lalu coba kembali.'); return; }
-    if (lot.assigned_regu_id && lot.assigned_regu_id !== reguId) { setAssignmentError('Kavling ini sudah ditempati regu lain. Kosongkan atau pindahkan penugasan sebelumnya melalui alur backend terlebih dahulu.'); return; }
-    if (!window.confirm(`Tempatkan regu ${regu.regu_name} dari ${regu.gudep_name} pada kavling ${lot.lot_code || lotId}? Peserta aktif dalam regu akan mengikuti penempatan ini.`)) return;
-    setAssignmentLotBusy(lotId); setAssignmentError(''); setAssignmentNotice('');
+    if (!regu || !lot) { feedbackFor(lotId,{error:'Data kavling atau regu tidak ditemukan. Muat ulang daftar.'}); return; }
+    if (lot.assigned_regu_id && lot.assigned_regu_id !== reguId) { feedbackFor(lotId,{error:'Kapling sudah ditempati regu lain. Perubahan alokasi harus mengikuti alur backend.'}); return; }
+    if (regu.member_count > lot.capacity) {feedbackFor(lotId,{error:'Jumlah anggota regu melebihi kapasitas kapling.'}); return;}
+    if (!window.confirm(`Tempatkan regu ${regu.regu_name} dari ${regu.gudep_name} pada kapling ${lot.lot_code || lotId}?`)) return;
+    lotMutationLock.current = true;
+    setAssignmentLotBusy(lotId); feedbackFor(lotId,{});
     try {
-      const response = await apiTransport.send<{lot_id:string; lot_code:string; regu_id:string; gudep_id:string; assigned_count:number}>('participants.admin.assignCampsite', { lot_id: lotId, regu_id: reguId }, { timeoutMs: 60000 });
-      if (!response.ok || !response.data) throw new Error(response.error?.message || 'GAS tidak mengonfirmasi penempatan kavling.');
-      await loadCampsiteAssignmentOptions();
-      await eventStudioService.initialSync();
-      setLots([...eventStudioService.listLots()]);
-      setAssignmentNotice(`Berhasil menempatkan ${regu.regu_name} (${regu.gudep_name}) di ${response.data.lot_code || lot.lot_code}. ${response.data.assigned_count} data peserta diperbarui.`);
-      showToast('Penempatan regu berhasil disimpan oleh GAS.');
-    } catch (error: any) {
-      setAssignmentError(error?.message || 'Penempatan regu gagal. Periksa status regu, kapasitas, sektor, dan data peserta aktif.');
-    } finally { setAssignmentLotBusy(null); }
+      const response = await apiTransport.send<{lot_id:string; lot_code:string; regu_id:string; gudep_id:string; assigned_count:number}>('participants.admin.assignCampsite', {lot_id:lotId,regu_id:reguId}, {timeoutMs:60000});
+      if (!response.ok || !response.data || response.data.lot_id !== lotId || response.data.regu_id !== reguId) throw new Error(response.error?.message || 'GAS belum mengonfirmasi penempatan. Periksa data sebelum mencoba kembali.');
+      const message = `Penempatan ${regu.regu_name} (${regu.gudep_name}) dikonfirmasi GAS. ${response.data.assigned_count} data peserta diperbarui.`;
+      setLotEditor('');
+      feedbackFor(lotId,{notice:message});
+      let refreshed = await loadCampsiteAssignmentOptions();
+      try {await eventStudioService.initialSync();setLots([...eventStudioService.listLots()]);} catch {refreshed=false;}
+      if (!refreshed) feedbackFor(lotId,{notice:message,error:'Daftar terbaru gagal dimuat. Muat ulang; jangan mengulang penempatan yang telah dikonfirmasi.'});
+    } catch (error: any) {feedbackFor(lotId,{error:error?.message || 'Penempatan gagal atau belum terkonfirmasi. Periksa GAS sebelum mencoba ulang.'});}
+    finally {setAssignmentLotBusy(null); lotMutationLock.current=false;}
+  };
+
+  const refreshLots = async () => {
+    if (refreshingLots || lotMutationLock.current) return;
+    setRefreshingLots(true);
+    try {await eventStudioService.initialSync();setLots([...eventStudioService.listLots()]);await loadCampsiteAssignmentOptions();}
+    catch (error:any) {setAssignmentError(error?.message || 'Gagal memuat ulang kapling dari GAS.');}
+    finally {setRefreshingLots(false);}
+  };
+
+  const saveCapacity = async (lot: CampsiteLot) => {
+    if (lotMutationLock.current) return;
+    const value = Number(capacityDraft);
+    if (!/^\d+$/.test(capacityDraft.trim()) || !Number.isSafeInteger(value) || value < 1) {feedbackFor(lot.id,{error:'Kapasitas harus bilangan bulat minimal 1.'}); return;}
+    const current = campsiteAssignmentOptions.lots.find(item => item.id === lot.id);
+    if (!current || current.assigned_regu_id || lot.contingentId || String(lot.status).toLowerCase() !== 'available') {feedbackFor(lot.id,{error:'Edit kapasitas hanya untuk kapling kosong yang sudah terkonfirmasi dari GAS.'}); return;}
+    lotMutationLock.current=true;setCapacityBusy(true);feedbackFor(lot.id,{});
+    try {
+      await eventStudioService.updateLot(lot.id,{capacity:value});
+      setLots([...eventStudioService.listLots()]);setCapacityEditor('');
+      feedbackFor(lot.id,{notice:'Kapasitas diperbarui melalui GAS.'});
+      if (!await loadCampsiteAssignmentOptions()) feedbackFor(lot.id,{notice:'Kapasitas diperbarui melalui GAS.',error:'Pilihan regu gagal dimuat ulang. Muat ulang daftar sebelum menempatkan regu.'});
+    } catch(error:any) {feedbackFor(lot.id,{error:error?.message || 'Kapasitas belum terkonfirmasi. Periksa GAS sebelum mencoba kembali.'});}
+    finally {setCapacityBusy(false);lotMutationLock.current=false;}
   };
 
   const [lotForm, setLotForm] = useState<Omit<CampsiteLot, 'id'>>({
@@ -267,10 +306,10 @@ export const CampsiteManager: React.FC = () => {
     setPlotZones(z=>[...z,zone]);setLayoutDirty(true);setZonePoints([]);setDrawingZone(null);setZoneLabel('');
   };
 
-  useEffect(() => eventStudioService.subscribe(() => {
-    setLots([...eventStudioService.listLots()]);
-    setFacilities([...eventStudioService.listFacilities()]);
-  }), []);
+  useEffect(() => {
+    const unsubscribe = eventStudioService.subscribe(() => {setLots([...eventStudioService.listLots()]);setFacilities([...eventStudioService.listFacilities()]);});
+    return () => {unsubscribe();};
+  }, []);
 
   const loadMap = async () => {
     setMapBusy(true);
@@ -524,11 +563,23 @@ export const CampsiteManager: React.FC = () => {
     showToast('Seluruh penetapan kavling buper berhasil di-reset.');
   };
 
-  const totalCapacity = lots.reduce((sum, l) => sum + l.capacity, 0);
-  const occupiedCount = lots.filter(l => l.status === 'occupied').length;
-  const assignedPopulation = lots.filter(l => l.contingentId).reduce((sum, l) => sum + (l.capacity || 0), 0);
+  const assignmentById = new Map(campsiteAssignmentOptions.lots.map(l => [l.id,l]));
+  const reguById = new Map(campsiteAssignmentOptions.regus.map(r => [r.regu_id,r]));
+  const isAllocated = (lot: CampsiteLot) => Boolean(assignmentById.get(lot.id)?.assigned_regu_id || lot.contingentId || ['occupied','reserved'].includes(String(lot.status).toLowerCase()));
+  const totalCapacity = lots.reduce((sum,l) => sum + Number(l.capacity || 0),0);
+  const occupiedCount = lots.filter(isAllocated).length;
+  const assignedPopulation = lots.reduce((sum,l) => {
+    const linked = reguById.get(assignmentById.get(l.id)?.assigned_regu_id || '');
+    return sum + (linked ? linked.member_count : 0);
+  },0);
+  const unknownOccupancy = lots.some(l => isAllocated(l) && !reguById.has(assignmentById.get(l.id)?.assigned_regu_id || ''));
   const remainingCapacity = totalCapacity - assignedPopulation;
-  const isOverflow = remainingCapacity < 0;
+  const isOverflow = !unknownOccupancy && remainingCapacity < 0;
+  const visibleLots = lots.filter(l => {
+    const assigned = reguById.get(assignmentById.get(l.id)?.assigned_regu_id || '');
+    const haystack = [l.lotNumber,l.subCamp,l.block,assigned?.regu_name,assigned?.gudep_name,l.contingentName].join(' ').toLocaleLowerCase('id');
+    return (!lotQuery.trim() || haystack.includes(lotQuery.trim().toLocaleLowerCase('id'))) && (!campFilter || l.subCamp === campFilter) && (!genderFilter || l.gender === genderFilter) && (!lotStatusFilter || (lotStatusFilter === 'allocated' ? isAllocated(l) : !isAllocated(l)));
+  });
 
   return (
     <div className="space-y-6">
@@ -555,10 +606,10 @@ export const CampsiteManager: React.FC = () => {
             </div>
           </div>
           <button
-            onClick={() => showToast('Override belum tersedia; hubungi administrator untuk meninjau kapasitas.')}
+            onClick={() => setShowAddLotModal(true)}
             className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold text-[11px] shrink-0"
           >
-            Override Panitia
+            Tambah Kapling
           </button>
         </div>
       )}
@@ -569,14 +620,14 @@ export const CampsiteManager: React.FC = () => {
           <div>
             <h2 className="text-base font-bold text-[#171717] dark:text-white tracking-tight flex items-center gap-2">
               <Tent className="w-4 h-4 text-emerald-500" />
-              <span>Manajemen Tata Ruang Bumi Perkemahan (Campsite)</span>
+              <span>Kapling Tenda Buper</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Kelola hierarki Sub Camp, Zona, Blok, Kavling Tenda, serta titik fasilitas umum buper.
+              Kelola kapasitas dan penempatan regu langsung pada kartu kapling.
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setShowAddLotModal(true)}
               className="px-3.5 py-2 bg-[#C62828] hover:bg-[#A61B1B] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
@@ -597,115 +648,69 @@ export const CampsiteManager: React.FC = () => {
         {/* Metric Badges */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
           <div className="p-3 rounded-2xl bg-[#FAFAFA] dark:bg-black/40 border border-[#ECECEF] dark:border-white/5">
-            <div className="text-slate-500 dark:text-slate-400 text-[10px]">Total Kapasitas Buper</div>
-            <div className="text-base font-black text-[#171717] dark:text-white mt-0.5 font-mono">{totalCapacity} Kuota</div>
+            <div className="text-slate-500 dark:text-slate-400 text-[10px]">Total Kapling</div>
+            <div className="text-base font-black text-[#171717] dark:text-white mt-0.5 font-mono">{lots.length} Kapling</div>
           </div>
           <div className="p-3 rounded-2xl bg-[#FAFAFA] dark:bg-black/40 border border-[#ECECEF] dark:border-white/5">
-            <div className="text-slate-500 dark:text-slate-400 text-[10px]">Populasi Terisi</div>
-            <div className="text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5 font-mono">{assignedPopulation} Peserta</div>
+            <div className="text-slate-500 dark:text-slate-400 text-[10px]">Kapling Kosong</div>
+            <div className="text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5 font-mono">{lots.length - occupiedCount} Kapling</div>
           </div>
           <div className="p-3 rounded-2xl bg-[#FAFAFA] dark:bg-black/40 border border-[#ECECEF] dark:border-white/5">
-            <div className="text-slate-500 dark:text-slate-400 text-[10px]">Sisa Kuota / Overflow</div>
+            <div className="text-slate-500 dark:text-slate-400 text-[10px]">Teralokasi</div>
             <div className={`text-base font-black mt-0.5 font-mono ${isOverflow ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`}>
-              {isOverflow ? `Overflow +${Math.abs(remainingCapacity)}` : `${remainingCapacity} Sisa`}
+              {occupiedCount} Kapling
             </div>
           </div>
           <div className="p-3 rounded-2xl bg-[#FAFAFA] dark:bg-black/40 border border-[#ECECEF] dark:border-white/5">
-            <div className="text-slate-500 dark:text-slate-400 text-[10px]">Kavling & Fasilitas</div>
-            <div className="text-base font-black text-sky-600 dark:text-sky-400 mt-0.5 font-mono">{lots.length} Lot · {facilities.length} Faskes</div>
+            <div className="text-slate-500 dark:text-slate-400 text-[10px]">Sisa Kapasitas</div>
+            <div className="text-base font-black text-sky-600 dark:text-sky-400 mt-0.5 font-mono">{unknownOccupancy || assignmentOptionsLoading || assignmentError ? 'Belum terkonfirmasi' : `${remainingCapacity} Tempat`}</div>
           </div>
         </div>
 
-        {/* Sub-Tab Navigation */}
-        <div className="flex flex-wrap p-1 rounded-2xl bg-[#F7F7F8] dark:bg-black/40 border border-[#ECECEF] dark:border-white/5 gap-1">
-          <button
-            onClick={() => { setActiveTab('generator'); void loadStructure(); }}
-            className={`flex-1 min-w-[140px] py-2 rounded-xl text-xs font-semibold transition-all ${activeTab === 'generator' ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
-          >
-            🏕️ Generator Kavling
-          </button>
-          <button
-            onClick={() => setActiveTab('map')}
-            className={`flex-1 min-w-[120px] py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === 'map' ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            🗺️ Peta Interaktif Buper
-          </button>
-          <button
-            onClick={() => setActiveTab('lots')}
-            className={`flex-1 min-w-[120px] py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === 'lots' ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            ⛺ Daftar Kavling & Kontingen
-          </button>
-          <button
-            onClick={() => setActiveTab('assignment')}
-            className={`flex-1 min-w-[140px] py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === 'assignment' ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            📋 Papan Alokasi ({contingents.filter(c => !lots.some(l => l.contingentId === c.id)).length} Belum)
-          </button>
-          <button
-            onClick={() => setActiveTab('facilities')}
-            className={`flex-1 min-w-[120px] py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === 'facilities' ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            🏥 Katalog Fasilitas Buper
-          </button>
-        </div>
       </div>
 
-      {activeTab === 'generator' && (
-        <section className="p-5 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-5">
-          <header>
-            <h3 className="font-bold text-base text-slate-900 dark:text-white">Generator Kabupaten → Kecamatan Putra/Putri → Kelurahan → Kavling</h3>
-            <p className="text-xs text-slate-500 mt-1">Setiap kavling untuk satu regu. Struktur dan nomor dibuat di GAS; posisi kavling di denah diatur setelah pembuatan.</p>
-          </header>
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">Nama Kabupaten
-            <input value={structureKabupaten} maxLength={100} onChange={e => {setStructureKabupaten(e.target.value);setStructurePreview(null);}} placeholder="Contoh: Kabupaten ..." className="mt-1 w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 dark:bg-slate-900 dark:text-white dark:border-slate-600" />
-          </label>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {([{key:'putra',title:'Kecamatan Putra',v:structurePutraVillages,setV:setStructurePutraVillages,l:structurePutraLots,setL:setStructurePutraLots}, {key:'putri',title:'Kecamatan Putri',v:structurePutriVillages,setV:setStructurePutriVillages,l:structurePutriLots,setL:setStructurePutriLots}] as const).map(d => (
-              <div key={d.key} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
-                <h4 className="font-bold text-sm text-slate-900 dark:text-white">{d.title}</h4>
-                <label className="block text-xs text-slate-600 dark:text-slate-300">Jumlah Kelurahan
-                  <input type="number" min="0" max="100" value={d.v} onChange={e => {d.setV(e.target.value);setStructurePreview(null);}} className="mt-1 w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 dark:bg-slate-900 dark:text-white dark:border-slate-600" />
-                </label>
-                <label className="block text-xs text-slate-600 dark:text-slate-300">Jumlah kavling per Kelurahan
-                  <input type="number" min="0" max="100" value={d.l} onChange={e => {d.setL(e.target.value);setStructurePreview(null);}} className="mt-1 w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 dark:bg-slate-900 dark:text-white dark:border-slate-600" />
-                </label>
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" disabled={structureBusy} onClick={() => void previewStructure()} className="px-4 py-2 rounded-xl bg-sky-700 text-white text-xs font-bold disabled:opacity-50">{structureBusy?'Memproses...':'Pratinjau dari GAS'}</button>
-            <button type="button" disabled={structureBusy || !structurePreview?.canGenerate || structurePreview.newLots===0} onClick={() => void generateStructure()} className="px-4 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold disabled:opacity-40">Generate Kavling di GAS</button>
-            <button type="button" disabled={structureBusy} onClick={() => void loadStructure()} className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold dark:text-white">Muat Ulang Struktur</button>
-          </div>
-          {structureError && <p role="alert" className="p-3 rounded-xl bg-rose-50 text-rose-700 text-xs">{structureError}</p>}
-          {structureMessage && <p role="status" className="p-3 rounded-xl bg-emerald-50 text-emerald-700 text-xs">{structureMessage}</p>}
-          {structurePreview && <div className="p-4 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm text-slate-800 dark:text-white space-y-1">
-            <p>Direncanakan: <strong>{structurePreview.requestedLots}</strong> kavling · Sudah ada: <strong>{structurePreview.existingLots}</strong> · Baru: <strong>{structurePreview.newLots}</strong></p>
-            <p>Status: {structurePreview.canGenerate ? 'Siap dibuat di GAS' : 'Perlu diperbaiki sebelum generate'}</p>
-            {structurePreview.conflicts?.map((c,i) => <p key={i} className="text-rose-600">{c}</p>)}
-          </div>}
-          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-            <p className="font-semibold text-xs text-slate-700 dark:text-white">Struktur tersimpan di GAS: {structureNodes.length} node</p>
-            <div className="mt-2 max-h-52 overflow-y-auto text-xs text-slate-600 dark:text-slate-300 space-y-1">
-              {structureNodes.map(n => <p key={n.id}>{n.code} · {n.node_type} · {n.name}</p>)}
-              {!structureNodes.length && <p>Belum ada struktur. Gunakan pratinjau untuk memulai.</p>}
-            </div>
-          </div>
-          <p className="text-xs text-amber-700 dark:text-amber-300">Pembuatan tidak menetapkan regu dan tidak menempatkan posisi pin otomatis. Gunakan Papan Alokasi dan Peta Interaktif sesudahnya. Jangan mengulang permintaan ketika status GAS belum diketahui.</p>
-        </section>
-      )}
-
-      {/* VIEW 1: INTERACTIVE 2D CAMPSITE MAP PREVIEW */}
-      {activeTab === 'map' && (
+      <section className="space-y-4" aria-label="Daftar kapling tenda">
+        <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-semibold text-slate-900 dark:text-white">Daftar Kapling · {visibleLots.length} ditampilkan</h3><button type="button" onClick={() => void refreshLots()} disabled={refreshingLots || Boolean(assignmentLotBusy) || capacityBusy} className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 text-sm dark:border-white/20 dark:text-white disabled:opacity-50">{refreshingLots ? 'Memuat dari GAS…' : 'Muat Ulang'}</button></div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          <label className="text-xs text-slate-600 dark:text-slate-300">Cari kapling / sekolah / regu<input value={lotQuery} onChange={e => setLotQuery(e.target.value)} placeholder="Kode, sekolah, atau nama regu" className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-900 dark:border-white/20 dark:bg-[#202027] dark:text-white" /></label>
+          <label className="text-xs text-slate-600 dark:text-slate-300">Subcamp<select value={campFilter} onChange={e => setCampFilter(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-900 dark:border-white/20 dark:bg-[#202027] dark:text-white"><option value="">Semua Subcamp</option>{Array.from(new Set(lots.map(l => l.subCamp).filter(Boolean))).sort().map(c => <option key={c}>{c}</option>)}</select></label>
+          <label className="text-xs text-slate-600 dark:text-slate-300">Sektor<select value={genderFilter} onChange={e => setGenderFilter(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-900 dark:border-white/20 dark:bg-[#202027] dark:text-white"><option value="">Semua Sektor</option><option value="male">Putra</option><option value="female">Putri</option><option value="mixed">Campuran</option></select></label>
+          <label className="text-xs text-slate-600 dark:text-slate-300">Status<select value={lotStatusFilter} onChange={e => setLotStatusFilter(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-900 dark:border-white/20 dark:bg-[#202027] dark:text-white"><option value="">Semua Status</option><option value="empty">Kosong</option><option value="allocated">Teralokasi</option></select></label>
+        </div>
+        {assignmentError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{assignmentError} Gunakan Muat Ulang untuk memeriksa pilihan dari GAS.</div>}
+        {assignmentOptionsLoading && <p role="status" className="text-sm text-slate-600 dark:text-slate-300">Memuat status dan pilihan regu dari GAS…</p>}
+        {!visibleLots.length && <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-600 dark:text-slate-300">{lots.length ? 'Tidak ada kapling yang sesuai pencarian atau filter.' : 'Belum ada kapling. Tambahkan kapling atau buka Generator Struktur di bawah.'}</div>}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
+          {visibleLots.map(lot => {
+            const canonical = assignmentById.get(lot.id);
+            const assigned = reguById.get(canonical?.assigned_regu_id || '');
+            const allocated = isAllocated(lot);
+            const confirmed = Boolean(canonical) && !assignmentOptionsLoading && !assignmentError;
+            const count = assigned ? assigned.member_count : allocated ? null : 0;
+            const capacity = Number(canonical?.capacity ?? lot.capacity);
+            const busy = Boolean(assignmentLotBusy) || capacityBusy || removingLot || refreshingLots;
+            const choices = campsiteAssignmentOptions.regus.filter(item => {
+              const normalizeGender = (value:string) => ['M','MALE','PUTRA'].includes(value.toUpperCase()) ? 'male' : ['F','FEMALE','PUTRI'].includes(value.toUpperCase()) ? 'female' : 'mixed';
+              return normalizeGender(item.gender) === normalizeGender(canonical?.gender || lot.gender) && item.member_count > 0 && item.member_count <= capacity && (!canonical?.assigned_regu_id || canonical.assigned_regu_id === item.regu_id);
+            });
+            const feedback = lotFeedback[lot.id];
+            return <article key={lot.id} className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#141418] space-y-3">
+              <header><div className="flex flex-wrap items-center justify-between gap-2"><h4 className="text-base font-bold text-slate-900 dark:text-white break-words">{canonical?.lot_code || lot.lotNumber}</h4><span className="rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-700 dark:bg-white/10 dark:text-slate-200">{lot.gender === 'male' ? 'Putra' : lot.gender === 'female' ? 'Putri' : 'Campuran'}</span></div><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Subcamp {lot.subCamp || '—'} · Blok {lot.block || '—'}</p></header>
+              <div><div className="flex flex-wrap justify-between items-center gap-2"><strong className="text-sm text-slate-900 dark:text-white">{confirmed ? count === null ? `Kapasitas ${capacity} tempat` : `${count} / ${capacity} tempat` : `Kapasitas ${lot.capacity} tempat`}</strong><span className={`rounded-lg px-2 py-1 text-xs ${allocated ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200' : 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'}`}>{confirmed ? allocated ? 'Teralokasi' : 'Kosong' : 'Perlu konfirmasi'}</span></div>{confirmed && count !== null && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-white/10"><div className="h-full bg-emerald-600" style={{width:`${capacity > 0 ? Math.min(100,count / capacity * 100) : 0}%`}} /></div>}<p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{confirmed && count !== null ? `${Math.max(0,capacity-count)} tempat tersisa berdasarkan alokasi anggota regu` : 'Jumlah anggota teralokasi belum terkonfirmasi; bukan jumlah peserta hadir.'}</p></div>
+              <div className="min-h-16 border-y border-slate-100 py-3 dark:border-white/10"><p className="break-words text-sm font-semibold text-slate-900 dark:text-white">{assigned?.gudep_name || lot.contingentName || (allocated ? 'Identitas sekolah perlu dimuat ulang' : 'Belum ada sekolah')}</p><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{assigned?.regu_name || canonical?.assigned_regu_name || (allocated ? 'Regu belum terkonfirmasi' : 'Siap untuk penempatan regu')}</p></div>
+              <button type="button" disabled={!confirmed || busy || allocated} onClick={() => {setLotEditor(lotEditor === lot.id ? '' : lot.id);setCapacityEditor('');setLotDrafts(old => ({...old,[lot.id]:canonical?.assigned_regu_id || ''}));feedbackFor(lot.id,{});}} className="min-h-11 w-full rounded-xl bg-[#C62828] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{allocated ? 'Sudah Teralokasi' : 'Tempatkan Regu'}</button>
+              {allocated && <p className="text-xs text-slate-500 dark:text-slate-400">Untuk memindahkan regu, buka kapling tujuan yang kosong. GAS memvalidasi dan membersihkan hubungan kapling sebelumnya.</p>}
+              {lotEditor === lot.id && <form onSubmit={e => {e.preventDefault();void handleAssignReguToLot(lot.id,lotDrafts[lot.id] || '');}} className="space-y-3 border-t border-slate-100 pt-3 dark:border-white/10"><label className="block text-xs text-slate-600 dark:text-slate-300">Sekolah / Regu tujuan<select required disabled={busy || !confirmed} value={lotDrafts[lot.id] || ''} onChange={e => setLotDrafts(old => ({...old,[lot.id]:e.target.value}))} className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white p-2.5 text-sm text-slate-900 dark:border-white/20 dark:bg-[#202027] dark:text-white"><option value="">{choices.length ? 'Pilih regu yang sesuai' : 'Tidak ada regu aktif yang sesuai'}</option>{choices.map(r => <option key={r.regu_id} value={r.regu_id}>{r.gudep_name} · {r.regu_name} ({r.member_count} peserta)</option>)}</select></label><p className="text-xs text-slate-500 dark:text-slate-400">Pilihan mengikuti sektor, kapasitas, anggota aktif dan verifikasi GAS. Regu dari kapling lain dapat dipindahkan ke kapling kosong ini.</p><div className="flex flex-wrap gap-2"><button type="submit" disabled={busy || !confirmed || !lotDrafts[lot.id]} className="min-h-11 rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{assignmentLotBusy === lot.id ? 'Menyimpan…' : 'Simpan Penempatan'}</button><button type="button" disabled={busy} onClick={() => setLotEditor('')} className="min-h-11 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:text-slate-200">Batal</button></div></form>}
+              <div className="flex flex-wrap gap-3"><button type="button" disabled={busy || !confirmed || allocated || String(lot.status).toLowerCase() !== 'available'} onClick={() => {setCapacityEditor(capacityEditor === lot.id ? '' : lot.id);setCapacityDraft(String(capacity));setLotEditor('');feedbackFor(lot.id,{});}} className="min-h-11 text-xs font-semibold text-slate-600 dark:text-slate-300 disabled:opacity-40">Edit Kapasitas</button></div>
+              {capacityEditor === lot.id && <form onSubmit={e => {e.preventDefault();void saveCapacity(lot);}} className="space-y-3 border-t border-slate-100 pt-3 dark:border-white/10"><label className="block text-xs text-slate-600 dark:text-slate-300">Kapasitas (tempat)<input required type="number" min="1" step="1" disabled={busy} value={capacityDraft} onChange={e => setCapacityDraft(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white p-2.5 text-sm text-slate-900 dark:bg-[#202027] dark:text-white" /></label><div className="flex flex-wrap gap-2"><button type="submit" disabled={busy} className="min-h-11 rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{capacityBusy ? 'Menyimpan…' : 'Simpan Kapasitas'}</button><button type="button" disabled={busy} onClick={() => setCapacityEditor('')} className="min-h-11 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:text-slate-200">Batal</button></div></form>}
+              <details className="border-t border-slate-100 pt-3 dark:border-white/10"><summary className="cursor-pointer text-xs font-semibold text-slate-600 dark:text-slate-300">Detail Kapling</summary><div className="mt-3 space-y-2 text-xs text-slate-600 dark:text-slate-300"><p className="break-all">ID: {lot.id}</p><p>Zona: {lot.zone || '—'}</p><p>Posisi: X {lot.coordinates.x}% · Y {lot.coordinates.y}%</p>{lot.notes && <p className="break-words">Catatan: {lot.notes}</p>}<div className="flex flex-wrap gap-2"><button type="button" disabled={!layoutReady || layoutBusy || layoutDirty || removingLot || busy} onClick={() => void handleHideLot(lot.id,!getShape(lot.id).hidden)} className="min-h-11 rounded-xl border border-sky-300 px-3 py-2 text-xs text-sky-700 dark:text-sky-300 disabled:opacity-40">{getShape(lot.id).hidden ? 'Tampilkan Pin' : 'Sembunyikan Pin'}</button><button type="button" disabled={busy || allocated || !confirmed} onClick={() => void handleDeleteLot(lot.id)} className="min-h-11 rounded-xl border border-rose-200 px-3 py-2 text-xs text-rose-700 disabled:opacity-40">Arsipkan Kapling</button></div>{layoutDirty && <p>Simpan tata letak pada bagian Denah sebelum mengubah tampilan pin.</p>}{allocated && <p>Kapling teralokasi tidak dapat diarsipkan dari kartu.</p>}</div></details>
+              {feedback?.notice && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">{feedback.notice}</p>}
+              {feedback?.error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-xs text-rose-800 dark:bg-rose-950 dark:text-rose-200">{feedback.error}</p>}
+            </article>;
+          })}
+        </div>
+      </section>
+<details className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141418]"><summary className="cursor-pointer px-5 py-4 font-semibold text-sm text-slate-800 dark:text-slate-100">Denah Buper & pengaturan pin</summary><div className="p-3 sm:p-4">
         <div className="space-y-4">
           <div className="p-4 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-3 shadow-xs">
             <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
@@ -830,100 +835,8 @@ export const CampsiteManager: React.FC = () => {
             )}
           </div>
         </div>
-      )}
-
-      {/* VIEW 2: LOTS LIST */}
-      {activeTab === 'lots' && (
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {lots.map(lot => (
-              <div key={lot.id} className="p-4 rounded-[24px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-2 shadow-xs">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-[#171717] dark:text-white text-sm">{lot.lotNumber}</span>
-                    <span className="text-slate-500 dark:text-slate-400 text-xs">({lot.block})</span>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                    lot.status === 'occupied' ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' : 'bg-amber-500/20 text-amber-700 dark:text-amber-400'
-                  }`}>
-                    {lot.status.toUpperCase()}
-                  </span>
-                </div>
-
-                {(() => {
-                  const assignmentLot = campsiteAssignmentOptions.lots.find(item => item.id === lot.id);
-                  const assignedRegu = campsiteAssignmentOptions.regus.find(item => item.regu_id === assignmentLot?.assigned_regu_id);
-                  const choices = campsiteAssignmentOptions.regus.filter(item => {
-                    const lotGender = String(assignmentLot?.gender || (lot.gender === 'male' ? 'PUTRA' : 'PUTRI')).toUpperCase();
-                    const reguGender = String(item.gender || '').toUpperCase();
-                    const lotIsMale = ['M','MALE','PUTRA'].includes(lotGender);
-                    const reguIsMale = ['M','MALE','PUTRA'].includes(reguGender);
-                    return lotIsMale === reguIsMale && (item.member_count > 0 || item.regu_id === assignmentLot?.assigned_regu_id) && (!assignmentLot?.assigned_regu_id || item.regu_id === assignmentLot.assigned_regu_id);
-                  });
-                  return <div className="space-y-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                      <span className="font-semibold text-slate-700 dark:text-slate-200">Penempatan Kontingen / Pangkalan / Regu</span>
-                      <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${assignedRegu ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{assignedRegu ? 'SUDAH DITEMPATKAN' : 'BELUM DITEMPATKAN'}</span>
-                    </div>
-                    {assignedRegu ? <div className="text-xs text-slate-600 dark:text-slate-300">
-                      <div><span className="text-slate-500">Regu:</span> <strong className="text-slate-900 dark:text-white">{assignedRegu.regu_name}</strong></div>
-                      <div><span className="text-slate-500">Gudep / Sekolah:</span> <strong className="text-slate-900 dark:text-white">{assignedRegu.gudep_name}</strong></div>
-                      <div><span className="text-slate-500">Anggota aktif:</span> {assignedRegu.member_count} peserta</div>
-                    </div> : <p className="text-[11px] text-slate-500 dark:text-slate-400">Pilih regu terverifikasi dan aktif. Nama Gudep/sekolah akan mengikuti data regu dari GAS.</p>}
-                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300">Pilih regu untuk kavling ini</label>
-                    <select value={assignmentLot?.assigned_regu_id || ''} disabled={assignmentOptionsLoading || assignmentLotBusy === lot.id || choices.length === 0} onChange={e => void handleAssignReguToLot(lot.id, e.target.value)} className="min-h-10 w-full rounded-xl border border-slate-300 dark:border-white/15 bg-white dark:bg-[#202027] px-3 py-2 text-xs text-slate-800 dark:text-white disabled:opacity-50">
-                      <option value="">{assignmentOptionsLoading ? 'Memuat pilihan regu...' : choices.length ? '-- Pilih regu (Gudep / sekolah ditampilkan) --' : 'Tidak ada regu aktif yang cocok'}</option>
-                      {choices.map(item => <option key={item.regu_id} value={item.regu_id}>{item.regu_name} — {item.gudep_name} ({item.gender}, {item.member_count} peserta)</option>)}
-                    </select>
-                    {assignmentLotBusy === lot.id && <p className="text-[11px] text-blue-700 dark:text-blue-300">Menyimpan penempatan melalui GAS...</p>}
-                  </div>;
-                })()}
-                {assignmentError && <p role="alert" className="text-[11px] text-rose-700 dark:text-rose-300">{assignmentError}</p>}
-                {assignmentNotice && <p role="status" className="text-[11px] text-emerald-700 dark:text-emerald-300">{assignmentNotice}</p>}
-
-                <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500 dark:text-slate-400 pt-2 border-t border-[#ECECEF] dark:border-white/5">
-                  <div>Sub Camp: <span className="text-slate-800 dark:text-white font-medium">{lot.subCamp}</span></div>
-                  <div>Sektor: <span className="text-slate-800 dark:text-white font-medium">{lot.gender === 'male' ? 'Putra' : 'Putri'}</span></div>
-                  <div>Kapasitas: <span className="text-slate-800 dark:text-white font-medium">{lot.capacity} Peserta</span></div>
-                  <div>Posisi Map: <span className="font-mono text-emerald-600 dark:text-emerald-400">X:{lot.coordinates.x}%, Y:{lot.coordinates.y}%</span></div>
-                </div>
-
-                {lot.notes && (
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 italic pt-1">{lot.notes}</p>
-                )}
-
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#ECECEF] dark:border-white/10">
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono" title="Identitas unik kavling">ID: {lot.id}</span>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      disabled={!layoutReady || layoutBusy || layoutDirty || removingLot}
-                      onClick={() => void handleHideLot(lot.id, !getShape(lot.id).hidden)}
-                      className="rounded-xl border border-sky-300 text-sky-700 dark:text-sky-300 px-3 py-2 text-xs font-semibold disabled:opacity-40"
-                      title={layoutDirty ? 'Simpan Tata Letak dahulu' : 'Hanya mengubah tampilan pin, bukan menghapus data kavling'}
-                    >
-                      {getShape(lot.id).hidden ? 'Tampilkan Pin' : 'Sembunyikan Pin'}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={removingLot || Boolean(lot.contingentId) || lot.status === 'occupied'}
-                      onClick={() => void handleDeleteLot(lot.id)}
-                      className="rounded-xl bg-rose-50 text-rose-700 border border-rose-200 px-3 py-2 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
-                      title={lot.contingentId || lot.status === 'occupied' ? 'Kavling dialokasikan/terisi: hapus alokasi terlebih dahulu' : 'Arsipkan kavling ini dari database melalui GAS'}
-                    >
-                      <Trash2 size={13} className="inline-block mr-1" />
-                      {removingLot ? 'Memproses...' : 'Arsipkan Kavling'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* VIEW 3: FACILITIES CATALOG */}
-      {activeTab === 'facilities' && (
+</div></details>
+<details className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141418]"><summary className="cursor-pointer px-5 py-4 font-semibold text-sm text-slate-800 dark:text-slate-100">Fasilitas Buper</summary><div className="p-3 sm:p-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {facilities.map(fac => (
             <div key={fac.id} className="p-4 rounded-[24px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-2 shadow-xs">
@@ -948,10 +861,52 @@ export const CampsiteManager: React.FC = () => {
             </div>
           ))}
         </div>
-      )}
-
-      {/* VIEW 4: CAMPSITE ASSIGNMENT BOARD (Requirements 16 & 17) */}
-      {activeTab === 'assignment' && (
+</div></details>
+<details className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141418]" onToggle={e => {if(e.currentTarget.open) void loadStructure();}}><summary className="cursor-pointer px-5 py-4 font-semibold text-sm text-slate-800 dark:text-slate-100">Generator struktur kapling</summary><div className="p-3 sm:p-4">
+        <section className="p-5 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-5">
+          <header>
+            <h3 className="font-bold text-base text-slate-900 dark:text-white">Generator Kabupaten → Kecamatan Putra/Putri → Kelurahan → Kavling</h3>
+            <p className="text-xs text-slate-500 mt-1">Setiap kavling untuk satu regu. Struktur dan nomor dibuat di GAS; posisi kavling di denah diatur setelah pembuatan.</p>
+          </header>
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">Nama Kabupaten
+            <input value={structureKabupaten} maxLength={100} onChange={e => {setStructureKabupaten(e.target.value);setStructurePreview(null);}} placeholder="Contoh: Kabupaten ..." className="mt-1 w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 dark:bg-slate-900 dark:text-white dark:border-slate-600" />
+          </label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {([{key:'putra',title:'Kecamatan Putra',v:structurePutraVillages,setV:setStructurePutraVillages,l:structurePutraLots,setL:setStructurePutraLots}, {key:'putri',title:'Kecamatan Putri',v:structurePutriVillages,setV:setStructurePutriVillages,l:structurePutriLots,setL:setStructurePutriLots}] as const).map(d => (
+              <div key={d.key} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+                <h4 className="font-bold text-sm text-slate-900 dark:text-white">{d.title}</h4>
+                <label className="block text-xs text-slate-600 dark:text-slate-300">Jumlah Kelurahan
+                  <input type="number" min="0" max="100" value={d.v} onChange={e => {d.setV(e.target.value);setStructurePreview(null);}} className="mt-1 w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 dark:bg-slate-900 dark:text-white dark:border-slate-600" />
+                </label>
+                <label className="block text-xs text-slate-600 dark:text-slate-300">Jumlah kavling per Kelurahan
+                  <input type="number" min="0" max="100" value={d.l} onChange={e => {d.setL(e.target.value);setStructurePreview(null);}} className="mt-1 w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 dark:bg-slate-900 dark:text-white dark:border-slate-600" />
+                </label>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={structureBusy} onClick={() => void previewStructure()} className="px-4 py-2 rounded-xl bg-sky-700 text-white text-xs font-bold disabled:opacity-50">{structureBusy?'Memproses...':'Pratinjau dari GAS'}</button>
+            <button type="button" disabled={structureBusy || !structurePreview?.canGenerate || structurePreview.newLots===0} onClick={() => void generateStructure()} className="px-4 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold disabled:opacity-40">Generate Kavling di GAS</button>
+            <button type="button" disabled={structureBusy} onClick={() => void loadStructure()} className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold dark:text-white">Muat Ulang Struktur</button>
+          </div>
+          {structureError && <p role="alert" className="p-3 rounded-xl bg-rose-50 text-rose-700 text-xs">{structureError}</p>}
+          {structureMessage && <p role="status" className="p-3 rounded-xl bg-emerald-50 text-emerald-700 text-xs">{structureMessage}</p>}
+          {structurePreview && <div className="p-4 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm text-slate-800 dark:text-white space-y-1">
+            <p>Direncanakan: <strong>{structurePreview.requestedLots}</strong> kavling · Sudah ada: <strong>{structurePreview.existingLots}</strong> · Baru: <strong>{structurePreview.newLots}</strong></p>
+            <p>Status: {structurePreview.canGenerate ? 'Siap dibuat di GAS' : 'Perlu diperbaiki sebelum generate'}</p>
+            {structurePreview.conflicts?.map((c,i) => <p key={i} className="text-rose-600">{c}</p>)}
+          </div>}
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+            <p className="font-semibold text-xs text-slate-700 dark:text-white">Struktur tersimpan di GAS: {structureNodes.length} node</p>
+            <div className="mt-2 max-h-52 overflow-y-auto text-xs text-slate-600 dark:text-slate-300 space-y-1">
+              {structureNodes.map(n => <p key={n.id}>{n.code} · {n.node_type} · {n.name}</p>)}
+              {!structureNodes.length && <p>Belum ada struktur. Gunakan pratinjau untuk memulai.</p>}
+            </div>
+          </div>
+          <p className="text-xs text-amber-700 dark:text-amber-300">Pembuatan tidak menetapkan regu dan tidak menempatkan posisi pin otomatis. Gunakan Papan Alokasi dan Peta Interaktif sesudahnya. Jangan mengulang permintaan ketika status GAS belum diketahui.</p>
+        </section>
+</div></details>
+<details className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141418]"><summary className="cursor-pointer px-5 py-4 font-semibold text-sm text-slate-800 dark:text-slate-100">Papan alokasi lanjutan & bantuan otomatis</summary><div className="p-3 sm:p-4">
         <div className="space-y-4">
           {/* Top Control Bar */}
           <div className="p-4 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
@@ -1128,8 +1083,7 @@ export const CampsiteManager: React.FC = () => {
             </div>
           </div>
         </div>
-      )}
-
+</div></details>
       {/* AUTO-ASSIGN WIZARD MODAL (Requirement 17) */}
       {showAutoAssignModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
