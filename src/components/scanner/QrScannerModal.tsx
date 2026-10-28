@@ -32,6 +32,7 @@ import { authService } from '../../services/authService';
 import { activityQrService, ScanResult } from '../../services/activityQrService';
 import { visitorManagementService } from '../../services/visitorManagementService';
 import { qrResolverService } from '../../services/qrResolverService';
+import { gudepQrService, GudepGateStatus } from '../../services/gudepQrService';
 import { apiTransport } from '../../services/apiTransport';
 import { Participant, PeerAppreciationType, VisitorRegistration } from '../../types';
 
@@ -69,6 +70,18 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   } | null>(null);
   const [scannedActivityResult, setScannedActivityResult] = useState<ScanResult | null>(null);
   const [scannedVisitor, setScannedVisitor] = useState<{ visitor: VisitorRegistration; action: 'ENTRY' | 'EXIT' } | null>(null);
+  const [scannedGudepQr, setScannedGudepQr] = useState<{
+    token: string;
+    result?: {
+      gudep_id: string;
+      gudep_name: string;
+      gate_status: GudepGateStatus;
+      already_processed: boolean;
+      message: string;
+      logged_at?: string;
+    };
+    busy?: boolean;
+  } | null>(null);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
   const [manualCode, setManualCode] = useState('');
@@ -99,6 +112,13 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
         code = url.searchParams.get('p') || url.searchParams.get('participant_id') || code;
       }
     } catch { /* Gunakan token QR asli bila bukan URL valid. */ }
+
+    // 0. QR KEHADIRAN GUDEP/KONTINGEN.
+    // Token GDEP_ belongs to the Gudep gate flow, never to Participants.id.
+    if (/^GDEP_[A-Z0-9]+$/i.test(code)) {
+      setScannedGudepQr({ token: code });
+      return;
+    }
 
     // 0. QR IDENTITAS PENGGUNA/PANITIA.
     // Token SIEPANG-USER-* harus langsung ke GAS user.qr.scan,
@@ -148,7 +168,14 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
 
     // 1. Check if Activity QR or Checkpoint QR token (Requirements 8-10)
     const actConfig = activityQrService.getConfigByToken(code);
-    const isActToken = Boolean(actConfig) || code.startsWith('AGENDA_') || code.includes('ACT_') || code.includes('CP_') || code.startsWith('SIEPANG:QR:v1:ACT');
+    const isActToken =
+      Boolean(actConfig) ||
+      /^AGENDA_[a-f0-9]{64}$/i.test(code) ||
+      /^SIEPANG-CP-[A-Z0-9]+$/i.test(code) ||
+      code.includes('ACT_') ||
+      code.includes('CP_') ||
+      code.startsWith('SIEPANG:QR:v1:ACT') ||
+      code.startsWith('SIEPANG:QR:v1:CHE');
     if (isActToken) {
       try {
         const scanRes = await activityQrService.scanActivityQr(code);
@@ -191,7 +218,9 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     if (found) {
       setScannedParticipant(found);
     } else {
-      setActionErrorMessage(`ID peserta '${code}' belum ditemukan pada data Participants di GAS. Pastikan peserta terdaftar di event aktif.`);
+      setActionErrorMessage(
+        `QR tidak dikenali sebagai QR peserta, agenda, pos, Gudep, panitia, atau pengunjung yang valid. Kode '${code}' tidak ditemukan pada data Participants di GAS. Pastikan QR berasal dari SIEPANG dan event yang aktif.`
+      );
     }
     } finally { setIsResolving(false); }
   };
@@ -213,6 +242,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
       setScannedUserQr(null);
       setScannedActivityResult(null);
       setScannedVisitor(null);
+      setScannedGudepQr(null);
       setActionErrorMessage(null);
       setIsResolving(false);
     }
@@ -305,6 +335,28 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   }, [flashlightOn, cameraReady]);
 
   if (!isOpen) return null;
+
+  const handleGudepGateScan = async (direction: 'CHECK_IN' | 'CHECK_OUT') => {
+    if (!scannedGudepQr || scannedGudepQr.busy) return;
+    setScannedGudepQr(previous => previous ? { ...previous, busy: true } : previous);
+    setActionErrorMessage(null);
+    try {
+      const result = await gudepQrService.scan(scannedGudepQr.token, direction);
+      setScannedGudepQr(previous => previous ? { ...previous, busy: false, result } : previous);
+      setActionSuccessMessage(result.message);
+    } catch (err: any) {
+      setScannedGudepQr(previous => previous ? { ...previous, busy: false } : previous);
+      setActionErrorMessage(err?.message || 'Gagal memproses QR kehadiran Gudep melalui GAS.');
+    }
+  };
+
+  const resetGudepScan = () => {
+    setScannedGudepQr(null);
+    setActionErrorMessage(null);
+    setActionSuccessMessage(null);
+    setScanPaused(false);
+    setCameraRetry(value => value + 1);
+  };
 
   const handleCheckIn = async () => {
     if (!scannedParticipant) return;
@@ -425,7 +477,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
               {cameraError ? 'Kamera belum aktif' : 'Mengaktifkan kamera…'}
             </div>
           )}
-          {scanPaused && !isResolving && !scannedParticipant && !scannedUserQr && !scannedActivityResult && !scannedVisitor && (
+          {scanPaused && !isResolving && !scannedParticipant && !scannedUserQr && !scannedActivityResult && !scannedVisitor && !scannedGudepQr && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 overflow-y-auto bg-black/90 px-5 py-6 text-center">
               <div className="text-base font-semibold text-white">{actionErrorMessage ? 'QR belum berhasil diproses' : 'Pemindaian selesai'}</div>
               {actionErrorMessage && (
@@ -790,6 +842,71 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
       )}
 
       {/* Activity QR Scan Result Modal (Requirements 8-10, 11, 12, 14, 15) */}
+      {scannedGudepQr && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-4">
+          <div className="w-full max-w-sm space-y-4 rounded-3xl border border-emerald-500/30 bg-slate-950 p-5 text-white shadow-2xl">
+            <div className="text-center">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-300">
+                <UserCheck className="h-6 w-6" />
+              </div>
+              <h2 className="text-lg font-bold">Kehadiran Gudep / Kontingen</h2>
+              <p className="mt-1 text-xs leading-relaxed text-slate-300">
+                QR Gudep terdeteksi. Pilih tindakan; GAS akan memvalidasi event, status aktivasi, dan kewenangan petugas.
+              </p>
+            </div>
+
+            {scannedGudepQr.result ? (
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/40 p-4">
+                  <div className="text-xs text-emerald-300">Gudep terverifikasi oleh GAS</div>
+                  <div className="mt-1 text-base font-bold">{scannedGudepQr.result.gudep_name}</div>
+                  <div className="mt-2 text-xs text-slate-200">{scannedGudepQr.result.message}</div>
+                  <div className="mt-2 text-[11px] text-slate-400">
+                    Status: {scannedGudepQr.result.gate_status === 'CHECKED_IN'
+                      ? 'Sudah check-in'
+                      : scannedGudepQr.result.gate_status === 'CHECKED_OUT'
+                        ? 'Sudah check-out'
+                        : 'Belum tiba'}
+                    {scannedGudepQr.result.already_processed ? ' · Pemindaian sebelumnya sudah tercatat' : ''}
+                  </div>
+                </div>
+                <button type="button" onClick={resetGudepScan}
+                  className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold hover:bg-emerald-500">
+                  Scan QR Berikutnya
+                </button>
+                <button type="button" onClick={() => { setScannedGudepQr(null); onClose(); }}
+                  className="w-full rounded-xl bg-white/10 px-4 py-2.5 text-xs font-semibold text-slate-200 hover:bg-white/15">
+                  Tutup Scanner
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {actionErrorMessage && (
+                  <div role="alert" className="rounded-xl border border-rose-500/40 bg-rose-950/60 p-3 text-xs leading-relaxed text-rose-100">
+                    {actionErrorMessage}
+                  </div>
+                )}
+                <button type="button" disabled={Boolean(scannedGudepQr.busy)}
+                  onClick={() => void handleGudepGateScan('CHECK_IN')}
+                  className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold hover:bg-emerald-500 disabled:opacity-50">
+                  {scannedGudepQr.busy ? 'Memproses di GAS…' : 'Catat Kedatangan (Check-in)'}
+                </button>
+                <button type="button" disabled={Boolean(scannedGudepQr.busy)}
+                  onClick={() => void handleGudepGateScan('CHECK_OUT')}
+                  className="w-full rounded-xl bg-amber-500 px-4 py-3 text-sm font-bold text-slate-950 hover:bg-amber-400 disabled:opacity-50">
+                  Catat Kepulangan (Check-out)
+                </button>
+                <button type="button" disabled={Boolean(scannedGudepQr.busy)}
+                  onClick={() => { setScannedGudepQr(null); setActionErrorMessage(null); setScanPaused(false); setCameraRetry(value => value + 1); }}
+                  className="w-full rounded-xl bg-white/10 px-4 py-2.5 text-xs font-semibold text-slate-200 hover:bg-white/15 disabled:opacity-50">
+                  Batal / Kembali ke Kamera
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {scannedActivityResult && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
           <div className="w-full max-w-sm bg-gradient-to-b from-[#14291c] to-[#0c1810] border border-emerald-500/40 rounded-3xl p-6 shadow-2xl text-center space-y-4">
