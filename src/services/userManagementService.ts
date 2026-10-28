@@ -154,6 +154,38 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { code: 'settings.users', label: 'Kelola Hak Akses Panitia', description: 'Menambah dan menetapkan peran panitia' },
     ],
   },
+  {
+    id: 'grp_qr_identity',
+    title: 'QR Identitas Pengguna',
+    description: 'Mengizinkan panitia membaca QR identitas pengguna. Tidak memberikan hak presensi atau perubahan data.',
+    permissions: [
+      { code: 'qr.identity.scan', label: 'Baca QR Identitas Pengguna', description: 'Membaca QR identitas panitia/pengguna sesuai kebijakan event' },
+    ],
+  },
+  {
+    id: 'grp_content_assets',
+    title: 'Dokumentasi, Banner & Sponsor',
+    description: 'Mengelola dokumentasi kegiatan, banner, dan aset sponsor.',
+    permissions: [
+      { code: 'documentation.read', label: 'Lihat Dokumentasi', description: 'Melihat dokumentasi yang dikelola panitia' },
+      { code: 'documentation.create', label: 'Tambah Dokumentasi', description: 'Mengunggah dokumentasi kegiatan' },
+      { code: 'documentation.update', label: 'Ubah Dokumentasi', description: 'Memperbarui konten dokumentasi' },
+      { code: 'documentation.publish', label: 'Publikasikan Dokumentasi', description: 'Menerbitkan dokumentasi' },
+      { code: 'documentation.archive', label: 'Arsipkan Dokumentasi', description: 'Mengarsipkan dokumentasi' },
+      { code: 'documentation.manage', label: 'Kelola Dokumentasi', description: 'Mengelola seluruh fitur dokumentasi' },
+      { code: 'banner.read', label: 'Lihat Banner', description: 'Melihat konfigurasi banner' },
+      { code: 'banner.create', label: 'Tambah Banner', description: 'Membuat banner baru' },
+      { code: 'banner.update', label: 'Ubah Banner', description: 'Memperbarui banner' },
+      { code: 'banner.publish', label: 'Publikasikan Banner', description: 'Menerbitkan banner' },
+      { code: 'banner.archive', label: 'Arsipkan Banner', description: 'Mengarsipkan banner' },
+      { code: 'banner.manage', label: 'Kelola Banner', description: 'Mengelola seluruh fitur banner' },
+      { code: 'sponsor.read', label: 'Lihat Sponsor', description: 'Melihat informasi sponsor' },
+      { code: 'sponsor.create', label: 'Tambah Sponsor', description: 'Menambahkan sponsor' },
+      { code: 'sponsor.update', label: 'Ubah Sponsor', description: 'Memperbarui data sponsor' },
+      { code: 'sponsor.publish', label: 'Publikasikan Sponsor', description: 'Menerbitkan informasi sponsor' },
+      { code: 'sponsor.manage', label: 'Kelola Sponsor', description: 'Mengelola aset dan data sponsor' },
+    ],
+  },
 ];
 
 export const ROLE_PERMISSION_MAP: Record<UserRole, string[]> = {
@@ -170,7 +202,8 @@ export const ROLE_PERMISSION_MAP: Record<UserRole, string[]> = {
     'health.manage', 'health.emergency',
     'logistics.manage',
     'audit.view',
-    'settings.workspace', 'settings.users',
+    'settings.workspace', 'settings.users',,
+    'qr.identity.scan'
   ],
   workspace_admin: [
     'event.view', 'event.update',
@@ -185,7 +218,8 @@ export const ROLE_PERMISSION_MAP: Record<UserRole, string[]> = {
     'health.manage',
     'logistics.manage',
     'audit.view',
-    'settings.workspace', 'settings.users',
+    'settings.workspace', 'settings.users',,
+    'qr.identity.scan'
   ],
   event_admin: [
     'event.view', 'event.update',
@@ -197,7 +231,8 @@ export const ROLE_PERMISSION_MAP: Record<UserRole, string[]> = {
     'points.award', 'attendance.scan', 'badge.manage',
     'document.id_card', 'document.verify',
     'health.manage',
-    'logistics.manage',
+    'logistics.manage',,
+    'qr.identity.scan'
   ],
   kontingen_admin: [
     'event.view',
@@ -212,40 +247,47 @@ export const ROLE_PERMISSION_MAP: Record<UserRole, string[]> = {
     'event.view',
     'participant.view', 'participant.verify', 'participant.approve',
     'document.id_card', 'document.verify',
-    'schedule.view',
+    'schedule.view',,
+    'qr.identity.scan'
   ],
   judge: [
     'event.view',
     'competition.view', 'judge.score', 'judge.lock',
-    'schedule.view',
+    'schedule.view',,
+    'qr.identity.scan'
   ],
   attendance_officer: [
     'event.view',
     'attendance.scan', 'points.award',
     'participant.view',
-    'schedule.view',
+    'schedule.view',,
+    'qr.identity.scan'
   ],
   health_officer: [
     'event.view',
     'health.manage', 'health.emergency',
     'participant.view',
-    'schedule.view',
+    'schedule.view',,
+    'qr.identity.scan'
   ],
   logistic_officer: [
     'event.view',
     'logistics.manage',
-    'campsite.view',
+    'campsite.view',,
+    'qr.identity.scan'
   ],
   ceremony_officer: [
     'event.view',
     'schedule.view',
-    'attendance.scan',
+    'attendance.scan',,
+    'qr.identity.scan'
   ],
   committee: [
     'event.view',
     'schedule.view',
     'attendance.scan',
-    'points.award',
+    'points.award',,
+    'qr.identity.scan'
   ],
   viewer: [
     'event.view',
@@ -267,7 +309,8 @@ export const ROLE_PERMISSION_MAP: Record<UserRole, string[]> = {
     'documentation.update',
     'documentation.publish',
     'documentation.archive',
-    'documentation.manage',
+    'documentation.manage',,
+    'qr.identity.scan'
   ],
   publication_officer: [
     'event.view',
@@ -282,7 +325,8 @@ export const ROLE_PERMISSION_MAP: Record<UserRole, string[]> = {
     'sponsor.create',
     'sponsor.update',
     'sponsor.publish',
-    'sponsor.manage',
+    'sponsor.manage',,
+    'qr.identity.scan'
   ],
 };
 
@@ -500,6 +544,27 @@ export class UserManagementService {
     }
     user.status = 'inactive';
     this.notify();
+  }
+
+
+  /** Read the role permission matrix from authoritative GAS. */
+  public async getRolePermissions(): Promise<{ configured: boolean; permissionsByRole: Partial<Record<UserRole, string[]>> }> {
+    const res = await apiTransport.send<{ configured: boolean; permissionsByRole: Partial<Record<UserRole, string[]>> }>('rbac.permissions.get', {}, { timeoutMs: 45000 });
+    if (!res.ok || !res.data || typeof res.data.permissionsByRole !== 'object') {
+      throw new Error(res.error?.message || 'Gagal membaca konfigurasi otoritas role dari GAS.');
+    }
+    return res.data;
+  }
+
+  /** Persist the complete matrix in GAS; caller must be Super Admin. */
+  public async saveRolePermissions(permissionsByRole: Record<UserRole, string[]>): Promise<{ configured: boolean; permissionsByRole: Partial<Record<UserRole, string[]>> }> {
+    const res = await apiTransport.send<{ configured: boolean; permissionsByRole: Partial<Record<UserRole, string[]>> }>(
+      'rbac.permissions.save', { permissionsByRole }, { timeoutMs: 60000 }
+    );
+    if (!res.ok || !res.data || !res.data.configured) {
+      throw new Error(res.error?.message || 'GAS tidak mengonfirmasi penyimpanan otoritas role.');
+    }
+    return res.data;
   }
 
   public getPermissionGroups(): PermissionGroup[] {
