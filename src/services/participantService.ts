@@ -161,6 +161,37 @@ class ParticipantService {
     return result;
   }
 
+  /** Resolve a scanned participant QR through a narrow GAS endpoint without downloading the full roster. */
+  public async resolveScannerParticipant(code: string): Promise<Participant | undefined> {
+    const result = await apiTransport.send<{ participant?: any }>('participants.resolveQr', { code });
+    if (!result.ok) {
+      if (result.error?.code === 'PARTICIPANT_NOT_FOUND') return undefined;
+      throw new Error(result.error?.message || 'Gagal membaca identitas QR peserta dari GAS.');
+    }
+    const r = result.data?.participant;
+    if (!r || !r.id) return undefined;
+    const rawStatus = String(r.status || r.verification_status || 'SUBMITTED').toLowerCase();
+    const status: ParticipantStatus = (['approved','verified','rejected','revision','draft'].includes(rawStatus)
+      ? rawStatus : 'submitted') as ParticipantStatus;
+    const photoUrl = String(r.photoUrl || r.profile_photo_url || '');
+    return {
+      id: String(r.id), eventId: String(r.eventId || r.event_id || ''),
+      code: String(r.code || r.pramuka_id || r.id), name: String(r.name || ''),
+      gender: String(r.gender || 'M').toUpperCase() === 'F' ? 'F' : 'M',
+      role: (r.role || r.scout_level || 'Penggalang') as Participant['role'],
+      contingentId: String(r.contingentId || r.contingent_id || ''),
+      contingentName: String(r.contingentName || r.contingent_name || r.institution || '-'),
+      subCamp: String(r.subCamp || r.subcamp || '-'), tentNumber: String(r.tentNumber || r.lot_number || '-'),
+      photoUrl, profile_photo_file_id: String(r.profile_photo_file_id || ''), profile_photo_url: photoUrl,
+      profile_photo_status: String(r.profile_photo_status || 'NOT_UPLOADED'), status,
+      checkedIn: r.checkedIn === true || r.checked_in === true || ['true','1'].includes(String(r.checked_in).toLowerCase()),
+      checkInTime: String(r.checkInTime || r.checked_in_at || '') || undefined,
+      xp: Number(r.xp ?? r.points ?? 0), level: 1, rank: Number(r.rank || 0), attendanceCount: 0, badges: [],
+      membershipNumber: String(r.membershipNumber || r.pramuka_id || ''), email: String(r.email || ''),
+      phone: String(r.phone || ''), schoolPangkalan: String(r.schoolPangkalan || r.institution || '')
+    };
+  }
+
   public getParticipantByCode(code: string): Participant | undefined {
     return this.participants.find(p => p.code.toLowerCase() === code.toLowerCase().trim());
   }
