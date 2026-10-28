@@ -202,37 +202,25 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
       }
     }
 
-    // 3. Resolve participant from the GAS-backed participant list. A QR contains Participants.id,
-    //    whereas getParticipantByCode matches a separate code/NTA field.
-    let found: Participant | undefined;
+    // 3. Resolve only the scanned participant via GAS; avoid downloading the full roster.
     try {
-      // Data baru hasil prefetch langsung dipakai; bila melewati TTL tetap membaca GAS.
-      // Validasi penulisan (check-in / XP) tetap dilakukan pada server.
-      await participantService.ensureScannerParticipantsFresh();
-      found = participantService.getParticipants().find(p => p.id === code)
-        || participantService.getParticipantByCode(code);
+      const lookupStartedAt = performance.now();
+      const found = await participantService.resolveScannerParticipant(code);
+      console.info('[SiEpang] QR participant lookup', { elapsed_ms: Math.round(performance.now() - lookupStartedAt), found: Boolean(found) });
+      if (found) {
+        setScannedParticipant(found);
+      } else {
+        setActionErrorMessage(
+          `QR tidak dikenali sebagai QR peserta, agenda, pos, Gudep, panitia, atau pengunjung yang valid. Kode '${code}' tidak ditemukan pada data Participants di GAS. Pastikan QR berasal dari SIEPANG dan event yang aktif.`
+        );
+      }
     } catch (error: any) {
       setActionErrorMessage(`Gagal memeriksa peserta ke GAS: ${error?.message || 'Koneksi tidak tersedia'}. Silakan coba lagi.`);
-      return;
-    }
-    if (found) {
-      setScannedParticipant(found);
-    } else {
-      setActionErrorMessage(
-        `QR tidak dikenali sebagai QR peserta, agenda, pos, Gudep, panitia, atau pengunjung yang valid. Kode '${code}' tidak ditemukan pada data Participants di GAS. Pastikan QR berasal dari SIEPANG dan event yang aktif.`
-      );
     }
     } finally { setIsResolving(false); }
   };
 
-  // Mulai memuat peserta ketika scanner dibuka, paralel dengan aktivasi kamera.
-  // Tidak perlu menunggu jaringan sebelum kamera bisa memindai QR.
-  useEffect(() => {
-    if (!isOpen) return;
-    void participantService.ensureScannerParticipantsFresh().catch(() => {
-      // Jika prefetch gagal, saat QR dipindai tampilkan kegagalan yang sebenarnya.
-    });
-  }, [isOpen]);
+  // Scanner resolves only the token read by the camera; no full-roster prefetch is needed here.
 
   // Start each fresh opening with an active scanner, not the previous result state.
   useEffect(() => {
