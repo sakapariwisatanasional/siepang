@@ -14,6 +14,7 @@ export interface AttendanceRecord {
   participantName: string;
   participantCode: string;
   contingentName: string;
+  sessionKind?: 'schedule' | 'activity' | 'checkin';
   sessionId: string;
   sessionName: string;
   timestamp: string;
@@ -47,6 +48,7 @@ class AttendanceService {
         participantName: p?.name || String(raw.participant_name || ''),
         participantCode: p?.code || String(raw.participant_code || ''),
         contingentName: p?.contingentName || String(raw.contingent_name || ''),
+        sessionKind: raw.session_kind,
         sessionId: String(raw.checkpoint_or_schedule_id || ''),
         sessionName: String(raw.session_name || raw.checkpoint_or_schedule_id || ''),
         timestamp: String(raw.timestamp || ''),
@@ -61,7 +63,8 @@ class AttendanceService {
   public async recordAttendance(
     codeOrId: string,
     sessionId = '',
-    sessionName = 'Kegiatan Lapangan & Apel'
+    sessionName = 'Kegiatan Lapangan & Apel',
+    sessionKind: 'schedule' | 'activity' = 'schedule'
   ): Promise<{ record: AttendanceRecord; offline: boolean; destination: 'device' | 'server_buper' | 'cloud' }> {
     // QR contains the existing unique participant code used across modules.
     const scanned = codeOrId.trim();
@@ -74,7 +77,7 @@ class AttendanceService {
     if (participant.event_id && participant.event_id !== eventId) {
       throw new Error('QR peserta bukan untuk event aktif.');
     }
-    const key = `${eventId}:${sessionId}:${participant.id}`;
+    const key = `${eventId}:${sessionKind}:${sessionId}:${participant.id}`;
     if (this.inFlight.has(key)) throw new Error('Presensi peserta ini sedang diproses.');
     this.inFlight.add(key);
     try {
@@ -97,8 +100,8 @@ class AttendanceService {
         void participantService.loadParticipants().catch(error => console.warn('Kehadiran tersimpan; pembaruan tampilan tertunda:', error));
         return { record, offline: false, destination: 'cloud' };
       }
-      const response = await apiTransport.send<any>('agenda.attendance.record', {
-        schedule_id: sessionId, participant_id: participant.id,
+      const response = await apiTransport.send<any>(sessionKind === 'activity' ? 'activity.attendance.record' : 'agenda.attendance.record', {
+        ...(sessionKind === 'activity' ? { activity_id: sessionId } : { schedule_id: sessionId }), participant_id: participant.id,
       });
       const stored = response.data;
       if (!response.ok || !stored?.success || !stored?.attendance_recorded || !stored?.attendance_id || !stored?.attendance_at) {
@@ -108,7 +111,7 @@ class AttendanceService {
         id: String(stored.attendance_id),
         participantId: String(stored.participant_id), participantName: participant.name,
         participantCode: participant.code, contingentName: participant.contingentName,
-        sessionId: String(stored.schedule_id), sessionName: String(stored.activity_title || sessionName),
+        sessionKind, sessionId: String(stored.session_id || stored.schedule_id), sessionName: String(stored.activity_title || sessionName),
         timestamp: String(stored.attendance_at), xpAwarded: Number(stored.xp_awarded || 0),
         synced: true, syncStatus: 'Synced to Cloud',
       };
