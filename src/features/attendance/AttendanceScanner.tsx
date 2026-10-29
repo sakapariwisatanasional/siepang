@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import { attendanceService, AttendanceRecord } from '../../services/attendanceService';
 import { participantService } from '../../services/participantService';
-import { eventStudioService } from '../../services/eventStudioService';
+import { apiTransport } from '../../services/apiTransport';
 import { authService } from '../../services/authService';
 import { syncQueue } from '../../offline/syncQueue';
 import { Participant, Contingent, ScheduleItem } from '../../types';
@@ -157,21 +157,33 @@ export const AttendanceScanner: React.FC = () => {
   const [exceptionParticipantIds, setExceptionParticipantIds] = useState<string[]>([]);
 
   // Activity Session Attendance state (Requirement 22)
-  const scheduleItems = eventStudioService.getSchedule();
-  const [selectedScheduleId, setSelectedScheduleId] = useState<string>(scheduleItems[0]?.id || '');
+  const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([]);
+  const [loadError, setLoadError] = useState('');
+  const [loadingData, setLoadingData] = useState(true);
+  const [reloadVersion, setReloadVersion] = useState(0);
+  const activitySubmitLock = useRef(false);
+  const [selectedScheduleId, setSelectedScheduleId] = useState<string>('');
   const [recentRecords, setRecentRecords] = useState<AttendanceRecord[]>(attendanceService.getRecords());
   const [, forceRefresh] = useState(0);
 
   useEffect(() => {
     let mounted = true;
-    participantService.loadParticipants().then(() => { if (mounted) forceRefresh(v => v + 1); }).catch(err => console.warn('Peserta belum dapat dimuat:', err));
-    attendanceService.refreshRecords().then(rows => {
-      if (mounted) setRecentRecords(rows);
-    }).catch(err => {
-      console.warn('Riwayat presensi belum dapat dimuat dari GAS:', err);
+    setLoadingData(true); setLoadError('');
+    const jobs = [
+      participantService.loadParticipants(),
+      attendanceService.refreshRecords().then(rows => {if(mounted)setRecentRecords(rows);}),
+      apiTransport.send<ScheduleItem[]>('schedules.list', {}).then(response => {
+        if(!response.ok || !Array.isArray(response.data)) throw new Error(response.error?.message || 'Jadwal kegiatan belum dapat dibaca dari GAS.');
+        if(mounted) setScheduleItems(response.data.filter(s => !(s as any).archived_at && !['archived','cancelled','canceled','deleted'].includes(String(s.status || '').toLowerCase())));
+      }),
+    ];
+    void Promise.allSettled(jobs).then(results => {
+      if(!mounted)return;
+      setLoadError(results.filter((r): r is PromiseRejectedResult => r.status==='rejected').map(r => r.reason instanceof Error ? r.reason.message : String(r.reason)).join(' | '));
+      setLoadingData(false); forceRefresh(v => v+1);
     });
-    return () => { mounted = false; };
-  }, []);
+    return () => {mounted=false;};
+  }, [reloadVersion]);
   const [latestSuccess, setLatestSuccess] = useState<{ record: AttendanceRecord; offline: boolean } | null>(null);
 
   // Dashboard filter state (Requirement 23)
@@ -186,7 +198,8 @@ export const AttendanceScanner: React.FC = () => {
 
   const connectionState = syncQueue.getConnectionState();
   const allParticipants = participantService.getParticipants();
-  const selectedSchedule = scheduleItems.find(s => s.id === selectedScheduleId) || scheduleItems[0];
+  const selectedSchedule = scheduleItems.find(s => s.id === selectedScheduleId);
+  const sessionRecords = recentRecords.filter(r => r.sessionId === selectedScheduleId);
   const selectedContingent = contingents.find(c => c.id === selectedContingentId) || contingents[0];
   const contingentParticipants = participantService.getParticipants({ contingentId: selectedContingent?.id });
 
@@ -236,11 +249,12 @@ export const AttendanceScanner: React.FC = () => {
 
   // 3. ACTIVITY ATTENDANCE HANDLER (Requirement 22)
   const handleActivityScan = async (code: string) => {
-    if (!code) return;
+    if (!code || loadingData || activitySubmitLock.current) return;
     if (!selectedSchedule?.id) {
       showToast('❌ Pilih jadwal kegiatan resmi sebelum mencatat presensi.');
       return;
     }
+    activitySubmitLock.current = true;
     setIsProcessing(true);
     try {
       const res = await attendanceService.recordAttendance(
@@ -251,10 +265,11 @@ export const AttendanceScanner: React.FC = () => {
       setLatestSuccess(res);
       setRecentRecords([...attendanceService.getRecords()]);
       setManualCode('');
-      showToast(`✓ Presensi berhasil untuk ${res.record.participantName}! (tersimpan di GAS)`);
+      showToast(`✓ ${res.record.participantName}: kehadiran tersimpan di GAS. Tambahan ${res.record.xpAwarded} poin. Scan ulang tidak menggandakan poin.`);
     } catch (err: any) {
       alert(err.message);
     } finally {
+      activitySubmitLock.current = false;
       setIsProcessing(false);
     }
   };
@@ -265,7 +280,8 @@ export const AttendanceScanner: React.FC = () => {
     return true;
   });
 
-  const presentCount = filteredDashboardParticipants.filter(p => p.checkedIn).length;
+  const attendedIds = new Set(recentRecords.filter(r => dashFilterActivity === 'all' ? scheduleItems.some(s => s.id===r.sessionId) : r.sessionId===dashFilterActivity).map(r => r.participantId));
+  const presentCount = filteredDashboardParticipants.filter(p => attendedIds.has(p.id)).length;
   const absentCount = filteredDashboardParticipants.length - presentCount;
   const attendanceRate =
     filteredDashboardParticipants.length > 0
@@ -274,6 +290,10 @@ export const AttendanceScanner: React.FC = () => {
 
   return (
     <div className="space-y-5 max-w-4xl mx-auto pb-12">
+      <div className="flex items-center gap-3 text-sm">
+        <button type="button" onClick={() => setReloadVersion(v => v+1)} disabled={loadingData || isProcessing} className="px-4 py-2 rounded-xl border disabled:opacity-40">{loadingData?'Memuat data GAS…':'Muat ulang data'}</button>
+        {loadError && <p role="alert" className="text-red-700 dark:text-red-300">{loadError} Data yang tampil mungkin belum lengkap.</p>}
+      </div>
       {toast && (
         <div className="p-3.5 rounded-2xl bg-white dark:bg-[#1C1C1E] border border-emerald-500/40 text-xs text-emerald-800 dark:text-emerald-300 font-semibold flex items-center justify-between shadow-lg animate-in fade-in">
           <span>{toast}</span>
@@ -638,14 +658,17 @@ export const AttendanceScanner: React.FC = () => {
                 onChange={e => setSelectedScheduleId(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-[#FAFAFA] dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-xl text-base md:text-xs text-[#171717] dark:text-white min-h-[44px]"
               >
+                <option value="">Pilih agenda kegiatan</option>
                 {scheduleItems.map(s => (
                   <option key={s.id} value={s.id}>
-                    Hari ke-{s.dayNumber} · {s.time} · {s.title} ({s.location})
+                    Hari ke-{s.dayNumber} · {s.time} · {s.title} ({s.location}) · {s.xpReward || 0} poin
                   </option>
                 ))}
               </select>
             </div>
 
+            {!loadingData && scheduleItems.length === 0 && <p role="status" className="text-sm text-amber-700">Belum ada agenda aktif dari GAS. Tambahkan jadwal kegiatan terlebih dahulu.</p>}
+            <p className="text-xs text-slate-600 dark:text-slate-300">Poin mengikuti agenda di GAS. Satu peserta mendapat poin sekali untuk setiap agenda, termasuk jika berganti petugas.</p>
             {/* Scan or Input */}
             <div className="flex gap-2">
               <input
@@ -661,7 +684,7 @@ export const AttendanceScanner: React.FC = () => {
               <button
                 type="button"
                 onClick={() => handleActivityScan(manualCode)}
-                disabled={isProcessing || !manualCode}
+                disabled={isProcessing || loadingData || !manualCode || !selectedSchedule}
                 className="px-5 py-2.5 bg-gradient-to-r from-[#833AB4] to-[#E1306C] hover:opacity-95 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-pink-500/20 disabled:opacity-40 min-h-[44px] cursor-pointer"
               >
                 Presensi
@@ -669,7 +692,7 @@ export const AttendanceScanner: React.FC = () => {
             </div>
           </div>
 
-          <button type="button" onClick={() => startCamera('activity_session')}
+          <button type="button" disabled={isProcessing || loadingData || !selectedSchedule} onClick={() => startCamera('activity_session')}
             className="w-full min-h-[48px] flex items-center justify-center gap-2 rounded-xl bg-[#171717] text-white dark:bg-[#D4A017] dark:text-black text-sm font-bold">
             <Camera className="w-5 h-5" /> Scan QR untuk Presensi Sesi
           </button>
@@ -680,13 +703,13 @@ export const AttendanceScanner: React.FC = () => {
             <div className="flex items-center justify-between text-xs">
               <span className="font-bold text-[#171717] dark:text-white flex items-center gap-1.5">
                 <History className="w-3.5 h-3.5 text-[#E1306C]" />
-                <span>Log Presensi Terbaru Sesi Ini ({recentRecords.length})</span>
+                <span>Log Presensi Terbaru Sesi Ini ({sessionRecords.length})</span>
               </span>
-              <span className="text-[#6B7280] font-mono text-[10px]">Auto-Sync Real-time</span>
+              <span className="text-[#6B7280] font-mono text-[10px]">Sumber: GAS</span>
             </div>
 
             <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1 text-xs">
-              {recentRecords.map(rec => (
+              {sessionRecords.map(rec => (
                 <div key={rec.id} className="p-3 rounded-xl bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/5 flex items-center justify-between">
                   <div>
                     <div className="font-bold text-[#171717] dark:text-white">{rec.participantName}</div>
@@ -723,6 +746,12 @@ export const AttendanceScanner: React.FC = () => {
             </div>
           </div>
 
+          <label className="block text-sm">Agenda kegiatan
+            <select className="block w-full p-3 rounded-xl border text-slate-900" value={dashFilterActivity} onChange={e => setDashFilterActivity(e.target.value)}>
+              <option value="all">Pernah hadir pada kegiatan mana pun</option>
+              {scheduleItems.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+            </select>
+          </label>
           {/* 4 Core Summary Stat Cards (Requirement 23: expected, present, absent, rate) */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="p-4 rounded-[24px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-1 shadow-2xs">
@@ -734,19 +763,19 @@ export const AttendanceScanner: React.FC = () => {
             <div className="p-4 rounded-[24px] bg-[#ECFDF5] border border-[#A7F3D0] space-y-1 shadow-2xs">
               <span className="text-emerald-800 text-[11px] block font-semibold">Present (Hadir):</span>
               <div className="text-2xl font-black text-emerald-700 font-mono">{presentCount}</div>
-              <span className="text-[10px] text-emerald-600">Tercatat di Buper</span>
+              <span className="text-[10px] text-emerald-600">Tercatat pada kegiatan terpilih</span>
             </div>
 
             <div className="p-4 rounded-[24px] bg-[#FFFBEB] border border-[#FEF08A] space-y-1 shadow-2xs">
-              <span className="text-amber-800 text-[11px] block font-semibold">Absent (Belum Tiba):</span>
+              <span className="text-amber-800 text-[11px] block font-semibold">Belum tercatat hadir:</span>
               <div className="text-2xl font-black text-amber-700 font-mono">{absentCount}</div>
-              <span className="text-[10px] text-amber-600">Dalam Perjalanan</span>
+              <span className="text-[10px] text-amber-600">Belum ada catatan kegiatan</span>
             </div>
 
             <div className="p-4 rounded-[24px] bg-[#EFF6FF] border border-[#BFDBFE] space-y-1 shadow-2xs">
               <span className="text-blue-800 text-[11px] block font-semibold">Tingkat Kehadiran:</span>
               <div className="text-2xl font-black text-blue-700 font-mono">{attendanceRate}%</div>
-              <span className="text-[10px] text-blue-600">Persentase Rombongan</span>
+              <span className="text-[10px] text-blue-600">Berdasarkan catatan kegiatan</span>
             </div>
           </div>
         </div>
