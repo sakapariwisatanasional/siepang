@@ -191,15 +191,17 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     const vis = visitorManagementService.getVisitorByToken(code) || visitorManagementService.getVisitorByCode(code);
     const isVisToken = Boolean(vis) || code.includes('VIS_') || code.toUpperCase().startsWith('VIS-') || code.startsWith('SIEPANG:QR:v1:VIS');
     if (isVisToken) {
-      const visitor = vis || visitorManagementService.getVisitors().find(v => v.registrationCode.toUpperCase() === code.toUpperCase());
-      if (visitor) {
-        const isInside = visitor.status === 'CHECKED_IN';
-        setScannedVisitor({
-          visitor,
-          action: isInside ? 'EXIT' : 'ENTRY',
-        });
-        return;
+      // A visitor pass never enters the participant identity/verification flow.
+      // Read the visitor ledger even on a different officer device.
+      try {
+        await visitorManagementService.loadVisitors();
+        const visitor = visitorManagementService.getVisitorByToken(code) || visitorManagementService.getVisitorByCode(code);
+        if (!visitor) throw new Error('Pass tidak ditemukan dalam Buku Tamu untuk event aktif. Gunakan QR visitor yang terbit setelah pendaftaran.');
+        setScannedVisitor({ visitor, action: visitor.status === 'CHECKED_IN' ? 'EXIT' : 'ENTRY' });
+      } catch (error: any) {
+        setActionErrorMessage(`Pencatatan kunjungan belum dapat dilanjutkan: ${error?.message || 'Gagal memuat Buku Tamu.'}`);
       }
+      return;
     }
 
     // 3. Resolve only this participant through GAS. A short in-memory cache
