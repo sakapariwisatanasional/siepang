@@ -273,29 +273,29 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
   const qrDisplayToken = previewToken;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="w-full max-w-6xl bg-[#1c0c0f] border-2 border-red-500/40 rounded-3xl p-4 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto text-slate-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 backdrop-blur-sm p-4 animate-in fade-in">
+      <div className="w-full max-w-6xl bg-[#FFF8F2] border-2 border-red-200 rounded-3xl p-4 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto text-[#203C33]">
         {toast && (
-          <div className="p-3.5 rounded-2xl bg-red-950/90 border border-red-500/50 text-xs text-red-200 font-semibold flex items-center justify-between shadow-xl">
+          <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-800 font-semibold flex items-center justify-between shadow-xl">
             <span>{toast}</span>
-            <button onClick={() => setToast(null)} className="text-red-400 hover:text-white">✕</button>
+            <button onClick={() => setToast(null)} className="text-red-700 hover:text-[#203C33]">✕</button>
           </div>
         )}
 
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-white/10 pb-3">
+        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-red-600/20 text-red-400 flex items-center justify-center border border-red-500/30">
+            <div className="w-9 h-9 rounded-2xl bg-[#C62828]/20 text-red-700 flex items-center justify-center border border-red-200">
               <QrCode className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight">
+              <h3 className="text-base font-bold text-[#203C33] tracking-tight">
                 Kelola QR Kegiatan & Presensi
               </h3>
-              <p className="text-xs text-slate-400">{activityTitle}</p>
+              <p className="text-xs text-slate-600">{activityTitle}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-1 rounded-xl">
+          <button onClick={onClose} className="text-slate-600 hover:text-[#203C33] p-1 rounded-xl">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -314,13 +314,13 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
               onClick={() => setActiveTab(tab.key as typeof activeTab)}
               className={`rounded-2xl border p-4 text-left transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
                 activeTab === tab.key
-                  ? 'border-red-500/50 bg-red-950/50 shadow-lg shadow-red-950/40'
-                  : 'border-white/5 bg-black/35 hover:border-white/10 hover:bg-black/50'
+                  ? 'border-red-200 bg-red-50 shadow-lg shadow-red-100/70'
+                  : 'border-slate-200 bg-white hover:border-slate-200 hover:bg-red-50'
               }`}
             >
               <div className="text-base">{tab.icon}</div>
-              <div className="mt-2 font-bold text-white">{tab.title}</div>
-              <div className="mt-1 text-[11px] leading-relaxed text-slate-400">{tab.desc}</div>
+              <div className="mt-2 font-bold text-[#203C33]">{tab.title}</div>
+              <div className="mt-1 text-[11px] leading-relaxed text-slate-600">{tab.desc}</div>
             </button>
           ))}
         </div>
@@ -329,10 +329,10 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
         {activeTab === 'config' && (
           <div className="space-y-4 text-xs">
             {/* Enable Toggle */}
-            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/5 flex items-center justify-between">
+            <div className="p-3.5 rounded-2xl bg-white border border-slate-200 flex items-center justify-between">
               <div>
-                <div className="font-bold text-white text-sm">Aktifkan QR Code Kegiatan</div>
-                <div className="text-[11px] text-slate-400">
+                <div className="font-bold text-[#203C33] text-sm">Aktifkan QR Code Kegiatan</div>
+                <div className="text-[11px] text-slate-600">
                   Peserta dapat memindai QR ini untuk mencatat partisipasi dan meraih poin XP.
                 </div>
               </div>
@@ -343,14 +343,14 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                   onChange={e => setEnabled(e.target.checked)}
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#C62828]"></div>
               </label>
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {/* Purpose Mode (Req 2, 13) */}
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <label className="text-slate-300 font-semibold block mb-1">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <label className="text-slate-700 font-semibold block mb-1">
                 Fungsi & Mode Validasi QR:
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -369,25 +369,25 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                     title={!m.supported ? 'Belum didukung oleh alur scan QR agenda saat ini' : undefined}
                     className={`p-3 rounded-2xl text-left border transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
                       mode === m.id
-                        ? 'bg-red-950/60 border-red-500 text-white shadow-md'
-                        : 'bg-black/30 border-white/5 text-slate-400 hover:text-white'
+                        ? 'bg-red-50 border-red-500 text-[#203C33] shadow-md'
+                        : 'bg-white border-slate-200 text-slate-600 hover:text-[#203C33]'
                     }`}
                   >
-                    <div className="font-bold text-white text-xs">{m.label}</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">{m.desc}</div>
+                    <div className="font-bold text-[#203C33] text-xs">{m.label}</div>
+                    <div className="text-[10px] text-slate-600 mt-0.5">{m.desc}</div>
                   </button>
                 ))}
               </div>
             </div>
 
             {/* XP Reward & Point Rule (Req 16, 17) */}
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">
+                <label className="text-slate-700 font-semibold block mb-1">
                   Hadiah Poin XP Peserta (Terkonfigurasi):
                 </label>
                 <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-black">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-black">
                     <Zap className="w-5 h-5" />
                   </div>
                   <input
@@ -397,70 +397,70 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                     value={isOfficialToken ? (currentConfig?.rewardXp ?? rewardXp) : (scheduleXpReward ?? rewardXp)}
                     readOnly
                     aria-label="XP sesuai konfigurasi agenda di GAS"
-                    className="flex-1 px-3.5 py-2.5 bg-black/40 border border-white/10 rounded-xl text-white font-mono font-bold cursor-not-allowed"
+                    className="flex-1 px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-[#203C33] font-mono font-bold cursor-not-allowed"
                   />
-                  <span className="text-xs text-amber-400 font-bold">XP</span>
+                  <span className="text-xs text-amber-700 font-bold">XP</span>
                 </div>
-                <p className="text-[10px] text-slate-400 mt-1">
+                <p className="text-[10px] text-slate-600 mt-1">
                   Nilai resmi dibaca dari agenda di GAS; ubah reward melalui pengaturan jadwal.
                 </p>
               </div>
 
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">
+                <label className="text-slate-700 font-semibold block mb-1">
                   Batas Scan per Peserta:
                 </label>
                 <input
                   type="text"
                   disabled
                   value="1x per Peserta (Mencegah Duplikasi)"
-                  className="w-full px-3.5 py-2.5 bg-black/20 border border-white/5 rounded-xl text-slate-400 font-medium"
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-600 font-medium"
                 />
-                <p className="text-[10px] text-slate-400 mt-1">
+                <p className="text-[10px] text-slate-600 mt-1">
                   Scan kedua hanya menampilkan &apos;Kegiatan sudah tercatat&apos; tanpa reward ganda.
                 </p>
               </div>
             </div>
 
             {/* Scan Window (Req 11) */}
-            <div className="p-4 rounded-2xl bg-black/30 border border-white/10 space-y-2">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200">
-                <Clock className="w-4 h-4 text-red-400" />
+            <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                <Clock className="w-4 h-4 text-red-700" />
                 <span>Jendela Waktu Pemindaian (Scan Window):</span>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-slate-400 text-[11px] block mb-1">Scan Dibuka (Opens At):</label>
+                  <label className="text-slate-600 text-[11px] block mb-1">Scan Dibuka (Opens At):</label>
                   <input
                     type="time"
                     value={scanOpens}
                     onChange={e => setScanOpens(e.target.value)}
-                    className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-xl text-white font-mono"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[#203C33] font-mono"
                   />
                 </div>
                 <div>
-                  <label className="text-slate-400 text-[11px] block mb-1">Scan Ditutup (Closes At):</label>
+                  <label className="text-slate-600 text-[11px] block mb-1">Scan Ditutup (Closes At):</label>
                   <input
                     type="time"
                     value={scanCloses}
                     onChange={e => setScanCloses(e.target.value)}
-                    className="w-full px-3 py-2 bg-black/40 border border-white/10 rounded-xl text-white font-mono"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[#203C33] font-mono"
                   />
                 </div>
               </div>
-              <div className="text-[10px] text-slate-400">
+              <div className="text-[10px] text-slate-600">
                 Jendela ini disimpan bersama token resmi dan divalidasi oleh GAS saat QR dipindai.
               </div>
             </div>
             </div>
 
             {/* Action Buttons */}
-            <div className="flex items-center justify-between pt-2 border-t border-white/10">
+            <div className="flex items-center justify-between pt-2 border-t border-slate-200">
               <button
                 type="button"
                 onClick={() => setShowRotateConfirm(true)}
                 disabled={!enabled || isSaving}
-                className="px-3.5 py-2 bg-rose-950/60 hover:bg-rose-900/60 disabled:opacity-50 disabled:cursor-not-allowed text-rose-300 border border-rose-500/30 rounded-xl font-semibold flex items-center gap-1.5 transition-all text-xs"
+                className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 disabled:opacity-50 disabled:cursor-not-allowed text-rose-700 border border-rose-200 rounded-xl font-semibold flex items-center gap-1.5 transition-all text-xs"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Regenerasi Token</span>
@@ -470,7 +470,7 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                 type="button"
                 onClick={handleSaveConfig}
                 disabled={isSaving}
-                className="px-5 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white rounded-xl font-bold shadow-lg shadow-red-950/50 flex items-center gap-2"
+                className="px-5 py-2.5 bg-[#C62828] hover:bg-[#AD2020] disabled:opacity-60 text-white rounded-xl font-bold shadow-lg shadow-red-200/60 flex items-center gap-2"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>{isSaving ? 'Memproses QR...' : 'Simpan & Terbitkan QR Resmi'}</span>
@@ -482,10 +482,10 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
         {/* TAB 2: MULTI-CHECKPOINT BUILDER (Req 14, 15) */}
         {activeTab === 'checkpoints' && (
           <div className="space-y-4 text-xs">
-            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/5 flex items-center justify-between">
+            <div className="p-3.5 rounded-2xl bg-white border border-slate-200 flex items-center justify-between">
               <div>
-                <div className="font-bold text-white text-sm">Mode Rangkaian Pos / Checkpoints</div>
-                <div className="text-[11px] text-slate-400">
+                <div className="font-bold text-[#203C33] text-sm">Mode Rangkaian Pos / Checkpoints</div>
+                <div className="text-[11px] text-slate-600">
                   Multi-pos belum terhubung ke endpoint scan GAS. Gunakan QR agenda resmi untuk presensi dan XP.
                 </div>
               </div>
@@ -497,7 +497,7 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                   disabled
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#C62828]"></div>
               </label>
             </div>
 
@@ -505,11 +505,11 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-slate-300 font-semibold">Aturan Urutan Pos:</span>
+                    <span className="text-slate-700 font-semibold">Aturan Urutan Pos:</span>
                     <select
                       value={checkpointOrder}
                       onChange={e => setCheckpointOrder(e.target.value as any)}
-                      className="px-2.5 py-1 bg-black/40 border border-white/10 rounded-xl text-white text-xs font-semibold"
+                      className="px-2.5 py-1 bg-white border border-slate-200 rounded-xl text-[#203C33] text-xs font-semibold"
                     >
                       <option value="ordered">Berurutan (Pos 1 → Pos 2 → Finish)</option>
                       <option value="unordered">Bebas (Dapat diselesaikan acak)</option>
@@ -519,7 +519,7 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                   <button
                     type="button"
                     onClick={handleAddCheckpoint}
-                    className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold flex items-center gap-1 shadow"
+                    className="px-3 py-1.5 bg-[#C62828] hover:bg-[#AD2020] text-white rounded-xl font-bold flex items-center gap-1 shadow"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>+ Tambah Pos</span>
@@ -530,11 +530,11 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                   {checkpoints.map((cp, idx) => (
                     <div
                       key={cp.checkpointId}
-                      className="p-3 rounded-2xl bg-black/40 border border-white/10 space-y-2"
+                      className="p-3 rounded-2xl bg-white border border-slate-200 space-y-2"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
-                          <span className="w-6 h-6 rounded-lg bg-red-600/30 text-red-300 font-mono font-bold flex items-center justify-center text-xs">
+                          <span className="w-6 h-6 rounded-lg bg-[#C62828]/30 text-red-700 font-mono font-bold flex items-center justify-center text-xs">
                             #{cp.orderIndex}
                           </span>
                           <input
@@ -545,12 +545,12 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                               updated[idx].name = e.target.value;
                               setCheckpoints(updated);
                             }}
-                            className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-xl text-white font-bold text-xs"
+                            className="px-2.5 py-1 bg-white border border-slate-200 rounded-xl text-[#203C33] font-bold text-xs"
                           />
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <div className="flex items-center gap-1 text-amber-400 font-bold font-mono">
+                          <div className="flex items-center gap-1 text-amber-700 font-bold font-mono">
                             <Zap className="w-3 h-3" />
                             <input
                               type="number"
@@ -560,7 +560,7 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                                 updated[idx].rewardXp = Number(e.target.value);
                                 setCheckpoints(updated);
                               }}
-                              className="w-12 px-1.5 py-0.5 bg-white/5 border border-white/10 rounded-lg text-center font-bold text-xs"
+                              className="w-12 px-1.5 py-0.5 bg-white border border-slate-200 rounded-lg text-center font-bold text-xs"
                             />
                             <span>XP</span>
                           </div>
@@ -587,7 +587,7 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                             setCheckpoints(updated);
                           }}
                           placeholder="Lokasi Pos..."
-                          className="px-2 py-1 bg-white/5 border border-white/10 rounded-xl text-slate-300"
+                          className="px-2 py-1 bg-white border border-slate-200 rounded-xl text-slate-700"
                         />
                         <input
                           type="text"
@@ -598,7 +598,7 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                             setCheckpoints(updated);
                           }}
                           placeholder="Petunjuk / Tantangan..."
-                          className="px-2 py-1 bg-white/5 border border-white/10 rounded-xl text-slate-300"
+                          className="px-2 py-1 bg-white border border-slate-200 rounded-xl text-slate-700"
                         />
                       </div>
                     </div>
@@ -609,14 +609,14 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                   <button
                     type="button"
                     onClick={handleSaveConfig}
-                    className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold shadow"
+                    className="px-5 py-2 bg-[#C62828] hover:bg-[#AD2020] text-white rounded-xl font-bold shadow"
                   >
                     Simpan Rangkaian Pos
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="p-6 text-center text-slate-400 space-y-2">
+              <div className="p-6 text-center text-slate-600 space-y-2">
                 <Compass className="w-8 h-8 mx-auto text-slate-600" />
                 <p>Aktifkan mode multi-pos jika kegiatan ini memerlukan lebih dari satu pos pemberhentian.</p>
               </div>
@@ -627,7 +627,7 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
         {activeTab === 'preview' && (
           <div className="space-y-4 text-xs">
             <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)] gap-4">
-              <div className="min-w-0 overflow-hidden rounded-3xl border border-red-500/20 bg-gradient-to-b from-[#2a0e13] via-[#1c0c0f] to-[#120709] p-4 sm:p-5 shadow-2xl">
+              <div className="min-w-0 overflow-hidden rounded-3xl border border-red-200 bg-gradient-to-b from-[#2a0e13] via-[#1c0c0f] to-[#120709] p-4 sm:p-5 shadow-2xl">
                 <div className="grid grid-cols-1 gap-5 items-start min-w-0">
                   <div className="mx-auto flex w-full max-w-[240px] min-w-0 flex-col items-center gap-3">
                     <QrImage
@@ -637,52 +637,52 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                       emptyLabel="QR belum aktif"
                       subtitle="Simpan pengaturan untuk menghasilkan token resmi yang siap dipindai."
                     />
-                    <div className="w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-center text-[10px] text-slate-400">
-                      <div className="font-semibold text-slate-300">Token QR</div>
+                    <div className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-center text-[10px] text-slate-600">
+                      <div className="font-semibold text-slate-700">Token QR</div>
                       <div className="mt-1 truncate font-mono">{qrDisplayToken || 'Belum dibuat'}</div>
                     </div>
                   </div>
 
                   <div className="min-w-0 space-y-4">
                     <div>
-                      <div className="inline-flex rounded-full border border-red-500/30 bg-red-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-red-300">
+                      <div className="inline-flex rounded-full border border-red-200 bg-[#AD2020]/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-red-700">
                         {category}
                       </div>
-                      <h4 className="mt-2 text-2xl font-black tracking-tight text-white">{activityTitle}</h4>
-                      <p className="mt-1 text-sm text-slate-300">QR ini digunakan untuk presensi dan pencatatan partisipasi kegiatan secara resmi di SiEpang.</p>
+                      <h4 className="mt-2 text-2xl font-black tracking-tight text-[#203C33]">{activityTitle}</h4>
+                      <p className="mt-1 text-sm text-slate-700">QR ini digunakan untuk presensi dan pencatatan partisipasi kegiatan secara resmi di SiEpang.</p>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-                        <div className="flex items-center gap-2 text-slate-300 font-semibold"><Clock className="w-4 h-4 text-red-400" />Waktu Kegiatan</div>
-                        <div className="mt-2 text-base font-bold text-white">{scheduleTime}</div>
-                        <div className="mt-1 text-[11px] text-slate-400">Jendela scan: {scanOpens} - {scanCloses}</div>
+                      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                        <div className="flex items-center gap-2 text-slate-700 font-semibold"><Clock className="w-4 h-4 text-red-700" />Waktu Kegiatan</div>
+                        <div className="mt-2 text-base font-bold text-[#203C33]">{scheduleTime}</div>
+                        <div className="mt-1 text-[11px] text-slate-600">Jendela scan: {scanOpens} - {scanCloses}</div>
                       </div>
-                      <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-                        <div className="flex items-center gap-2 text-slate-300 font-semibold"><MapPin className="w-4 h-4 text-red-400" />Lokasi</div>
-                        <div className="mt-2 text-base font-bold text-white">{location}</div>
-                        <div className="mt-1 text-[11px] text-slate-400">Mode: {mode}</div>
+                      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                        <div className="flex items-center gap-2 text-slate-700 font-semibold"><MapPin className="w-4 h-4 text-red-700" />Lokasi</div>
+                        <div className="mt-2 text-base font-bold text-[#203C33]">{location}</div>
+                        <div className="mt-1 text-[11px] text-slate-600">Mode: {mode}</div>
                       </div>
-                      <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-                        <div className="text-slate-300 font-semibold">Reward XP</div>
-                        <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-amber-300">
+                      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                        <div className="text-slate-700 font-semibold">Reward XP</div>
+                        <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-amber-700">
                           <Zap className="w-4 h-4" />
                           <span className="text-lg font-black">+{rewardXp}</span>
                           <span className="text-xs font-semibold">XP</span>
                         </div>
-                        <div className="mt-2 text-[11px] text-slate-400">Scan kedua dicegah agar reward tidak ganda.</div>
+                        <div className="mt-2 text-[11px] text-slate-600">Scan kedua dicegah agar reward tidak ganda.</div>
                       </div>
-                      <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-                        <div className="text-slate-300 font-semibold">Status QR</div>
+                      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                        <div className="text-slate-700 font-semibold">Status QR</div>
                         <div className="mt-2 flex flex-wrap gap-2">
-                          <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${enabled ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-500/20 text-slate-300 border border-slate-500/30'}`}>
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${enabled ? 'bg-emerald-500/20 text-emerald-700 border border-emerald-500/30' : 'bg-slate-500/20 text-slate-700 border border-slate-500/30'}`}>
                             {enabled ? 'AKTIF' : 'NONAKTIF'}
                           </span>
-                          <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${isOfficialToken ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}`}>
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${isOfficialToken ? 'bg-blue-500/20 text-blue-700 border border-blue-500/30' : 'bg-amber-100 text-amber-700 border border-amber-500/30'}`}>
                             {isOfficialToken ? 'TOKEN RESMI GAS' : 'BELUM DITERBITKAN'}
                           </span>
                         </div>
-                        <div className="mt-2 text-[11px] text-slate-400">Token hanya valid jika diterbitkan GAS dari agenda resmi.</div>
+                        <div className="mt-2 text-[11px] text-slate-600">Token hanya valid jika diterbitkan GAS dari agenda resmi.</div>
                       </div>
                     </div>
                   </div>
@@ -690,13 +690,13 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
               </div>
 
               <div className="space-y-4">
-                <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
-                  <h5 className="text-sm font-bold text-white">Aksi Cepat</h5>
+                <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                  <h5 className="text-sm font-bold text-[#203C33]">Aksi Cepat</h5>
                   <div className="mt-4 grid grid-cols-1 gap-3">
                     <button
                       type="button"
                       onClick={handleSaveConfig}
-                      className="flex items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 py-3 font-bold text-white shadow hover:bg-red-500"
+                      className="flex items-center justify-center gap-2 rounded-2xl bg-[#C62828] px-4 py-3 font-bold text-white shadow hover:bg-[#AD2020]"
                     >
                       <Check className="w-4 h-4" />
                       <span>Simpan Pengaturan QR</span>
@@ -704,7 +704,7 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                     <button
                       type="button"
                       onClick={handleOpenPrint}
-                      className="flex items-center justify-center gap-2 rounded-2xl bg-white/10 px-4 py-3 font-semibold text-white border border-white/10 hover:bg-white/15"
+                      className="flex items-center justify-center gap-2 rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-[#203C33] border border-slate-200 hover:bg-slate-100"
                     >
                       <Printer className="w-4 h-4" />
                       <span>Cetak Lembar Tanda Kegiatan</span>
@@ -712,7 +712,7 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                     <a
                       href={downloadHref || undefined}
                       download={`QR_${activityTitle.replace(/\s+/g, '_')}.txt`}
-                      className={`flex items-center justify-center gap-2 rounded-2xl px-4 py-3 font-semibold border ${downloadHref ? 'bg-white/10 text-white border-white/10 hover:bg-white/15' : 'pointer-events-none bg-white/5 text-slate-500 border-white/5'}`}
+                      className={`flex items-center justify-center gap-2 rounded-2xl px-4 py-3 font-semibold border ${downloadHref ? 'bg-slate-100 text-[#203C33] border-slate-200 hover:bg-slate-100' : 'pointer-events-none bg-white text-slate-500 border-slate-200'}`}
                     >
                       <Download className="w-4 h-4" />
                       <span>Unduh Token QR</span>
@@ -720,42 +720,42 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                   </div>
                 </div>
 
-                <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
-                  <h5 className="text-sm font-bold text-white">Ringkasan Pengaturan</h5>
+                <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                  <h5 className="text-sm font-bold text-[#203C33]">Ringkasan Pengaturan</h5>
                   <div className="mt-4 grid grid-cols-2 gap-3">
-                    <div className="rounded-2xl bg-white/5 p-3">
-                      <div className="text-[10px] text-slate-400">Jenis QR</div>
-                      <div className="mt-1 font-bold text-white">{mode}</div>
+                    <div className="rounded-2xl bg-white p-3">
+                      <div className="text-[10px] text-slate-600">Jenis QR</div>
+                      <div className="mt-1 font-bold text-[#203C33]">{mode}</div>
                     </div>
-                    <div className="rounded-2xl bg-white/5 p-3">
-                      <div className="text-[10px] text-slate-400">Multi-Pos</div>
-                      <div className="mt-1 font-bold text-white">{isMultiCheckpoint ? `${checkpoints.length} Pos` : 'Tidak aktif'}</div>
+                    <div className="rounded-2xl bg-white p-3">
+                      <div className="text-[10px] text-slate-600">Multi-Pos</div>
+                      <div className="mt-1 font-bold text-[#203C33]">{isMultiCheckpoint ? `${checkpoints.length} Pos` : 'Tidak aktif'}</div>
                     </div>
-                    <div className="rounded-2xl bg-white/5 p-3">
-                      <div className="text-[10px] text-slate-400">Urutan Pos</div>
-                      <div className="mt-1 font-bold text-white">{checkpointOrder}</div>
+                    <div className="rounded-2xl bg-white p-3">
+                      <div className="text-[10px] text-slate-600">Urutan Pos</div>
+                      <div className="mt-1 font-bold text-[#203C33]">{checkpointOrder}</div>
                     </div>
-                    <div className="rounded-2xl bg-white/5 p-3">
-                      <div className="text-[10px] text-slate-400">Event Aktif</div>
-                      <div className="mt-1 truncate font-bold text-white">{eventId || 'Belum terdeteksi'}</div>
+                    <div className="rounded-2xl bg-white p-3">
+                      <div className="text-[10px] text-slate-600">Event Aktif</div>
+                      <div className="mt-1 truncate font-bold text-[#203C33]">{eventId || 'Belum terdeteksi'}</div>
                     </div>
                   </div>
                 </div>
 
                 {isMultiCheckpoint && checkpoints.length > 0 && (
-                  <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
-                    <h5 className="text-sm font-bold text-white">Daftar Pos</h5>
+                  <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                    <h5 className="text-sm font-bold text-[#203C33]">Daftar Pos</h5>
                     <div className="mt-4 grid grid-cols-1 gap-3">
                       {checkpoints.map((cp, idx) => (
-                        <div key={cp.checkpointId} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                        <div key={cp.checkpointId} className="rounded-2xl border border-slate-200 bg-white p-3">
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <div className="font-bold text-white">{idx + 1}. {cp.name}</div>
-                              <div className="mt-1 text-[11px] text-slate-400">{cp.location}</div>
+                              <div className="font-bold text-[#203C33]">{idx + 1}. {cp.name}</div>
+                              <div className="mt-1 text-[11px] text-slate-600">{cp.location}</div>
                             </div>
-                            <span className="rounded-full bg-amber-500/20 px-2 py-1 text-[10px] font-bold text-amber-300">+{cp.rewardXp} XP</span>
+                            <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-700">+{cp.rewardXp} XP</span>
                           </div>
-                          <div className="mt-2 truncate rounded-xl bg-black/30 px-2.5 py-2 font-mono text-[10px] text-slate-400">{cp.qrToken}</div>
+                          <div className="mt-2 truncate rounded-xl bg-white px-2.5 py-2 font-mono text-[10px] text-slate-600">{cp.qrToken}</div>
                         </div>
                       ))}
                     </div>
@@ -769,38 +769,38 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
         {/* TAB 4: SCAN ANALYTICS (Req 18) */}
         {activeTab === 'analytics' && (
           <div className="space-y-4 text-xs">
-            {!scheduleId && <div className="rounded-2xl border border-amber-500/30 bg-amber-950/30 p-3 text-amber-200">Statistik server hanya tersedia untuk QR yang terhubung ke agenda resmi GAS.</div>}
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-slate-400">Angka berikut dibaca dari AttendanceLogs dan PointTransactions GAS. Percobaan duplikat tidak dihitung sebagai presensi baru; server mencegah reward ganda.</div>
+            {!scheduleId && <div className="rounded-2xl border border-amber-500/30 bg-amber-950/30 p-3 text-amber-800">Statistik server hanya tersedia untuk QR yang terhubung ke agenda resmi GAS.</div>}
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 text-slate-600">Angka berikut dibaca dari AttendanceLogs dan PointTransactions GAS. Percobaan duplikat tidak dihitung sebagai presensi baru; server mencegah reward ganda.</div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
-                <div className="text-slate-400 text-[10px]">Total Pemindaian</div>
-                <div className="text-base font-black text-white mt-0.5 font-mono">
+              <div className="p-3 rounded-2xl bg-white border border-slate-200">
+                <div className="text-slate-600 text-[10px]">Total Pemindaian</div>
+                <div className="text-base font-black text-[#203C33] mt-0.5 font-mono">
                   {analyticsLoading ? 'Memuat…' : (analytics?.total_scans ?? 0)} Kali
                 </div>
               </div>
-              <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
-                <div className="text-slate-400 text-[10px]">Peserta Unik</div>
-                <div className="text-base font-black text-red-400 mt-0.5 font-mono">
+              <div className="p-3 rounded-2xl bg-white border border-slate-200">
+                <div className="text-slate-600 text-[10px]">Peserta Unik</div>
+                <div className="text-base font-black text-red-700 mt-0.5 font-mono">
                   {analyticsLoading ? 'Memuat…' : (analytics?.unique_participants ?? 0)} Orang
                 </div>
               </div>
-              <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
-                <div className="text-slate-400 text-[10px]">Percobaan Duplikat</div>
-                <div className="text-base font-black text-amber-400 mt-0.5 font-mono">
+              <div className="p-3 rounded-2xl bg-white border border-slate-200">
+                <div className="text-slate-600 text-[10px]">Percobaan Duplikat</div>
+                <div className="text-base font-black text-amber-700 mt-0.5 font-mono">
                   Idempotensi GAS
                 </div>
               </div>
-              <div className="p-3 rounded-2xl bg-black/40 border border-white/5">
-                <div className="text-slate-400 text-[10px]">Total XP Terdistribusi</div>
-                <div className="text-base font-black text-amber-300 mt-0.5 font-mono">
+              <div className="p-3 rounded-2xl bg-white border border-slate-200">
+                <div className="text-slate-600 text-[10px]">Total XP Terdistribusi</div>
+                <div className="text-base font-black text-amber-700 mt-0.5 font-mono">
                   +{analyticsLoading ? '…' : (analytics?.total_xp_distributed ?? 0)} XP
                 </div>
               </div>
             </div>
 
-            <div className="rounded-2xl bg-black/30 border border-white/5 p-4">
-              <div className="font-bold text-slate-300">Integritas Data Scan</div>
-              <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+            <div className="rounded-2xl bg-white border border-slate-200 p-4">
+              <div className="font-bold text-slate-700">Integritas Data Scan</div>
+              <p className="mt-2 text-[11px] leading-relaxed text-slate-600">
                 GAS menyimpan presensi yang berhasil dan transaksi XP. Percobaan duplikat ditolak secara idempoten, tetapi belum dicatat sebagai metrik terpisah sehingga tidak ditampilkan sebagai angka palsu.
               </p>
             </div>
@@ -809,16 +809,16 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
 
         {/* ROTATE TOKEN AUDIT REASON MODAL (Req 20) */}
         {showRotateConfirm && (
-          <div className="p-4 rounded-2xl bg-rose-950/80 border border-rose-500/50 space-y-3 animate-in fade-in">
-            <div className="flex items-center gap-2 text-rose-300 font-bold text-xs">
+          <div className="p-4 rounded-2xl bg-rose-950/80 border border-rose-200 space-y-3 animate-in fade-in">
+            <div className="flex items-center gap-2 text-rose-700 font-bold text-xs">
               <AlertTriangle className="w-4 h-4" />
               <span>Konfirmasi Regenerasi Token QR</span>
             </div>
-            <p className="text-[11px] text-slate-300">
+            <p className="text-[11px] text-slate-700">
               Token QR lama akan langsung dinonaktifkan. Pengguna yang memindai QR lama akan ditolak. Tindakan ini dicatat dalam log audit resmi.
             </p>
             <div>
-              <label className="text-slate-300 text-[11px] font-semibold block mb-1">
+              <label className="text-slate-700 text-[11px] font-semibold block mb-1">
                 Alasan Regenerasi Token:
               </label>
               <input
@@ -826,21 +826,21 @@ export const ActivityQrModal: React.FC<ActivityQrModalProps> = ({
                 value={rotateReason}
                 onChange={e => setRotateReason(e.target.value)}
                 placeholder="Contoh: Kode QR bocor di grup WA sebelum waktu kegiatan..."
-                className="w-full px-3 py-2 bg-black/60 border border-white/10 rounded-xl text-white text-xs"
+                className="w-full px-3 py-2 bg-black/60 border border-slate-200 rounded-xl text-[#203C33] text-xs"
               />
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => setShowRotateConfirm(false)}
-                className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-xl text-xs"
+                className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-xs"
               >
                 Batal
               </button>
               <button
                 type="button"
                 onClick={handleRotateToken}
-                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold"
+                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-500 text-[#203C33] rounded-xl text-xs font-bold"
               >
                 Konfirmasi Regenerasi
               </button>
