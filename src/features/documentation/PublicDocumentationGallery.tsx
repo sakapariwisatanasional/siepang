@@ -34,6 +34,28 @@ import { eventService } from '../../services/eventService';
 import { PhotoAlbum, MediaItem } from '../../types';
 import { GlobalFooter } from '../../components/layout/GlobalFooter';
 
+/** Convert Drive file viewer links to image URLs without changing GAS records. */
+function imageUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:') return '';
+    if (url.hostname === 'drive.google.com') {
+      const id = url.pathname.match(/\/file\/d\/([A-Za-z0-9_-]+)/)?.[1] || url.searchParams.get('id');
+      if (id && /^[A-Za-z0-9_-]{10,}$/.test(id)) return `https://drive.google.com/thumbnail?id=${id}&sz=w1280`;
+      if (url.pathname.includes('/folders/')) return '';
+    }
+    return value;
+  } catch { return ''; }
+}
+
+function photoPage(item: MediaItem): string {
+  const source = item.source_page_url || item.source_url || '';
+  try {
+    const url = new URL(source);
+    return url.protocol === 'https:' && (item.source_page_url || (url.hostname === 'drive.google.com' && url.pathname.includes('/folders/'))) ? source : '';
+  } catch { return ''; }
+}
+
 /** Only allow supported HTTPS providers in an embedded player. */
 function resolveVideo(item: MediaItem): { kind: 'iframe' | 'file' | 'link'; url: string; thumbnail: string } {
   const source = item.source_url || '';
@@ -66,7 +88,7 @@ function resolveVideo(item: MediaItem): { kind: 'iframe' | 'file' | 'link'; url:
 /** Resolve a direct thumbnail URL where the provider supports one. Social post URLs
  * are not assumed to be image URLs; those require thumbnail_url from the GAS record. */
 function resolvePhotoThumbnail(item: MediaItem): string {
-  if (item.thumbnail_url) return item.thumbnail_url;
+  if (item.thumbnail_url) return imageUrl(item.thumbnail_url);
   const source = item.source_url || '';
   try {
     const url = new URL(source);
@@ -81,8 +103,8 @@ function resolvePhotoThumbnail(item: MediaItem): string {
       const driveId = url.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1] || url.searchParams.get('id') || '';
       if (/^[A-Za-z0-9_-]{10,}$/.test(driveId)) return `https://drive.google.com/thumbnail?id=${driveId}&sz=w1280`;
     }
-    return source;
-  } catch { return source; }
+    return imageUrl(source);
+  } catch { return ''; }
 }
 
 const Thumbnail: React.FC<{ src?: string; alt: string; kind: 'photo' | 'video' }> = ({ src, alt, kind }) => {
@@ -91,10 +113,10 @@ const Thumbnail: React.FC<{ src?: string; alt: string; kind: 'photo' | 'video' }
   if (!src || failed) return (
     <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-slate-100 to-slate-200 text-slate-500 dark:from-slate-800 dark:to-slate-900 dark:text-slate-300" role="img" aria-label={`Thumbnail ${kind === 'photo' ? 'foto' : 'video'} belum tersedia`}>
       {kind === 'photo' ? <ImageIcon className="h-8 w-8" /> : <Film className="h-8 w-8" />}
-      <span className="px-3 text-center text-[10px] font-medium">Thumbnail belum tersedia</span>
+      <span className="px-3 text-center text-[10px] font-medium">Thumbnail belum tersedia. Pastikan file dapat dilihat publik.</span>
     </div>
   );
-  return <img src={src} alt={alt} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />;
+  return <img src={imageUrl(src)} alt={alt} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />;
 };
 
 interface PublicDocumentationGalleryProps {
@@ -392,7 +414,7 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
                     <div
                       key={photo.media_id}
                       onClick={() => {
-                        if (photo.source_page_url) window.open(photo.source_page_url, '_blank', 'noopener,noreferrer');
+                        if (photoPage(photo)) window.open(photoPage(photo), '_blank', 'noopener,noreferrer');
                         else handleOpenLightbox(idx);
                       }}
                       className="group relative cursor-pointer overflow-hidden rounded-2xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 hover:border-[#208C60]/50 transition-all duration-300 shadow-xs flex flex-col"
@@ -403,7 +425,7 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2.5">
                           <span className="text-[10px] text-white flex items-center gap-1">
                             <Eye className="w-3 h-3" />
-                            <span>{photo.source_page_url ? 'Buka Halaman Sumber' : 'Perbesar Foto'}</span>
+                            <span>{photoPage(photo) ? 'Buka Halaman Sumber' : 'Perbesar Foto'}</span>
                           </span>
                         </div>
                       </div>
@@ -599,7 +621,7 @@ export const PublicDocumentationGallery: React.FC<PublicDocumentationGalleryProp
           {/* Main Large Image & Caption */}
           <div className="max-w-4xl max-h-[85vh] flex flex-col items-center justify-center p-2">
             <img
-              src={currentLightboxPhoto.source_url || currentLightboxPhoto.thumbnail_url}
+              src={resolvePhotoThumbnail(currentLightboxPhoto)}
               alt={currentLightboxPhoto.title}
               className="max-h-[70vh] max-w-full object-contain rounded-2xl shadow-2xl"
             />
