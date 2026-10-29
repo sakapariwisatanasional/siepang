@@ -43,10 +43,34 @@ const getSerial = (r: RecordRow, source: DataSource) => source === 'committee'
   ? get(r, 'staff_number', 'employee_number', 'serial_number', 'serialNumber', 'user_id', 'userId', 'id', 'email')
   : get(r, 'id', 'participant_id', 'serial_number', 'serialNumber', 'participant_number', 'participantNumber', 'code', 'participant_code');
 const isInactive = (r: RecordRow) => ['inactive', 'archived', 'disabled', 'suspended', 'deleted', 'blocked'].includes(get(r, 'status', 'active_status', 'activeStatus').toLowerCase());
-const COMMITTEE_ROLES = new Set(['committee', 'organizer', 'event_admin', 'workspace_admin', 'registration_officer', 'verification_officer', 'attendance_officer', 'health_officer', 'logistic_officer', 'ceremony_officer', 'documentation_officer', 'publication_officer']);
-const isCommitteeUser = (r: RecordRow) => {
-  const roles = Array.isArray(r.roles) ? r.roles.map(value => String(value).toLowerCase()) : [get(r, 'role').toLowerCase()];
-  return roles.some(role => COMMITTEE_ROLES.has(role));
+// Technical roles are filters for GAS account data, not official committee positions.
+const PRINT_ROLE_LABELS: Record<string,string> = {
+  superadmin:'Superadmin',
+  workspace_admin:'Administrator Operasional',
+  event_admin:'Admin Event / Panitia Inti',
+  kontingen_admin:'Pembina / Pinkon',
+  registration_officer:'Petugas Verifikasi Berkas',
+  attendance_officer:'Petugas Presensi Buper',
+  judge:'Dewan Juri Lomba',
+  health_officer:'Petugas Medis / P3K',
+  logistic_officer:'Petugas Gudang Logistik',
+  ceremony_officer:'Petugas Upacara & Protokoler',
+  documentation_officer:'Petugas Dokumentasi & Media',
+  publication_officer:'Petugas Publikasi & Sponsor',
+  committee:'Panitia Lapangan',
+  viewer:'Pengamat / Tamu Kehormatan',
+  participant:'Peserta Pramuka Aktif',
+};
+const getTechnicalRoles = (person:RecordRow):string[] => {
+  const roles=Array.isArray(person.roles)?person.roles.map(String).map(v=>v.trim().toLowerCase()).filter(Boolean):[];
+  if(roles.length)return Array.from(new Set(roles));
+  const direct=get(person,'role').toLowerCase();
+  return direct?[direct]:[];
+};
+const technicalRoleLabel = (code:string) => PRINT_ROLE_LABELS[code] || code;
+const technicalRoleText = (person:RecordRow, chosenRole='') => {
+  const roles=getTechnicalRoles(person);
+  return chosenRole && roles.includes(chosenRole) ? technicalRoleLabel(chosenRole) : roles.map(technicalRoleLabel).join(', ');
 };
 
 export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void }> = ({ template, onBack }) => {
@@ -110,7 +134,7 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
             : null;
         if (!list) throw new Error('Respons users.list tidak berbentuk daftar akun. Periksa kontrak respons GAS.');
         // Jangan cetak akun yang dinonaktifkan. Role diambil dari penugasan aktif di GAS.
-        setRows((list as RecordRow[]).filter(user => getId(user) && getName(user) && !isInactive(user) && isCommitteeUser(user)));
+        setRows((list as RecordRow[]).filter(user => getId(user) && getName(user) && !isInactive(user)));
       } else {
         const response = await apiTransport.send<{ participants: RecordRow[] }>('participants.list', {}, { timeoutMs: 45000 });
         if (!response.ok || !Array.isArray(response.data?.participants)) throw new Error(response.error?.message || 'GAS tidak mengembalikan daftar peserta.');
@@ -134,7 +158,7 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
   const filtered = useMemo(() => rows.filter(person =>
     (source === 'committee' || !gudep || getGudep(person) === gudep) &&
     (source === 'committee' || !regu || getRegu(person) === regu) &&
-    (!role || getRole(person) === role) &&
+    (!role || (source === 'committee' ? getTechnicalRoles(person).includes(role) : getRole(person) === role)) &&
     (!query || [getName(person), getId(person), getSerial(person, source), get(person, 'email')].some(value => value.toLowerCase().includes(query.toLowerCase())))
   ), [rows, source, gudep, regu, role, query]);
   const selectedRows = filtered.filter(person => selected.includes(getId(person)));
@@ -199,7 +223,7 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
       case 'participant.participant_number': return getSerial(person, source);
       case 'participant.contingent': return getGudep(person);
       case 'participant.regu': return getRegu(person);
-      case 'participant.role': return getRole(person);
+      case 'participant.role': return source === 'committee' ? technicalRoleText(person,role) : getRole(person);
       case 'participant.gender': return get(person, 'gender');
       case 'participant.photo': {
         const imageUrl = get(person, 'profile_photo_url', 'photoUrl', 'photo_url', 'avatar');
@@ -365,10 +389,10 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
       <label className="block text-sm font-semibold">Sumber database
         <select className="mt-1 w-full sm:max-w-md rounded-lg p-2 border bg-white text-slate-900" value={source} onChange={event => { setSource(event.target.value as DataSource); setGudep(''); setRegu(''); setRole(''); setQuery(''); setSelected([]); setQr({}); }}>
           <option value="participants">Peserta terdaftar — Participants</option>
-          <option value="committee">Panitia / petugas — Users + UserRoleAssignments</option>
+          <option value="committee">Akun pengguna / petugas · semua role dari GAS</option>
         </select>
       </label>
-      <p className="mt-1 text-xs text-slate-500">{source === 'committee' ? 'Mengambil akun dan penugasan peran dari GAS. Akses mengikuti hak Administrator; QR berisi ID akun, bukan QR peserta.' : 'Mengambil daftar peserta dari GAS. QR berisi ID peserta.'}</p>
+      <p className="mt-1 text-xs text-slate-500">{source === 'committee' ? 'Mengambil akun dan role dari GAS. Pilih peran di bawah, termasuk Pembina/Pinkon, Juri, dan Pengamat. Role teknis bukan jabatan resmi kepanitiaan. QR tetap memakai ID akun; kartu peserta tetap dari sumber Peserta.' : 'Mengambil daftar peserta dari GAS. QR berisi ID peserta.'}</p>
     </div>
     {error && <p role="alert" className="print:hidden p-3 rounded-xl border border-rose-400 text-rose-600">{error}</p>}
     <div className={`print:hidden grid sm:grid-cols-2 ${source === 'committee' ? 'lg:grid-cols-2' : 'lg:grid-cols-4'} gap-3`}>
@@ -376,12 +400,12 @@ export const IdCardBatchPrint: React.FC<{ template: Template; onBack: () => void
         <label className="text-sm">Gudep / Pangkalan<select className="mt-1 w-full rounded-lg p-2 border bg-white text-slate-900" value={gudep} onChange={event => { setGudep(event.target.value); setRegu(''); setSelected([]); }}><option value="">Semua Gudep</option>{unique(getGudep).map(value => <option key={value} value={value}>{value}</option>)}</select></label>
         <label className="text-sm">Regu<select className="mt-1 w-full rounded-lg p-2 border bg-white text-slate-900" value={regu} onChange={event => { setRegu(event.target.value); setSelected([]); }}><option value="">Semua Regu</option>{unique(getRegu).map(value => <option key={value} value={value}>{value}</option>)}</select></label>
       </>}
-      <label className="text-sm">{source === 'committee' ? 'Peran panitia / petugas' : 'Golongan / Jabatan'}<select className="mt-1 w-full rounded-lg p-2 border bg-white text-slate-900" value={role} onChange={event => { setRole(event.target.value); setSelected([]); }}><option value="">Semua peran</option>{unique(getRole).map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+      <label className="text-sm">{source === 'committee' ? 'Role teknis pengguna' : 'Golongan / Jabatan'}<select className="mt-1 w-full rounded-lg p-2 border bg-white text-slate-900" value={role} onChange={event => { setRole(event.target.value); setSelected([]); }}><option value="">Semua peran</option>{source === 'committee' ? Array.from(new Set([...Object.keys(PRINT_ROLE_LABELS), ...rows.flatMap(getTechnicalRoles)])).map(code => <option key={code} value={code}>{technicalRoleLabel(code)} ({rows.filter(person=>getTechnicalRoles(person).includes(code)).length})</option>) : unique(getRole).map(value => <option key={value} value={value}>{value}</option>)}</select></label>
       <label className="text-sm">Cari nama / nomor / email<input className="mt-1 w-full rounded-lg p-2 border bg-white text-slate-900" value={query} onChange={event => setQuery(event.target.value)} placeholder="Cari nama, ID, atau email" /></label>
     </div>
     <div className="print:hidden border rounded-xl p-3">
-      <div className="flex gap-2 justify-between flex-wrap items-center"><span className="text-sm">{loading ? `Memuat ${source === 'committee' ? 'akun panitia/petugas' : 'peserta'} dari GAS...` : `${filtered.length} ${source === 'committee' ? 'akun' : 'peserta'} ditemukan · ${selectedRows.length} dipilih`}</span><div className="flex gap-2"><button type="button" disabled={loading || !filtered.length} className="text-sm border rounded-lg px-3 py-1.5 disabled:opacity-50" onClick={() => setSelected(Array.from(new Set(filtered.map(getId))))}>Pilih Semua Hasil</button><button type="button" className="text-sm border rounded-lg px-3 py-1.5" onClick={() => setSelected([])}>Batalkan</button></div></div>
-      <div className="max-h-60 overflow-y-auto mt-3 space-y-1">{filtered.map(person => <label key={getId(person)} className="flex items-center gap-3 rounded-lg border border-slate-200 dark:border-white/10 p-2 text-sm"><input type="checkbox" checked={selected.includes(getId(person))} onChange={() => toggle(getId(person))}/><span className="flex-1">{getName(person)} <span className="text-slate-500">· {source === 'committee' ? getRole(person) : `${getGudep(person)} · ${getRegu(person)} · ${getRole(person)}`}</span>{source === 'committee' && get(person, 'email') && <span className="block text-xs text-slate-500">{get(person, 'email')}</span>}</span><span className="font-mono text-xs">{getSerial(person, source) || 'Nomor belum tersedia'}</span></label>)}</div>
+      <div className="flex gap-2 justify-between flex-wrap items-center"><span className="text-sm">{loading ? `Memuat ${source === 'committee' ? 'akun pengguna/petugas' : 'peserta'} dari GAS...` : `${filtered.length} ${source === 'committee' ? 'akun' : 'peserta'} ditemukan · ${selectedRows.length} dipilih`}</span><div className="flex gap-2"><button type="button" disabled={loading || !filtered.length} className="text-sm border rounded-lg px-3 py-1.5 disabled:opacity-50" onClick={() => setSelected(Array.from(new Set(filtered.map(getId))))}>Pilih Semua Hasil</button><button type="button" className="text-sm border rounded-lg px-3 py-1.5" onClick={() => setSelected([])}>Batalkan</button></div></div>
+      <div className="max-h-60 overflow-y-auto mt-3 space-y-1">{filtered.map(person => <label key={getId(person)} className="flex items-center gap-3 rounded-lg border border-slate-200 dark:border-white/10 p-2 text-sm"><input type="checkbox" checked={selected.includes(getId(person))} onChange={() => toggle(getId(person))}/><span className="flex-1">{getName(person)} <span className="text-slate-500">· {source === 'committee' ? technicalRoleText(person) : `${getGudep(person)} · ${getRegu(person)} · ${getRole(person)}`}</span>{source === 'committee' && get(person, 'email') && <span className="block text-xs text-slate-500">{get(person, 'email')}</span>}</span><span className="font-mono text-xs">{getSerial(person, source) || 'Nomor belum tersedia'}</span></label>)}</div>
       {!loading && !error && filtered.length === 0 && <p className="mt-3 text-sm text-slate-500">Tidak ada data pada sumber ini atau akun tidak memenuhi filter.</p>}
     </div>
     {!serialOk && selectedRows.length > 0 && <p role="alert" className="print:hidden text-amber-600 text-sm">Satu atau beberapa nomor identitas tidak tersedia/duplikat di GAS. Cetak ditahan agar tidak menghasilkan nomor palsu.</p>}
