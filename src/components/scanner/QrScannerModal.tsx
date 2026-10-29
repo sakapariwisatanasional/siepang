@@ -93,11 +93,37 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   const [givenTypes, setGivenTypes] = useState<Set<PeerAppreciationType>>(new Set());
   const [checkingAppreciations, setCheckingAppreciations] = useState(false);
 
+  const [pointKind, setPointKind] = useState<'schedule' | 'activity' | null>(null);
+  const [pointOptions, setPointOptions] = useState<Array<{id:string;name:string;xp:number}>>([]);
+  const [pointOptionId, setPointOptionId] = useState('');
+  const [pointLoading, setPointLoading] = useState(false);
+  const [pointBusy, setPointBusy] = useState(false);
+  const [pointError, setPointError] = useState('');
+  const [pointResult, setPointResult] = useState('');
+  const [pointReload, setPointReload] = useState(0);
+  const pointSubmitLock = useRef(false);
   const currentUser = authService.getCurrentUser();
   const currentRole = currentUser?.role || 'viewer';
   const canViewHealth = currentRole === 'health_officer' || currentRole === 'workspace_admin' || currentRole === 'superadmin';
   const canCheckIn = currentRole === 'registration_officer' || currentRole === 'workspace_admin' || currentRole === 'superadmin';
-  const canTakeAttendance = currentRole === 'attendance_officer' || currentRole === 'committee' || currentRole === 'workspace_admin' || currentRole === 'superadmin';
+  const assignedRoles = [currentRole, ...(Array.isArray((currentUser as any)?.roles) ? (currentUser as any).roles : [])];
+  const canTakeAttendance = assignedRoles.some(role => ['attendance_officer','registration_officer','committee','event_admin','workspace_admin','superadmin'].includes(role));
+
+  useEffect(() => {
+    if (!isOpen || !pointKind) return;
+    let cancelled = false;
+    setPointOptions([]); setPointOptionId(''); setPointError(''); setPointResult(''); setPointLoading(true);
+    void apiTransport.send<any[]>(pointKind === 'activity' ? 'activities.list' : 'schedules.list', {}).then(response => {
+      if (!response.ok || !Array.isArray(response.data)) throw new Error(response.error?.message || 'GAS tidak mengembalikan daftar kegiatan.');
+      const options = response.data.filter(row => !row.archived && !row.archived_at && !['archived','cancelled','canceled','inactive','deleted'].includes(String(row.status || '').toLowerCase())).map(row => ({
+        id: String(row.id || ''), name: String(pointKind === 'activity' ? row.name || row.title || '' : row.title || ''),
+        xp: Number(pointKind === 'activity' ? row.pointRule ?? row.xp_points ?? row.xp_reward ?? 0 : row.xpReward ?? row.xp_reward ?? 0),
+      })).filter(row => row.id && row.name);
+      if (!cancelled) setPointOptions(options);
+    }).catch(error => {if (!cancelled) setPointError(error instanceof Error ? error.message : String(error));}).finally(() => {if (!cancelled) setPointLoading(false);});
+    return () => {cancelled = true;};
+  }, [isOpen, pointKind, pointReload]);
+  useEffect(() => {if (!isOpen) setPointKind(null);}, [isOpen]);
 
   const handleScanCode = async (rawCode: string) => {
     setActionErrorMessage(null);
@@ -358,22 +384,27 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     }
   };
 
-  const handleAttendance = async () => {
-    if (!scannedParticipant) return;
+  const handleAttendance = () => {setPointResult('');setPointKind('schedule');};
+  const saveParticipantPoints = async () => {
+    if (!scannedParticipant || !pointKind || !pointOptionId || pointSubmitLock.current) return;
+    const selected = pointOptions.find(option => option.id === pointOptionId);
+    if (!selected) return;
+    pointSubmitLock.current = true; setPointBusy(true); setPointError(''); setPointResult('');
     try {
-      const res = await attendanceService.recordAttendance(scannedParticipant.code);
+      const response = await apiTransport.send<any>(pointKind === 'activity' ? 'activity.attendance.record' : 'agenda.attendance.record', {
+        participant_id: scannedParticipant.id,
+        ...(pointKind === 'activity' ? {activity_id: selected.id} : {schedule_id: selected.id}),
+      });
+      const saved = response.data;
+      if (!response.ok || !saved?.success || !saved?.attendance_recorded || String(saved.participant_id) !== scannedParticipant.id || String(pointKind === 'activity' ? saved.activity_id : saved.schedule_id) !== selected.id) throw new Error(response.error?.message || 'GAS belum mengonfirmasi kehadiran dan poin peserta.');
+      const awarded = Number(saved.xp_awarded || 0);
+      setPointResult(`${selected.name}: ${awarded > 0 ? `berhasil, tambahan ${awarded} XP.` : saved.duplicate ? 'sudah tercatat, tanpa tambahan XP pada scan ulang.' : 'kehadiran tercatat, hadiah XP bernilai 0 atau fitur XP dinonaktifkan.'}`);
       participantService.invalidateScannerIdentityCache(scannedParticipant.id);
-      setActionSuccessMessage(
-        `✅ Presensi tersimpan di GAS untuk ${scannedParticipant.name}. XP hanya diberikan setelah transaksi poin tercatat.`
-      );
-      setTimeout(() => {
-        setActionSuccessMessage(null);
-        setScannedParticipant(null);
-        onClose();
-      }, 1500);
-    } catch (err: any) {
-      setActionErrorMessage(err.message);
-    }
+      if (saved.xp_balance !== null && saved.xp_balance !== undefined) setScannedParticipant(previous => previous ? {...previous,xp:Number(saved.xp_balance)} : previous);
+      void participantService.loadParticipants().catch(error => console.warn('Poin tersimpan; pembaruan tampilan tertunda:',error));
+    } catch (error) {
+      setPointError(error instanceof Error ? error.message : String(error));
+    } finally {pointSubmitLock.current=false;setPointBusy(false);}
   };
 
   const handleOpenPeerModal = async () => {
@@ -575,9 +606,15 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                     >
                       <div className="flex items-center gap-2.5">
                         <CalendarCheck className="w-4 h-4" />
-                        <span>Catat Presensi Kegiatan Lapangan</span>
+                        <span>Presensi &amp; XP Jadwal Kegiatan</span>
                       </div>
                       <ChevronRight className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  {canTakeAttendance && (
+                    <button type="button" onClick={() => {setPointResult('');setPointKind('activity');}} className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-indigo-700 hover:bg-indigo-600 text-white font-semibold text-xs min-h-[48px]">
+                      <span>Beri XP Aktivitas Perkemahan</span><ChevronRight className="w-4 h-4" />
                     </button>
                   )}
 
@@ -647,6 +684,33 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
       )}
 
       {/* Peer Appreciation Modal */}
+      {pointKind && scannedParticipant && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-3 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Poin kegiatan peserta">
+          <div className="w-full max-w-lg max-h-[90dvh] overflow-y-auto rounded-3xl bg-white dark:bg-[#141418] p-5 space-y-4 text-slate-900 dark:text-white">
+            <div className="flex justify-between gap-3 items-start">
+              <h3 className="font-bold text-lg">{pointKind === 'activity' ? 'XP Aktivitas Perkemahan' : 'XP Jadwal Kegiatan'}</h3>
+              <button type="button" disabled={pointBusy} onClick={() => setPointKind(null)} aria-label="Tutup pilihan poin" className="min-w-[44px] min-h-[44px] p-3"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="font-semibold">{scannedParticipant.name}</p>
+            <p className="text-sm text-slate-600 dark:text-slate-300">Pilih kegiatan yang diikuti peserta. XP mengikuti pengaturan GAS dan diberikan sekali per item.</p>
+            <label className="block text-sm font-semibold">{pointKind === 'activity' ? 'Pilih aktivitas perkemahan' : 'Pilih jadwal kegiatan'}
+              <select value={pointOptionId} disabled={pointLoading || pointBusy} onChange={event => {setPointOptionId(event.target.value);setPointResult('');}} className="mt-2 block w-full p-3 min-h-[48px] border rounded-xl bg-white text-slate-900">
+                <option value="">{pointLoading ? 'Memuat dari GAS…' : 'Pilih kegiatan'}</option>
+                {pointOptions.map(option => <option key={option.id} value={option.id}>{option.name} · {option.xp} XP</option>)}
+              </select>
+            </label>
+            {!pointLoading && !pointError && pointOptions.length === 0 && <p role="status">Belum ada kegiatan aktif yang terbaca dari GAS.</p>}
+            {pointError && <p role="alert" className="text-red-700 dark:text-red-300">{pointError}</p>}
+            {pointResult && <p role="status" className="rounded-xl p-3 bg-emerald-50 text-emerald-800">{pointResult}</p>}
+            <button type="button" disabled={!pointOptionId || pointBusy || pointLoading} onClick={saveParticipantPoints} className="w-full min-h-[48px] p-3 rounded-xl bg-emerald-700 text-white font-bold disabled:opacity-40">{pointBusy ? 'Menyimpan ke GAS…' : 'Catat Kehadiran & Berikan XP'}</button>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" disabled={pointLoading || pointBusy} onClick={() => setPointReload(value => value+1)} className="p-3 rounded-xl border">Muat ulang daftar</button>
+              <button type="button" disabled={pointBusy} onClick={() => {setPointKind(null);setScannedParticipant(null);setActionErrorMessage(null);setActionSuccessMessage(null);setScanPaused(false);setCameraRetry(value => value+1);}} className="p-3 rounded-xl border">Scan Peserta Berikutnya</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showPeerModal && scannedParticipant && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <div className="w-full max-w-sm bg-white dark:bg-[#141418] border border-amber-500/30 rounded-[28px] p-5 space-y-4 shadow-2xl">
