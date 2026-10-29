@@ -1,57 +1,504 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { apiTransport } from '../../services/apiTransport';
+/**
+ * @license
+ * SiEpang - Public Visitor Self-Registration & Digital Pass
+ * Mobile-friendly public visitor portal:
+ * - Neutral design system styling (zero hardcoded red/event-specific borders)
+ * - Dynamic event binding
+ * - Secure digital pass generation with dynamic QR
+ */
 
-type Guest = { id: string; full_name: string; institution?: string; category?: string; registration_code?: string };
-type Visit = { id: string; visitor_id: string; visitor_name?: string; checkin_at: string; checkout_at?: string; status: string; gate_name?: string; officer_name?: string };
-const formatTime = (value?: string) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString('id-ID') : '—';
-export function visitorAttendanceRows(visitors: Guest[], visits: Visit[]) {
-  const people = new Map(visitors.map(v => [v.id, v]));
-  const latest = new Map<string, Visit>();
-  for (const visit of visits) {
-    if (!visit.visitor_id || !visit.checkin_at || !Number.isFinite(Date.parse(visit.checkin_at)) || !['CHECKED_IN', 'CHECKED_OUT'].includes(visit.status)) continue;
-    const previous = latest.get(visit.visitor_id);
-    if (!previous || Date.parse(visit.checkin_at) >= Date.parse(previous.checkin_at)) latest.set(visit.visitor_id, visit);
-  }
-  return Array.from(latest.values()).map(visit => ({ ...visit, guest: people.get(visit.visitor_id) })).sort((a, b) => Date.parse(b.checkin_at) - Date.parse(a.checkin_at));
+import React, { useState, useRef } from 'react';
+import {
+  Users,
+  Search,
+  CheckCircle2,
+  Calendar,
+  Clock,
+  Car,
+  Phone,
+  QrCode,
+  Printer,
+  X,
+  Info,
+} from 'lucide-react';
+import { visitorManagementService } from '../../services/visitorManagementService';
+import {
+  VisitorRegistration,
+  VisitorCategory,
+  PersonBeingVisited,
+} from '../../types';
+import { eventService } from '../../services/eventService';
+
+interface VisitorPublicRegistrationModalProps {
+  onClose: () => void;
 }
-export const VisitorAttendancePage: React.FC = () => {
-  const [rows, setRows] = useState<ReturnType<typeof visitorAttendanceRows>>([]);
-  const [busy, setBusy] = useState(true);
-  const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState('');
-  const [updated, setUpdated] = useState('');
-  const [query, setQuery] = useState('');
-  const [status, setStatus] = useState('ALL');
-  const running = useRef(false);
-  const alive = useRef(false);
-  const load = useCallback(async () => {
-    if (running.current) return;
-    running.current = true; setBusy(true);
+
+export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationModalProps> = ({
+  onClose,
+}) => {
+  const VISITOR_CATEGORIES: Array<{ value: VisitorCategory; label: string }> = [
+    { value: 'Orang Tua / Wali', label: 'Orang Tua / Wali' },
+    { value: 'Keluarga', label: 'Keluarga' },
+    { value: 'Tamu Undangan', label: 'Tamu Undangan' },
+    { value: 'Umum', label: 'Masyarakat Umum' },
+    { value: 'Alumni', label: 'Purna / Alumni' },
+    { value: 'Mabiran', label: 'Mabiran' },
+    { value: 'Mabigus', label: 'Mabigus' },
+    { value: 'Mitra', label: 'Mitra / Sponsor' },
+    { value: 'Media', label: 'Media' },
+    { value: 'VIP', label: 'VIP' },
+    { value: 'VVIP', label: 'VVIP' },
+    { value: 'Lainnya', label: 'Lainnya' },
+  ];
+
+  const currentEvent = eventService.getCurrentEvent();
+  const eventName = currentEvent.name && currentEvent.name !== 'Belum Dikonfigurasi'
+    ? currentEvent.name
+    : 'Kegiatan Perkemahan';
+
+  // Registration step state
+  const [step, setStep] = useState<'form' | 'success'>('form');
+  const [submittedVisitor, setSubmittedVisitor] = useState<VisitorRegistration | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const submitLock = useRef(false);
+  const requestKey = useRef('');
+
+  // Form State
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [category, setCategory] = useState<VisitorCategory>('Orang Tua / Wali');
+  const [visitType, setVisitType] = useState<'VISITOR' | 'SPEAKER'>('VISITOR');
+  const [speakerAgenda, setSpeakerAgenda] = useState('');
+  const [speakerTopic, setSpeakerTopic] = useState('');
+  const [identityType, setIdentityType] = useState<'KTP' | 'SIM' | 'Kartu Pegawai' | 'Paspor' | 'Lainnya'>('KTP');
+  const [identityNumber, setIdentityNumber] = useState('');
+  const [organization, setOrganization] = useState('');
+  const [purpose, setPurpose] = useState('Mengunjungi peserta / berkunjung ke perkemahan');
+  const [visitDate, setVisitDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [expectedArrival, setExpectedArrival] = useState('09:00');
+  const [expectedDeparture, setExpectedDeparture] = useState('14:00');
+  const [accompanyingCount, setAccompanyingCount] = useState(0);
+  const [vehicleInfo, setVehicleInfo] = useState('');
+
+  // Person visited search state
+  const [personSearchQuery, setPersonSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<PersonBeingVisited[]>([]);
+  const [selectedPerson, setSelectedPerson] = useState<PersonBeingVisited | null>(null);
+  const [relationship, setRelationship] = useState('Keluarga / Kerabat');
+
+  const categoryConfig: Record<string, { description: string; organizationLabel: string; organizationRequired: boolean; purposeLabel: string; purposePlaceholder: string; showPerson: boolean; showRelationship: boolean; relationshipLabel: string }> = {
+    'Orang Tua / Wali': { description: 'Lengkapi hubungan dengan peserta yang akan dikunjungi.', organizationLabel: 'Sekolah / Gudep / Asal Daerah (Opsional)', organizationRequired: false, purposeLabel: 'Keperluan kunjungan', purposePlaceholder: 'Contoh: mengunjungi putra/putri peserta', showPerson: true, showRelationship: true, relationshipLabel: 'Hubungan dengan peserta' },
+    'Keluarga': { description: 'Pilih peserta yang akan dikunjungi dan jelaskan hubungan keluarga.', organizationLabel: 'Asal Daerah (Opsional)', organizationRequired: false, purposeLabel: 'Keperluan kunjungan', purposePlaceholder: 'Contoh: kunjungan keluarga', showPerson: true, showRelationship: true, relationshipLabel: 'Hubungan keluarga' },
+    'Tamu Undangan': { description: 'Cantumkan instansi pengundang atau pihak yang menjadi tujuan kunjungan.', organizationLabel: 'Instansi / Asal Undangan', organizationRequired: true, purposeLabel: 'Agenda / tujuan undangan', purposePlaceholder: 'Tuliskan agenda atau alasan undangan', showPerson: true, showRelationship: false, relationshipLabel: '' },
+    'Umum': { description: 'Formulir kunjungan umum untuk keperluan di area perkemahan.', organizationLabel: 'Instansi / Asal Daerah (Opsional)', organizationRequired: false, purposeLabel: 'Tujuan kunjungan', purposePlaceholder: 'Tuliskan tujuan kunjungan', showPerson: true, showRelationship: false, relationshipLabel: '' },
+    'Alumni': { description: 'Cantumkan asal pangkalan atau angkatan jika relevan.', organizationLabel: 'Pangkalan / Angkatan / Asal Daerah', organizationRequired: false, purposeLabel: 'Tujuan kunjungan alumni', purposePlaceholder: 'Contoh: silaturahmi atau kunjungan alumni', showPerson: true, showRelationship: false, relationshipLabel: '' },
+    'Mabiran': { description: 'Untuk kunjungan unsur Majelis Pembimbing Ranting.', organizationLabel: 'Kwartir Ranting / Instansi', organizationRequired: true, purposeLabel: 'Agenda kunjungan', purposePlaceholder: 'Tuliskan agenda kedinasan atau koordinasi', showPerson: true, showRelationship: true, relationshipLabel: 'Jabatan / peran' },
+    'Mabigus': { description: 'Untuk kunjungan unsur Majelis Pembimbing Gugus Depan.', organizationLabel: 'Gugus Depan / Sekolah / Instansi', organizationRequired: true, purposeLabel: 'Agenda kunjungan', purposePlaceholder: 'Tuliskan agenda pembinaan atau koordinasi', showPerson: true, showRelationship: true, relationshipLabel: 'Jabatan / peran' },
+    'Mitra': { description: 'Untuk mitra, sponsor, atau pihak kerja sama kegiatan.', organizationLabel: 'Nama Mitra / Perusahaan / Instansi', organizationRequired: true, purposeLabel: 'Agenda kerja sama', purposePlaceholder: 'Tuliskan tujuan pertemuan atau bentuk kerja sama', showPerson: true, showRelationship: false, relationshipLabel: '' },
+    'Media': { description: 'Untuk wartawan atau perwakilan media yang melakukan peliputan.', organizationLabel: 'Nama Media / Redaksi', organizationRequired: true, purposeLabel: 'Agenda peliputan', purposePlaceholder: 'Tuliskan kegiatan atau agenda yang akan diliput', showPerson: true, showRelationship: true, relationshipLabel: 'Nama narahubung / koordinator' },
+    'VIP': { description: 'Untuk tamu VIP; isi instansi dan jabatan agar penerimaan dapat dikoordinasikan.', organizationLabel: 'Instansi / Lembaga', organizationRequired: true, purposeLabel: 'Agenda kunjungan VIP', purposePlaceholder: 'Tuliskan agenda kunjungan', showPerson: true, showRelationship: true, relationshipLabel: 'Jabatan / protokol pendamping' },
+    'VVIP': { description: 'Untuk tamu VVIP; lengkapi informasi protokol dan jadwal kunjungan.', organizationLabel: 'Instansi / Lembaga', organizationRequired: true, purposeLabel: 'Agenda kunjungan VVIP', purposePlaceholder: 'Tuliskan agenda resmi dan kebutuhan penerimaan', showPerson: true, showRelationship: true, relationshipLabel: 'Jabatan / petugas protokol' },
+    'Lainnya': { description: 'Jelaskan kategori atau kebutuhan kunjungan secara spesifik.', organizationLabel: 'Instansi / Asal Daerah (Opsional)', organizationRequired: false, purposeLabel: 'Rincian tujuan kunjungan', purposePlaceholder: 'Jelaskan kategori dan tujuan kunjungan secara spesifik', showPerson: false, showRelationship: false, relationshipLabel: '' },
+  };
+  const activeCategory = categoryConfig[category] || categoryConfig['Umum'];
+  const isFamilyVisit = category === 'Orang Tua / Wali' || category === 'Keluarga';
+
+  const handleSearchPerson = (q: string) => {
+    setPersonSearchQuery(q);
+    const results = visitorManagementService.searchPersonToVisit(q);
+    setSearchResults(results);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !phone.trim() || submitLock.current) return;
+    if (activeCategory.organizationRequired && !organization.trim()) { setSubmitError('Instansi wajib diisi untuk kategori kunjungan ini.'); return; }
+    if (isFamilyVisit && !selectedPerson) { setSubmitError('Pilih peserta yang akan dikunjungi untuk kategori ini.'); return; }
+    if ((category === 'Lainnya' || category === 'Media' || category === 'Mitra' || category === 'VIP' || category === 'VVIP' || category === 'Mabiran' || category === 'Mabigus' || category === 'Tamu Undangan') && !purpose.trim()) { setSubmitError('Tujuan atau agenda kunjungan wajib diisi untuk kategori ini.'); return; }
+    if (visitType === 'SPEAKER' && !speakerAgenda.trim()) { setSubmitError('Agenda yang diisi narasumber wajib disebutkan.'); return; }
+    submitLock.current = true;
+    setIsSubmitting(true);
+    setSubmitError('');
+    if (!requestKey.current) requestKey.current = `visit_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     try {
-      const result = await apiTransport.send<{ visitors: Guest[]; visits: Visit[] }>('visitors.gate.list', {}, { timeoutMs: 45000 });
-      if (!result.ok || !result.data) throw new Error(result.error?.message || 'GAS gagal membaca daftar hadir tamu.');
-      if (!Array.isArray(result.data.visitors) || !Array.isArray(result.data.visits)) throw new Error('Format data kehadiran dari GAS tidak sesuai.');
-      if (alive.current) { setRows(visitorAttendanceRows(result.data.visitors, result.data.visits)); setError(''); setLoaded(true); setUpdated(new Date().toLocaleString('id-ID')); }
-    } catch (e: any) { if (alive.current) setError(e?.message || 'Gagal membaca kehadiran tamu.'); }
-    finally { running.current = false; if (alive.current) setBusy(false); }
-  }, []);
-  useEffect(() => {
-    alive.current = true; void load();
-    const refresh = () => { if (!document.hidden) void load(); };
-    const timer = window.setInterval(refresh, 60000);
-    window.addEventListener('focus', refresh);
-    return () => { alive.current = false; window.clearInterval(timer); window.removeEventListener('focus', refresh); };
-  }, [load]);
-  const visible = rows.filter(r => (status === 'ALL' || r.status === status) && `${r.guest?.full_name || r.visitor_name || ''} ${r.guest?.institution || ''} ${r.guest?.registration_code || ''}`.toLowerCase().includes(query.toLowerCase()));
-  return <main className="mx-auto max-w-7xl space-y-4 px-3 py-4 sm:px-5 dark:text-white">
-    <header className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#141418]"><div><h1 className="text-xl font-bold">Daftar Hadir Tamu</h1><p className="mt-1 text-sm text-slate-500">Kehadiran berdasarkan check-in gerbang pada event aktif. Menampilkan kunjungan terakhir setiap tamu.</p></div><button type="button" disabled={busy} onClick={() => void load()} className="rounded-xl border px-4 py-2 text-sm disabled:opacity-50">{busy ? 'Memuat…' : 'Perbarui Kehadiran'}</button></header>
-    {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-900">{error}{loaded ? ' Data sebelumnya tetap ditampilkan; pembaruan terakhir gagal.' : ' Daftar kehadiran belum berhasil dimuat.'}</p>}
-    {!loaded && busy && <p role="status" className="text-sm text-slate-500">Membaca daftar hadir tamu dari GAS…</p>}
-    {loaded && <>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">{[['Pernah hadir', rows.length], ['Masih di lokasi', rows.filter(r => r.status === 'CHECKED_IN').length], ['Sudah pulang', rows.filter(r => r.status === 'CHECKED_OUT').length]].map(([label, value]) => <div key={label} className="rounded-xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#141418]"><p className="text-sm text-slate-500">{label}</p><strong className="text-2xl">{value}</strong></div>)}</div>
-      <div className="flex flex-wrap gap-2"><input aria-label="Cari tamu" placeholder="Cari nama, instansi, atau kode tamu" value={query} onChange={e => setQuery(e.target.value)} className="min-w-40 flex-1 rounded-xl border bg-transparent px-3 py-2 text-sm"/><select aria-label="Filter kehadiran tamu" value={status} onChange={e => setStatus(e.target.value)} className="rounded-xl border bg-white px-3 py-2 text-sm text-slate-900"><option value="ALL">Semua tamu yang pernah hadir</option><option value="CHECKED_IN">Masih di lokasi</option><option value="CHECKED_OUT">Sudah pulang</option></select></div>
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-[#141418]"><table className="w-full text-left text-sm"><thead><tr>{['Nama Tamu / Kode', 'Instansi / Kategori', 'Status', 'Check-in', 'Check-out', 'Gerbang', 'Petugas'].map(h => <th className="p-3" key={h}>{h}</th>)}</tr></thead><tbody>{visible.map(r => <tr key={r.visitor_id} className="border-t border-slate-200 dark:border-white/10"><td className="p-3 font-semibold">{r.guest?.full_name || r.visitor_name || 'Nama belum tersedia'}<p className="text-xs font-normal text-slate-500">{r.guest?.registration_code || r.visitor_id}</p></td><td className="p-3">{r.guest?.institution || '—'}<p className="text-xs text-slate-500">{r.guest?.category || '—'}</p></td><td className="p-3">{r.status === 'CHECKED_IN' ? 'Masih di lokasi' : 'Sudah pulang'}</td><td className="p-3">{formatTime(r.checkin_at)}</td><td className="p-3">{formatTime(r.checkout_at)}</td><td className="p-3">{r.gate_name || '—'}</td><td className="p-3">{r.officer_name || '—'}</td></tr>)}</tbody></table>{!visible.length && <p className="p-5 text-sm text-slate-500">{rows.length ? 'Tidak ada tamu sesuai filter.' : 'Belum ada check-in tamu yang tercatat.'}</p>}</div>
-      <p aria-live="polite" className="text-xs text-slate-500">{visible.length} tamu ditampilkan. Pembacaan terakhir: {updated}. Pembaruan otomatis setiap 60 detik saat halaman terlihat.</p>
-    </>}
-  </main>;
+    const registered = await visitorManagementService.registerVisitor({
+      name: name.trim(),
+      phone: phone.trim(),
+      category,
+      visitType, speakerAgenda, speakerTopic,
+      identityType,
+      identityNumber,
+      organization,
+      personVisited: selectedPerson || { type: 'unit', targetName: 'Kunjungan Umum', targetDetail: 'Area publik perkemahan' },
+      relationship,
+      visitDate,
+      expectedArrival,
+      expectedDeparture,
+      accompanyingPersonsCount: Number(accompanyingCount),
+      vehicleInfo,
+      purpose,
+    }, undefined, requestKey.current);
+
+    setSubmittedVisitor(registered);
+    setStep('success');
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : String(error));
+    } finally {
+      submitLock.current = false;
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/70 backdrop-blur-sm p-2 sm:p-4 overflow-y-auto animate-in fade-in">
+      <div className="w-full max-w-xl bg-white dark:bg-[#141418] border border-red-100 dark:border-white/10 rounded-2xl sm:rounded-[28px] p-4 sm:p-6 shadow-2xl space-y-4 max-h-[calc(100dvh-1rem)] sm:max-h-[92vh] overflow-y-auto text-[#171717] dark:text-slate-100">
+        <div className="flex items-center justify-between border-b border-[#ECECEF] dark:border-white/10 pb-3">
+          <div className="flex items-center gap-3">
+            <span className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-800 dark:text-slate-200 font-bold flex items-center justify-center text-lg">
+              ⚜️
+            </span>
+            <div>
+              <h3 className="text-base font-bold text-[#171717] dark:text-white tracking-tight">
+                Pendaftaran Kunjungan Bumi Perkemahan
+              </h3>
+              <p className="text-xs text-[#6B7280] dark:text-slate-400">{eventName}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1 rounded-xl cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {step === 'form' ? (
+          <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+            {/* Visiting Notice */}
+            <div className="p-3 bg-slate-50 dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 text-[11px] space-y-1">
+              <div className="font-bold flex items-center gap-1.5 text-slate-800 dark:text-slate-200">
+                <Info className="w-3.5 h-3.5 text-blue-500" />
+                <span>Ketentuan Kunjungan Resmi</span>
+              </div>
+              <p className="text-slate-600 dark:text-slate-400">
+                Jam kunjungan mengikuti ketentuan panitia. Seluruh pengunjung wajib menunjukkan Visitor Pass dan mematuhi tata tertib perkemahan.
+              </p>
+            </div>
+
+            <fieldset className="space-y-2 rounded-2xl border border-slate-200 dark:border-white/10 p-3">
+              <legend className="px-1 font-bold">Jenis Registrasi</legend>
+              <label className="flex items-center gap-2"><input type="radio" name="visitType" checked={visitType === 'VISITOR'} onChange={() => setVisitType('VISITOR')} /> Pengunjung</label>
+              <label className="flex items-center gap-2"><input type="radio" name="visitType" checked={visitType === 'SPEAKER'} onChange={() => setVisitType('SPEAKER')} /> Narasumber / Pemateri</label>
+              {visitType === 'SPEAKER' && <div className="space-y-2 pt-2">
+                <label className="block">Agenda / sesi yang diisi *</label>
+                <input required value={speakerAgenda} onChange={e => setSpeakerAgenda(e.target.value)} placeholder="Contoh: Giat Wawasan Kebangsaan" className="w-full rounded-xl border border-slate-300 bg-transparent p-2 dark:border-white/20" />
+                <label className="block">Topik / judul materi</label>
+                <input value={speakerTopic} onChange={e => setSpeakerTopic(e.target.value)} placeholder="Judul materi" className="w-full rounded-xl border border-slate-300 bg-transparent p-2 dark:border-white/20" />
+              </div>}
+            </fieldset>
+
+            {/* Step 1: Visitor Identity */}
+            <div className="space-y-2.5">
+              <h4 className="font-bold text-[#171717] dark:text-white uppercase text-[11px] tracking-wider">
+                1. Identitas Pengunjung
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-slate-600 dark:text-slate-400 font-semibold block mb-1">Nama Lengkap:</label>
+                  <input
+                    type="text"
+                    required
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    placeholder="Nama Lengkap"
+                    className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none focus:border-[#C62828] focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/40"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-slate-600 dark:text-slate-400 font-semibold block mb-1">Nomor WhatsApp / HP:</label>
+                  <input
+                    type="tel"
+                    required
+                    value={phone}
+                    onChange={e => setPhone(e.target.value)}
+                    placeholder="08xxxxxxxxxx"
+                    className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono outline-none focus:border-[#C62828] focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/40"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-slate-600 dark:text-slate-400 font-semibold block mb-1">Kategori Kunjungan:</label>
+                  <select
+                    value={category}
+                    onChange={e => {
+                      const nextCategory = e.target.value as VisitorCategory;
+                      setCategory(nextCategory);
+                      setSubmitError('');
+                      if (nextCategory === 'Lainnya') {
+                        setSelectedPerson(null);
+                        setPersonSearchQuery('');
+                        setSearchResults([]);
+                      }
+                    }}
+                    className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-semibold outline-none"
+                  >
+                    {VISITOR_CATEGORIES.map(option => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-slate-600 dark:text-slate-400 font-semibold block mb-1">{activeCategory.organizationLabel}{activeCategory.organizationRequired ? ' *' : ''}:</label>
+                  <input
+                    type="text"
+                    required={activeCategory.organizationRequired}
+                    value={organization}
+                    onChange={e => setOrganization(e.target.value)}
+                    placeholder={activeCategory.organizationRequired ? activeCategory.organizationLabel.replace(/ \(Opsional\)/, '') : 'Nama Instansi / Kwartir / Sekolah (jika ada)'}
+                    className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none focus:border-[#C62828] focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/40"
+                  />
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.03] px-3 py-2.5">
+                <div className="font-semibold text-slate-800 dark:text-slate-200">Formulir {VISITOR_CATEGORIES.find(option => option.value === category)?.label || category}</div>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">{activeCategory.description}</p>
+              </div>
+            </div>
+
+            {/* Step 2: Person Being Visited - shown only for relevant categories */}
+            {activeCategory.showPerson && <div className="space-y-2.5 pt-2 border-t border-[#ECECEF] dark:border-white/10">
+              <h4 className="font-bold text-[#171717] dark:text-white uppercase text-[11px] tracking-wider">
+                2. {category === 'Media' ? 'Narahubung / Koordinator Peliputan' : category === 'VIP' || category === 'VVIP' ? 'Pihak Penerima / Protokol (Opsional)' : visitType === 'SPEAKER' ? 'Pihak Koordinasi di Perkemahan (Opsional)' : 'Siapa yang Dikunjungi di Perkemahan? (Opsional)'}
+              </h4>
+
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={personSearchQuery}
+                    onChange={e => handleSearchPerson(e.target.value)}
+                    placeholder={category === 'Media' ? 'Cari narahubung atau koordinator...' : category === 'VIP' || category === 'VVIP' ? 'Cari pihak penerima atau petugas protokol...' : 'Cari nama peserta atau kontingen...'}
+                    className="w-full pl-8 pr-3 py-2 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white text-xs placeholder:text-slate-400 outline-none focus:border-[#C62828] focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/40"
+                  />
+                </div>
+
+                {searchResults.length > 0 && (
+                  <div className="p-1 bg-white dark:bg-[#1a1a20] rounded-xl border border-[#ECECEF] dark:border-white/10 space-y-1 max-h-36 overflow-y-auto shadow-sm">
+                    {searchResults.map((r, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => {
+                          setSelectedPerson(r);
+                          setSearchResults([]);
+                          setPersonSearchQuery('');
+                        }}
+                        className="w-full p-2 text-left rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 flex items-center justify-between cursor-pointer"
+                      >
+                        <span className="font-bold text-[#171717] dark:text-white">{r.targetName}</span>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400">{r.targetDetail}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {selectedPerson ? (
+                  <div className="p-2.5 bg-slate-50 dark:bg-white/5 border border-emerald-500/30 rounded-xl flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-[#171717] dark:text-white">{selectedPerson.targetName}</div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400">{selectedPerson.targetDetail}</div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold text-[10px]">
+                      Terpilih ✓
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                    {isFamilyVisit ? '* Untuk kategori keluarga, pilih peserta yang akan dikunjungi.' : '* Pilihan pihak yang dikunjungi bersifat opsional.'}
+                  </p>
+                )}
+
+                {activeCategory.showRelationship && <div>
+                  <label className="text-slate-600 dark:text-slate-400 font-semibold block mb-1">{activeCategory.relationshipLabel}:</label>
+                  <input
+                    type="text"
+                    value={relationship}
+                    onChange={e => setRelationship(e.target.value)}
+                    placeholder={category === 'Media' ? 'Nama koordinator peliputan' : category === 'VIP' || category === 'VVIP' ? 'Jabatan atau petugas protokol' : category === 'Mabiran' || category === 'Mabigus' ? 'Jabatan atau peran dalam kwartir/gudep' : 'Contoh: Orang Tua, Pembina, Kerabat...'}
+                    className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none focus:border-[#C62828] focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/40"
+                  />
+                </div>}
+              </div>
+            </div>}
+
+            {/* Step 3: Visit Details */}
+            <div className="space-y-2.5 pt-2 border-t border-[#ECECEF] dark:border-white/10">
+              <h4 className="font-bold text-[#171717] dark:text-white uppercase text-[11px] tracking-wider">
+                3. Waktu & Rencana Kunjungan
+              </h4>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">Tanggal Izin:</label>
+                  <input
+                    type="date"
+                    value={visitDate}
+                    onChange={e => setVisitDate(e.target.value)}
+                    className="w-full px-2 py-1.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono text-xs outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">Rencana Datang:</label>
+                  <input
+                    type="time"
+                    value={expectedArrival}
+                    onChange={e => setExpectedArrival(e.target.value)}
+                    className="w-full px-2 py-1.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono text-xs outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">Rencana Pulang:</label>
+                  <input
+                    type="time"
+                    value={expectedDeparture}
+                    onChange={e => setExpectedDeparture(e.target.value)}
+                    className="w-full px-2 py-1.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono text-xs outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">Jumlah Rombongan Pendamping:</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="10"
+                    value={accompanyingCount}
+                    onChange={e => setAccompanyingCount(Number(e.target.value))}
+                    className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">Kendaraan (Opsional):</label>
+                  <input
+                    type="text"
+                    value={vehicleInfo}
+                    onChange={e => setVehicleInfo(e.target.value)}
+                    placeholder="Mobil / Motor / Nopol..."
+                    className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">{activeCategory.purposeLabel}:</label>
+                <input
+                  type="text"
+                  value={purpose}
+                  onChange={e => setPurpose(e.target.value)}
+                  placeholder={activeCategory.purposePlaceholder}
+                  className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none"
+                />
+              </div>
+            </div>
+
+            {submitError && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">{submitError}</div>}
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-[#ECECEF] dark:border-white/10">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 rounded-xl font-semibold cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting || !name.trim() || !phone.trim()}
+                className="px-6 py-2.5 bg-[#C62828] hover:bg-[#A61B1B] dark:bg-[#C62828] dark:hover:bg-[#A61B1B] text-white rounded-xl font-bold shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                Daftar & Terbitkan Pass
+              </button>
+            </div>
+          </form>
+        ) : (
+          /* SUCCESS VIEW & DIGITAL VISITOR PASS */
+          <div className="space-y-4 text-center animate-in fade-in py-2">
+            <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center mx-auto">
+              <CheckCircle2 className="w-7 h-7" />
+            </div>
+
+            <div>
+              <span className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-wider">
+                Pendaftaran Kunjungan Berhasil
+              </span>
+              <h3 className="text-lg font-black text-[#171717] dark:text-white mt-1">
+                {submittedVisitor?.name}
+              </h3>
+              <div className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5">
+                Kode Registrasi:{' '}
+                <strong className="text-[#171717] dark:text-white text-sm font-bold">
+                  {submittedVisitor?.registrationCode}
+                </strong>
+              </div>
+            </div>
+
+            {/* Live Digital Pass Box */}
+            <div className="max-w-xs mx-auto p-4 rounded-3xl bg-slate-50 dark:bg-white/5 text-[#171717] dark:text-white border border-[#ECECEF] dark:border-white/15 space-y-2 shadow-md text-center">
+              <div className="space-y-0.5 border-b border-slate-200 dark:border-white/10 pb-2">
+                <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  {eventName}
+                </div>
+                <div className="text-xs font-black uppercase">KARTU TANDA PENGUNJUNG</div>
+              </div>
+
+              <div className="w-40 h-40 mx-auto p-2 bg-white rounded-2xl border border-slate-200 flex items-center justify-center shadow-xs">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(submittedVisitor?.qrToken || '')}`}
+                  alt="Visitor QR"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+
+              <div className="text-xs font-bold">
+                {submittedVisitor?.name}
+              </div>
+              <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                {visitType === 'SPEAKER' ? 'Narasumber / Pemateri' : submittedVisitor?.category} · Izin: {submittedVisitor?.visitDate}
+              </div>
+              <div className="text-[9px] text-slate-500 dark:text-slate-400 font-medium">
+                Tunjukkan QR ini kepada Petugas di Gerbang Masuk Buper
+              </div>
+            </div>
+
+            <div className="flex gap-2 justify-center pt-2">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-5 py-2.5 bg-[#C62828] hover:bg-[#A61B1B] dark:bg-[#C62828] dark:hover:bg-[#A61B1B] text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Cetak / Simpan PDF</span>
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-white rounded-xl font-semibold text-xs cursor-pointer"
+              >
+                Selesai
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
