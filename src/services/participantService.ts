@@ -732,23 +732,20 @@ class ParticipantService {
       await this.loadParticipants();
       const participant = this.participants.find(p => p.id === participantId);
       if (!participant) throw new Error('Peserta tidak ditemukan di GAS.');
-      if (participant.checkedIn) throw new Error(`Peserta ${participant.name} sudah check-in sebelumnya.`);
       const eventId = eventService.getCurrentEvent()?.id || participant.eventId;
       if (!eventId || (participant.eventId && participant.eventId !== eventId)) {
         throw new Error('Event aktif tidak sesuai dengan event peserta.');
       }
-      const when = new Date().toISOString();
-      const response = await apiTransport.send<{ record: any }>('admin.entity.upsert', {
-        entity: 'participants',
-        record: { id: participantId, event_id: eventId, checked_in: true, checked_in_at: when },
-      });
-      if (!response.ok || !response.data?.record ||
-          String(response.data.record.id) !== participantId ||
-          !(['true','1'].includes(String(response.data.record.checked_in).toLowerCase()) || response.data.record.checked_in === true)) {
-        throw new Error(response.error?.message || 'GAS belum mengonfirmasi check-in peserta.');
+      const response = await apiTransport.send<any>('participants.checkin', { participant_id: participantId });
+      const saved = response.data;
+      if (!response.ok || String(saved?.participant_id || '') !== participantId ||
+          !['true','1'].includes(String(saved?.checked_in).toLowerCase()) || !saved?.checked_in_at) {
+        throw new Error(response.error?.message || 'GAS belum mengonfirmasi kehadiran pada sheet Participants.');
       }
       participant.checkedIn = true;
-      participant.checkInTime = String(response.data.record.checked_in_at || when);
+      participant.checkInTime = String(saved.checked_in_at);
+      if (saved.xp_balance !== null && saved.xp_balance !== undefined) participant.xp = Number(saved.xp_balance);
+      this.invalidateScannerIdentityCache(participantId);
       this.notify();
       return participant;
     } finally {
