@@ -239,7 +239,7 @@ class VisitorManagementService {
     requestKey?: string
   ): Promise<VisitorRegistration> {
     // The public route must work without an SiEpang login; GAS enforces validation.
-    const res = await apiTransport.send<{ visitor: any }>(
+    const res = await apiTransport.send<{ visitor?: any; id?: string; qr_token?: string; registration_code?: string; [key: string]: any }>(
       'public.visitors.register',
       {
         name: data.name.trim(), phone: data.phone.trim(), category: data.category,
@@ -256,12 +256,25 @@ class VisitorManagementService {
       },
       { skipAuth: !registeredByAdmin, timeoutMs: 45000 }
     );
-    if (!res.ok || !res.data?.visitor) {
-      throw new Error(res.error?.message || 'Registrasi pengunjung belum dikonfirmasi oleh database.');
+    if (!res.ok) {
+      throw new Error(res.error?.message || 'Pendaftaran gagal diproses oleh GAS. Silakan coba kembali.');
     }
-    const raw = res.data.visitor;
-    if (!raw.id || !raw.qr_token || !raw.registration_code) {
-      throw new Error('Server belum mengembalikan QR pengunjung yang valid.');
+    // Accept the deployed raw and wrapped GAS contracts without creating a local pass.
+    // Nested error envelopes must never be mistaken for successful persistence.
+    let raw: any = res.data;
+    for (let depth = 0; depth < 5 && raw && typeof raw === 'object'; depth++) {
+      if (raw.ok === false || raw.success === false || raw.error) {
+        throw new Error(raw.error?.message || (typeof raw.error === 'string' ? raw.error : '') || 'GAS menolak pendaftaran pengunjung.');
+      }
+      if (raw.id && raw.qr_token && raw.registration_code) break;
+      raw = raw.visitor ?? raw.data ?? null;
+    }
+    const validText = (value: unknown): value is string => typeof value === 'string' && !!value.trim() && !['undefined', 'null'].includes(value.trim());
+    if (!raw || !validText(raw.id) || !validText(raw.qr_token) || !validText(raw.registration_code)) {
+      throw new Error('GAS belum mengembalikan ID, kode registrasi, dan token QR pengunjung. Pastikan VisitorRegistrationAuto.gs terbaru sudah dipasang dan deployment GAS menggunakan versi baru. Coba kembali tanpa menutup form agar permintaan yang sama tidak membuat pendaftaran ganda.');
+    }
+    if (String(raw.status || '').toUpperCase() !== 'APPROVED') {
+      throw new Error('Pendaftaran tercatat, tetapi pass belum berstatus APPROVED dari GAS. Hubungi admin untuk memeriksa status pengunjung.');
     }
     const visitor: VisitorRegistration = {
       id: String(raw.id), registrationCode: String(raw.registration_code),
