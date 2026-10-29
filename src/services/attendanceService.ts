@@ -5,6 +5,7 @@
 import { apiTransport } from './apiTransport';
 import { participantService } from './participantService';
 import { eventService } from './eventService';
+import { authService } from './authService';
 
 export interface AttendanceRecord {
   id: string;
@@ -32,10 +33,8 @@ class AttendanceService {
 
   /** Read authoritative rows so a page refresh cannot erase attendance history. */
   public async refreshRecords(): Promise<AttendanceRecord[]> {
-    const response = await apiTransport.send<{ records: any[] }>('admin.entity.list', {
-      entity: 'attendance', filters: {},
-    });
-    if (!response.ok) {
+    const response = await apiTransport.send<{ records: any[] }>('agenda.attendance.list', {});
+    if (!response.ok || !Array.isArray(response.data?.records)) {
       throw new Error(response.error?.message || 'Gagal membaca AttendanceLogs dari GAS.');
     }
     const rows = Array.isArray(response.data?.records) ? response.data.records : [];
@@ -51,7 +50,7 @@ class AttendanceService {
         sessionId: String(raw.checkpoint_or_schedule_id || ''),
         sessionName: String(raw.session_name || raw.checkpoint_or_schedule_id || ''),
         timestamp: String(raw.timestamp || ''),
-        xpAwarded: 0,
+        xpAwarded: Number(raw.xp_awarded || 0),
         synced: true,
         syncStatus: 'Synced to Cloud' as const,
       };
@@ -67,9 +66,8 @@ class AttendanceService {
     // QR contains the existing unique participant code used across modules.
     const scanned = codeOrId.trim();
     if (!scanned) throw new Error('Kode peserta tidak boleh kosong.');
-    if (!participantService.getParticipants().length) await participantService.loadParticipants();
-    const participant = participantService.getParticipantByCode(scanned) ||
-      participantService.getParticipants().find(p => p.id === scanned);
+    const actor = authService.getCurrentUser();
+    const participant = await participantService.resolveScannerParticipant(scanned, String(actor?.id || ''), 0);
     if (!participant) throw new Error(`Peserta dengan kode '${scanned}' tidak terdaftar pada event aktif.`);
     const eventId = eventService.getCurrentEvent()?.id;
     if (!eventId) throw new Error('Event aktif belum tersedia.');
