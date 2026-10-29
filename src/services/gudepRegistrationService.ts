@@ -41,7 +41,16 @@ const send = async <T>(action: string, payload: Record<string, unknown>): Promis
   return result.data;
 };
 
+export type InstitutionDirectoryMember = NonNullable<GudepDetail['gudepParticipants']>[number] & { institution: string; contingent_id: string; data_warning?: string };
+export type InstitutionDirectoryGroup = {
+  id: string; name: string; institution: string; contingent_id: string; gudep_id: string;
+  link_status: 'LINKED' | 'UNLINKED' | 'AMBIGUOUS'; note: string;
+  participant_count: number; male_count: number; female_count: number; unknown_count: number;
+  members: InstitutionDirectoryMember[];
+};
+
 export const gudepRegistrationService = {
+  institutionDirectory: () => send<{ mode: string; event_id: string; groups: InstitutionDirectoryGroup[]; gudeps: GudepRecord[]; warnings: string[] }>('gudep.registration.list', { mode: 'PARTICIPANT_INSTITUTION' }),
   list: () => send<{ gudep: GudepRecord[]; contingents: ContingentRecord[] }>('gudep.registration.list', {}),
   // Khusus pilihan pada formulir pendaftaran peserta. Tidak mengubah daftar Gudep
   // pada panel pengelolaan/administrasi yang tetap menggunakan list().
