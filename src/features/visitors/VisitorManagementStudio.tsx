@@ -50,12 +50,30 @@ import {
   VisitorStatus,
   VisitorCategory,
 } from '../../types';
+import { QrImage } from '../../components/qr/QrImage';
+import { apiTransport } from '../../services/apiTransport';
 import { authService } from '../../services/authService';
 
 export const VisitorManagementStudio: React.FC = () => {
   const currentUser = authService.getCurrentUser();
   const currentActorName = currentUser?.name || 'Petugas Keamanan Gerbang';
   const [activeTab, setActiveTab] = useState<'directory' | 'gate' | 'gates_config' | 'logs' | 'rules'>('directory');
+
+  type IssuedPass = { id: string; pass_code: string; qr_token: string; valid_date: string; status: string };
+  const [issuedPasses, setIssuedPasses] = useState<Record<string, IssuedPass[]>>({});
+  const [passLoadError, setPassLoadError] = useState('');
+  const [passesLoading, setPassesLoading] = useState(true);
+  const [passReload, setPassReload] = useState(0);
+  useEffect(() => {
+    let active = true; setPassesLoading(true); setPassLoadError('');
+    apiTransport.send<{visitors: {id: string; passes?: IssuedPass[]}[]}>('visitors.gate.list', {}, {timeoutMs: 45000}).then(result => {
+      if (!result.ok || !Array.isArray(result.data?.visitors)) throw new Error(result.error?.message || 'Gagal membaca QR Pass dari GAS.');
+      if (result.data.visitors.some(v => !Array.isArray(v.passes))) throw new Error('Backend belum mengirim VisitorPasses. Perbarui deployment VisitorGateApi.gs.');
+      if (active) setIssuedPasses(Object.fromEntries(result.data.visitors.map(v => [v.id, v.passes || []])));
+    }).catch(e => {if (active) setPassLoadError(e?.message || 'Gagal memuat QR Pass.');})
+      .finally(() => {if (active) setPassesLoading(false);});
+    return () => {active = false;};
+  }, [passReload]);
 
   // Directory filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -575,10 +593,10 @@ export const VisitorManagementStudio: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setInspectedVisitor(v)}
-                          className="px-2.5 py-1.5 bg-white/10 hover:bg-white/15 text-white rounded-xl font-semibold text-[11px] flex items-center gap-1"
+                          className="px-2.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-semibold text-[11px] flex items-center gap-1"
                         >
                           <Eye className="w-3.5 h-3.5" />
-                          <span>Pass QR</span>
+                          <span>Lihat QR / Pass</span>
                         </button>
 
                         {v.status !== 'REVOKED' && (
@@ -958,8 +976,8 @@ export const VisitorManagementStudio: React.FC = () => {
 
       {/* VISITOR PASS INSPECTION MODAL (Req 28, 29) */}
       {inspectedVisitor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in">
-          <div className="w-full max-w-sm bg-gradient-to-b from-[#2a0e13] via-[#1c0c0f] to-[#120709] border-2 border-red-500/50 rounded-3xl p-6 shadow-2xl text-center space-y-4 text-slate-100">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in">
+          <div className="w-full max-w-sm max-h-[85dvh] overflow-y-auto bg-gradient-to-b from-[#2a0e13] via-[#1c0c0f] to-[#120709] border-2 border-red-500/50 rounded-3xl p-6 shadow-2xl text-center space-y-4 text-slate-100">
             <div className="flex items-center justify-between border-b border-white/10 pb-2">
               <span className="text-[10px] font-black uppercase text-red-400 tracking-wider">
                 ⚜️ KARTU TANDA PENGUNJUNG RESMI
@@ -975,14 +993,13 @@ export const VisitorManagementStudio: React.FC = () => {
               </div>
             </div>
 
-            {/* QR Pass Box */}
-            <div className="w-48 h-48 mx-auto p-3 bg-white rounded-2xl shadow-xl flex items-center justify-center">
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(inspectedVisitor.qrToken)}`}
-                alt="Visitor Pass QR"
-                className="w-full h-full object-contain"
-              />
-            </div>
+            {/* Display original GAS tokens locally. Never issue a replacement token here. */}
+            {passesLoading ? <p role="status">Memuat pass dari GAS...</p> : passLoadError ? <div role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{passLoadError}<button type="button" onClick={() => setPassReload(x => x + 1)} className="mt-2 block underline">Coba lagi</button></div> : issuedPasses[inspectedVisitor.id]?.length ?
+              issuedPasses[inspectedVisitor.id].map(pass => <section key={pass.id} className="rounded-xl bg-white p-3 text-slate-900">
+                <p className="font-bold">{pass.pass_code}</p><p className="text-xs">Berlaku: {pass.valid_date} · {pass.status}</p>
+                <QrImage value={pass.qr_token} size={200} className="mx-auto mt-2" emptyLabel="QR Pass belum tersedia" subtitle="Token tidak ditemukan pada VisitorPasses. Periksa data GAS."/>
+              </section>) : <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Belum ada pass yang terhubung dengan visitor ini di VisitorPasses.</p>}
+            <p className="text-xs text-slate-300">Menampilkan QR tidak mengubah status masuk atau keluar.</p>
 
             <div className="p-3 bg-black/40 rounded-2xl text-left text-[11px] space-y-1">
               <div className="flex justify-between">
