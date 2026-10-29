@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Search, Users, UserRound, RefreshCw, ShieldCheck, ImageOff, UserPlus, X, LoaderCircle } from 'lucide-react';
 import { gudepRegistrationService, ContingentRecord, GudepRecord, GudepDetail, GudepRegu, GudepParticipantCandidate } from '../../services/gudepRegistrationService';
 import { resolveGoogleDriveImageUrl } from '../../utils/googleDriveImage';
@@ -29,6 +29,7 @@ const photoUrl = (p: NonNullable<GudepDetail['participants']>[number]) => resolv
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(x => x[0]).join('').toUpperCase() || '?';
 
 export const ContingentReguDirectory: React.FC = () => {
+  const detailRequest = useRef(0);
   const [contingents, setContingents] = useState<DirectoryContingent[]>([]);
   const [gudep, setGudep] = useState<GudepRecord[]>([]);
   const [query, setQuery] = useState('');
@@ -52,9 +53,10 @@ export const ContingentReguDirectory: React.FC = () => {
     try {
       const [result, scope] = await Promise.all([gudepRegistrationService.list(), gudepRegistrationService.listForParticipantRegistration()]);
       const scopedGudep = (result.gudep || []).filter(g => scope.gudep.some(allowed => allowed.gudep_id === g.gudep_id));
-      const list = (result.contingents || []).map(c => ({ ...c, id: clean(c.id), name: clean(c.name) }))
-        .filter(c => c.id && c.name && scopedGudep.some(g => clean(g.contingent_id || g.gudep_id) === c.id))
-        .sort((a, b) => a.name.localeCompare(b.name, 'id'));
+      const list = scopedGudep.map(g => {
+        const c = (result.contingents || []).find(c => clean(c.id) === clean(g.contingent_id || g.gudep_id));
+        return { ...c, id: clean(g.gudep_id), name: clean(g.gudep_name), region: clean(g.institution_name), verification_status: g.verification_status };
+      }).filter(g => g.id && g.name).sort((a,b) => a.name.localeCompare(b.name,'id'));
       setContingents(list);
       setGudep(scopedGudep);
     } catch (e) {
@@ -71,15 +73,17 @@ export const ContingentReguDirectory: React.FC = () => {
   }, [contingents, query]);
 
   const openContingent = async (contingent: DirectoryContingent) => {
+    const requestId = ++detailRequest.current;
     setSelected(contingent); setBundles([]); setError(''); setDetailLoading(true);
     try {
       // Join only by canonical IDs. Never guess a relation from similar names.
-      const associated = gudep.filter(g => clean(g.contingent_id || g.gudep_id) === contingent.id);
+      const associated = gudep.filter(g => clean(g.gudep_id) === contingent.id);
       const loaded = await Promise.all(associated.map(async g => ({ gudep: g, detail: await gudepRegistrationService.detail(g.gudep_id) })));
-      setBundles(loaded);
+      if (loaded.some(b => !Array.isArray(b.detail.gudepParticipants))) throw new Error('Daftar peserta Gudep belum tersedia dari GAS. Perbarui GudepRegistrationApi.gs dan deployment backend terlebih dahulu.');
+      if (requestId === detailRequest.current) setBundles(loaded);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Gagal memuat susunan regu dan peserta.');
-    } finally { setDetailLoading(false); }
+      if (requestId === detailRequest.current) setError(e instanceof Error ? e.message : 'Gagal memuat peserta Gudep.');
+    } finally { if (requestId === detailRequest.current) setDetailLoading(false); }
   };
 
   const openLinkDialog = async (bundle: DetailBundle, regu: GudepRegu) => {
@@ -126,7 +130,7 @@ export const ContingentReguDirectory: React.FC = () => {
     }
     try {
       if (selected) {
-        const loaded = await Promise.all(gudep.filter(g => clean(g.contingent_id || g.gudep_id) === selected.id).map(async g => ({ gudep: g, detail: await gudepRegistrationService.detail(g.gudep_id) })));
+        const loaded = await Promise.all(gudep.filter(g => clean(g.gudep_id) === selected.id).map(async g => ({ gudep: g, detail: await gudepRegistrationService.detail(g.gudep_id) })));
         setBundles(loaded);
       }
     } catch {
@@ -168,23 +172,47 @@ export const ContingentReguDirectory: React.FC = () => {
     );
   };
 
+  const category = (value: string) => {
+    const gender = clean(value).toUpperCase();
+    if (['M','L','PUTRA','LAKI-LAKI','LAKI LAKI','MALE'].includes(gender)) return 'PUTRA';
+    if (['F','P','PUTRI','PEREMPUAN','FEMALE'].includes(gender)) return 'PUTRI';
+    return 'UNKNOWN';
+  };
+  const renderGudepGender = (gender: 'PUTRA' | 'PUTRI' | 'UNKNOWN') => {
+    const members = bundles.flatMap(b => b.detail.gudepParticipants || []).filter(p => category(p.gender) === gender);
+    if (gender === 'UNKNOWN' && !members.length) return null;
+    const title = gender === 'PUTRA' ? 'Peserta Putra' : gender === 'PUTRI' ? 'Peserta Putri' : 'Jenis Kelamin Belum Dikenali';
+    return <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><h3 className="font-bold text-slate-900">{title} · {members.length} peserta</h3>
+      {!members.length ? <p className="mt-3 text-sm text-slate-500">Belum ada peserta pada kategori ini.</p> : <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">{members.map(member => {
+        const url = photoUrl(member);
+        const regu = bundles.flatMap(b => b.detail.regu).find(r => r.regu_id === member.regu_id);
+        return <article key={member.id} className="rounded-xl border border-slate-200 p-3 text-center">
+          {url && <img src={url} alt={`Foto ${member.name}`} loading="lazy" referrerPolicy="no-referrer" onError={e => { e.currentTarget.style.display='none'; const next=e.currentTarget.nextElementSibling as HTMLElement|null; if(next)next.style.display='flex'; }} className="mx-auto mb-2 h-16 w-16 rounded-full object-cover"/>}
+          <div style={{display:url?'none':'flex'}} className="mx-auto mb-2 h-16 w-16 items-center justify-center rounded-full bg-slate-100 font-semibold text-slate-600">{initials(member.name)}</div>
+          <p className="break-words text-sm font-semibold text-slate-900">{member.name}</p><p className="mt-1 break-all text-xs text-slate-500">{member.membership_number}</p>
+          <p className="mt-2 text-xs text-slate-500">{regu ? `Regu ${regu.regu_name}` : 'Belum masuk regu'}</p>
+        </article>;
+      })}</div>}
+    </section>;
+  };
+
   return <div className="mx-auto w-full max-w-7xl space-y-5 px-3 py-4 sm:px-5 lg:px-7">
     <header className="rounded-xl border-l-4 border-l-red-600 border-y border-r border-slate-200 bg-white p-4 sm:p-5">
-      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="flex items-start gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-700"><Users className="h-6 w-6" /></div><div><p className="text-xs font-semibold text-red-700">Data & anggota</p><h1 className="mt-1 text-xl font-bold text-slate-900 sm:text-2xl">Data Kontingen per Regu</h1><p className="mt-1 max-w-2xl text-sm text-slate-600">Pilih kontingen untuk melihat susunan Regu Putra dan Regu Putri beserta foto profil serta nama peserta.</p></div></div><button type="button" disabled={loading || detailLoading} onClick={() => {setSelected(null); setBundles([]); void loadList();}} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"><RefreshCw className="h-4 w-4"/> Muat ulang</button></div>
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="flex items-start gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-700"><Users className="h-6 w-6" /></div><div><p className="text-xs font-semibold text-red-700">Data & anggota</p><h1 className="mt-1 text-xl font-bold text-slate-900 sm:text-2xl">Data Kontingen per Gudep</h1><p className="mt-1 max-w-2xl text-sm text-slate-600">Pilih Gudep untuk melihat foto profil dan daftar peserta Putra serta Putri, termasuk peserta yang belum masuk regu.</p></div></div><button type="button" disabled={loading || detailLoading} onClick={() => {++detailRequest.current;setSelected(null); setBundles([]); void loadList();}} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"><RefreshCw className="h-4 w-4"/> Muat ulang</button></div>
     </header>
 
     {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
 
     {!selected ? <>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-lg font-bold text-slate-900">Pilih Kontingen</h2><p className="text-sm text-slate-500">{contingents.length} kontingen pada event aktif</p></div><label className="relative block w-full sm:max-w-sm"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Cari nama kontingen/sekolah..." className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-9 pr-3 text-sm outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"/></label></div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-lg font-bold text-slate-900">Pilih Gudep</h2><p className="text-sm text-slate-500">{contingents.length} Gudep pada event aktif</p></div><label className="relative block w-full sm:max-w-sm"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Cari nama Gudep/sekolah..." className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-9 pr-3 text-sm outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100"/></label></div>
       {loading ? <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">Memuat data kontingen...</div> : visibleContingents.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center"><ImageOff className="mx-auto mb-2 h-8 w-8 text-slate-400"/><p className="font-semibold text-slate-700">Kontingen tidak ditemukan atau belum ditugaskan</p><p className="mt-1 text-sm text-slate-500">Periksa pencarian. Untuk akun kontingen, admin perlu memastikan penugasan operator Gudep aktif dan relasi ID kontingen sudah tersimpan.</p></div> : <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">{visibleContingents.map(c => {
-        const groups = gudep.filter(g => clean(g.contingent_id || g.gudep_id) === c.id);
-        return <button type="button" key={c.id} onClick={() => void openContingent(c)} className="group min-w-0 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-red-300 hover:bg-red-50/30 focus:outline-none focus:ring-2 focus:ring-red-300"><div className="flex items-start justify-between gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-700"><ShieldCheck className="h-5 w-5"/></div><span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusClass(c.verification_status)}`}>{statusLabel(c.verification_status)}</span></div><h3 className="mt-3 break-words font-semibold text-slate-900 group-hover:text-red-800">{c.name}</h3><p className="mt-1 text-sm text-slate-500">{c.region || c.leader_name || 'Kontingen'}</p><div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-600"><span className="rounded-lg bg-slate-100 px-2.5 py-1.5">{groups.length} pangkalan/Gudep</span><span className="rounded-lg bg-slate-100 px-2.5 py-1.5">{Number(c.participant_count || 0)} peserta</span></div><p className="mt-4 border-t border-slate-100 pt-3 text-sm font-semibold text-red-700">Lihat regu dan peserta →</p></button>;
+        const groups = gudep.filter(g => clean(g.gudep_id) === c.id);
+        return <button type="button" key={c.id} onClick={() => void openContingent(c)} className="group min-w-0 rounded-xl border border-slate-200 bg-white p-4 text-left transition-colors hover:border-red-300 hover:bg-red-50/30 focus:outline-none focus:ring-2 focus:ring-red-300"><div className="flex items-start justify-between gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-700"><ShieldCheck className="h-5 w-5"/></div><span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusClass(c.verification_status)}`}>{statusLabel(c.verification_status)}</span></div><h3 className="mt-3 break-words font-semibold text-slate-900 group-hover:text-red-800">{c.name}</h3><p className="mt-1 text-sm text-slate-500">{c.region || c.leader_name || 'Kontingen'}</p><div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-600"><span className="rounded-lg bg-slate-100 px-2.5 py-1.5">{groups.length} pangkalan/Gudep</span><span className="rounded-lg bg-slate-100 px-2.5 py-1.5">{groups.map(g => g.gudep_number).join(' · ')}</span></div><p className="mt-4 border-t border-slate-100 pt-3 text-sm font-semibold text-red-700">Lihat peserta Putra & Putri →</p></button>;
       })}</div>}
     </> : <>
-      <button type="button" onClick={() => { setSelected(null); setBundles([]); setError(''); }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"><ArrowLeft className="h-4 w-4"/> Kembali ke daftar kontingen</button>
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Detail kontingen</p><h2 className="mt-1 text-xl font-extrabold text-slate-900">{selected.name}</h2><p className="mt-1 text-sm text-slate-500">{selected.region || 'Wilayah tidak dicantumkan'}{selected.leader_name ? ` · Pimpinan: ${selected.leader_name}` : ''}</p></div><span className={`rounded-full px-3 py-1.5 text-xs font-semibold ${statusClass(selected.verification_status)}`}>{statusLabel(selected.verification_status)}</span></div></div>
-      {detailLoading ? <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">Memuat regu dan daftar peserta...</div> : bundles.length === 0 ? <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Belum ada Gudep yang terhubung dengan ID kontingen ini. Data tidak dicocokkan otomatis berdasarkan kemiripan nama agar peserta tidak masuk ke kontingen yang salah.</div> : <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">{renderRegu('PUTRA')}{renderRegu('PUTRI')}</div>}
+      <button type="button" onClick={() => { ++detailRequest.current; setSelected(null); setBundles([]); setError(''); }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"><ArrowLeft className="h-4 w-4"/> Kembali ke daftar Gudep</button>
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Detail Gudep</p><h2 className="mt-1 text-xl font-extrabold text-slate-900">{selected.name}</h2><p className="mt-1 text-sm text-slate-500">{selected.region || 'Wilayah tidak dicantumkan'}{selected.leader_name ? ` · Pimpinan: ${selected.leader_name}` : ''}</p></div><span className={`rounded-full px-3 py-1.5 text-xs font-semibold ${statusClass(selected.verification_status)}`}>{statusLabel(selected.verification_status)}</span></div></div>
+      {detailLoading ? <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">Memuat daftar peserta Gudep...</div> : bundles.length === 0 ? <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Belum ada Gudep yang terhubung dengan ID kontingen ini. Data tidak dicocokkan otomatis berdasarkan kemiripan nama agar peserta tidak masuk ke kontingen yang salah.</div> : <div className="space-y-4"><div className="grid grid-cols-1 gap-4 xl:grid-cols-2">{renderGudepGender('PUTRA')}{renderGudepGender('PUTRI')}</div>{renderGudepGender('UNKNOWN')}<details className="rounded-xl border border-slate-200 bg-white p-4"><summary className="font-semibold text-slate-800">Pengelolaan regu yang sudah ada</summary><div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">{renderRegu('PUTRA')}{renderRegu('PUTRI')}</div></details></div>}
       <p className="flex items-start gap-2 text-xs text-slate-500"><UserRound className="mt-0.5 h-4 w-4 shrink-0"/>Foto ditampilkan dari sumber profil resmi peserta. Jika foto tidak tersedia atau gagal dimuat, halaman menampilkan inisial nama.</p>
     </>}
 
