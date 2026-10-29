@@ -216,10 +216,13 @@ class ActivityQrService {
       throw new Error('Gunakan QR agenda atau QR pos resmi yang diterbitkan panitia dari GAS.');
     }
     const result = await agendaAttendanceService.scan(token);
+    void participantService.loadParticipants().catch(error => console.warn('Presensi tersimpan; pembaruan saldo tampilan tertunda:', error));
     return {
       success: true,
-      message: result.duplicate ? 'Kehadiran sudah tercatat. XP tidak ditambahkan lagi.' :
-        `Presensi berhasil. Anda memperoleh ${result.xp_awarded} XP.`,
+      message: result.xp_awarded > 0
+        ? `Kehadiran tercatat. Anda memperoleh ${result.xp_awarded} XP.`
+        : result.duplicate ? 'Kehadiran sudah tercatat. Tidak ada tambahan XP pada scan ulang.'
+        : 'Kehadiran berhasil dicatat. Kegiatan ini tidak memberikan XP atau fitur XP dinonaktifkan.',
       activityTitle: result.activity_title,
       xpAwarded: result.xp_awarded,
       isDuplicate: result.duplicate,
