@@ -24,6 +24,7 @@ import {
   ShieldCheck,
   AlertTriangle,
   Lock,
+  Loader2,
 } from 'lucide-react';
 import { participantService } from '../../services/participantService';
 import { attendanceService } from '../../services/attendanceService';
@@ -99,6 +100,14 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   const [pointLoading, setPointLoading] = useState(false);
   const [pointBackendReady, setPointBackendReady] = useState(false);
   const [pointBusy, setPointBusy] = useState(false);
+  const [pointWaitSeconds, setPointWaitSeconds] = useState(0);
+  useEffect(() => {
+    setPointWaitSeconds(0);
+    if (!pointBusy) return;
+    const startedAt = Date.now();
+    const timer = setInterval(() => setPointWaitSeconds(Math.floor((Date.now()-startedAt)/1000)),1000);
+    return () => clearInterval(timer);
+  }, [pointBusy]);
   const [pointError, setPointError] = useState('');
   const [pointResult, setPointResult] = useState('');
   const [pointReload, setPointReload] = useState(0);
@@ -131,11 +140,13 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     let cancelled = false;
     setPointOptions([]); setPointOptionId(''); setPointError(''); setPointResult(''); setPointLoading(true); setPointBackendReady(false);
     void (async () => {
-      const capabilities = await apiTransport.send<any>('attendance.capabilities', {});
+      const [capabilities,response] = await Promise.all([
+        apiTransport.send<any>('attendance.capabilities', {}),
+        apiTransport.send<any[]>(pointKind === 'activity' ? 'activities.list' : 'schedules.list', {}),
+      ]);
       const neededAction = pointKind === 'activity' ? 'activity.attendance.record' : 'agenda.attendance.record';
       if (!capabilities.ok) throw new Error(['ACTION_NOT_FOUND','UNKNOWN_ACTION','INVALID_ACTION'].includes(String(capabilities.error?.code || '')) ? 'Deployment GAS yang diakses belum diperbarui. Deploy backend terbaru pada URL /exec yang dipakai proxy, lalu muat ulang daftar.' : capabilities.error?.message || 'Dukungan backend belum dapat diperiksa. Coba muat ulang daftar.');
       if (!Array.isArray(capabilities.data?.actions) || !capabilities.data.actions.includes(neededAction)) throw new Error('Deployment GAS ini belum mendukung jenis poin yang dipilih. Perbarui backend dan URL proxy.');
-      const response = await apiTransport.send<any[]>(pointKind === 'activity' ? 'activities.list' : 'schedules.list', {});
 
       if (!response.ok || !Array.isArray(response.data)) throw new Error(response.error?.message || 'GAS tidak mengembalikan daftar kegiatan.');
       const options = response.data.filter(row => !row.archived && !row.archived_at && !['archived','cancelled','canceled','inactive','deleted'].includes(String(row.status || '').toLowerCase())).map(row => ({
@@ -417,7 +428,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
       const response = await apiTransport.send<any>(pointKind === 'activity' ? 'activity.attendance.record' : 'agenda.attendance.record', {
         participant_id: scannedParticipant.id,
         ...(pointKind === 'activity' ? {activity_id: selected.id} : {schedule_id: selected.id}),
-      });
+      }, {timeoutMs:45000});
       const saved = response.data;
       if (!response.ok || !saved?.success || !saved?.attendance_recorded || String(saved.participant_id) !== scannedParticipant.id || String(pointKind === 'activity' ? saved.activity_id : saved.schedule_id) !== selected.id) throw new Error(response.error?.message || 'GAS belum mengonfirmasi kehadiran dan poin peserta.');
       const awarded = Number(saved.xp_awarded || 0);
@@ -426,7 +437,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
       pointCloseTimer.current = setTimeout(finishPointScan, 1800);
       participantService.invalidateScannerIdentityCache(scannedParticipant.id);
       if (saved.xp_balance !== null && saved.xp_balance !== undefined) setScannedParticipant(previous => previous ? {...previous,xp:Number(saved.xp_balance)} : previous);
-      void participantService.loadParticipants().catch(error => console.warn('Poin tersimpan; pembaruan tampilan tertunda:',error));
+      // GAS returns the confirmed balance for this participant; avoid a full-roster request after every award.
     } catch (error) {
       setPointError(error instanceof Error ? error.message : String(error));
     } finally {pointSubmitLock.current=false;setPointBusy(false);}
@@ -724,10 +735,16 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                 {pointOptions.map(option => <option key={option.id} value={option.id}>{option.name} · {option.xp} XP</option>)}
               </select>
             </label>
+            {pointLoading && <div role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300"><Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />Memuat pilihan kegiatan dari GAS…</div>}
+            {pointBusy && <div role="status" aria-live="polite" className="rounded-xl p-4 bg-blue-50 text-blue-900 space-y-2">
+              <div className="flex items-center gap-2 font-semibold"><Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />Memproses kehadiran dan XP peserta…</div>
+              <p className="text-sm">{pointWaitSeconds >= 8 ? 'Masih menunggu konfirmasi GAS. Jangan kirim ulang; hasil akan ditampilkan setelah proses selesai.' : 'Menunggu konfirmasi penyimpanan dari GAS.'}</p>
+              <p className="text-xs" aria-live="off">Waktu tunggu: {pointWaitSeconds} detik</p>
+            </div>}
             {!pointLoading && !pointError && pointOptions.length === 0 && <p role="status">Belum ada kegiatan aktif yang terbaca dari GAS.</p>}
             {pointError && <p role="alert" className="text-red-700 dark:text-red-300">{pointError}</p>}
             {pointResult && <p role="status" className="rounded-xl p-3 bg-emerald-50 text-emerald-800">{pointResult}</p>}
-            <button type="button" disabled={!pointOptionId || !pointBackendReady || pointBusy || pointLoading || !!pointResult} onClick={saveParticipantPoints} className="w-full min-h-[48px] p-3 rounded-xl bg-emerald-700 text-white font-bold disabled:opacity-40">{pointBusy ? 'Menyimpan ke GAS…' : pointResult ? 'Tersimpan di GAS' : 'Catat Kehadiran & Berikan XP'}</button>
+            <button type="button" disabled={!pointOptionId || !pointBackendReady || pointBusy || pointLoading || !!pointResult} onClick={saveParticipantPoints} aria-busy={pointBusy} className="w-full min-h-[48px] p-3 rounded-xl bg-emerald-700 text-white font-bold disabled:opacity-40">{pointBusy ? 'Menyimpan ke GAS…' : pointResult ? 'Tersimpan di GAS' : 'Catat Kehadiran & Berikan XP'}</button>
             {pointResult && <p className="text-sm text-slate-600 dark:text-slate-300">Scanner akan menutup otomatis. Pilih Scan Peserta Berikutnya untuk melanjutkan.</p>}
             <button type="button" disabled={pointBusy} onClick={finishPointScan} className="w-full min-h-[48px] p-3 rounded-xl border font-bold">Selesai &amp; Tutup Scanner</button>
             <div className="flex flex-wrap gap-2">
