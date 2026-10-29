@@ -9,6 +9,7 @@ import { gudepRegistrationService, GudepRecord, GudepRegu, GudepAdvisor } from '
 import { userManagementService, ManagedUser } from '../../services/userManagementService';
 import { authService } from '../../services/authService';
 import { GudepQrPanel } from './GudepQrPanel';
+import { GudepAttendanceRecap } from './GudepAttendanceRecap';
 
 const newKey = (): string => `form_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
 const inputClass = 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-[#C62828] dark:border-white/15 dark:bg-white/5 dark:text-white';
@@ -243,6 +244,7 @@ export const GudepReguManager: React.FC = () => {
   const canAddRegu = !!selected && (!locked || String(selected.verification_status || '').toUpperCase() === 'VERIFIED');
 
   return <div className="space-y-5">
+    {!loading && <GudepAttendanceRecap gudeps={gudep} onSelect={id => { setSelectedId(id); setShowGudepQr(true); }} />}
     <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-950 dark:border-red-500/20 dark:bg-red-950/20 dark:text-red-100">
       Buat <strong>Gugus Depan</strong> lebih dulu, lalu tambahkan <strong>Regu Putra atau Putri</strong> di dalamnya. Data tersimpan di Google Spreadsheet dan muncul pada pilihan Gudep → Regu di pendaftaran peserta.
     </div>
