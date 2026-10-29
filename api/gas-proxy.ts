@@ -2,7 +2,7 @@
  * SiEpang — Vercel server-side Google Apps Script gateway.
  * Source of truth remains GAS. No caching, no mock responses, no token/OTP logging.
  * Place at repository root: api/gas-proxy.ts
- * GAS deployment URL is configured server-side in this file (no environment variable).
+ * GAS deployment URL is controlled server-side; optional environment setting overrides the existing installation URL.
  */
 
 const MAX_REQUEST_BYTES = 4_000_000;
@@ -22,7 +22,8 @@ export default async function handler(req: any, res: any) {
     return sendJson(res, 405, { ok: false, data: null, error: { code: 'METHOD_NOT_ALLOWED', message: 'Gunakan POST.' } });
   }
 
-  const backendUrl = 'https://script.google.com/macros/s/AKfycbwoIhDY_gyZuxDZZSj4I3C9fLIg1orvmHTyfubr4brpbr-JtsQIBCAsMXxyi7_IeWO0Fg/exec';
+  const defaultBackendUrl = 'https://script.google.com/macros/s/AKfycbwoIhDY_gyZuxDZZSj4I3C9fLIg1orvmHTyfubr4brpbr-JtsQIBCAsMXxyi7_IeWO0Fg/exec';
+  const backendUrl = (process.env.SIEPANG_GAS_WEB_APP_URL || defaultBackendUrl).trim();
   if (!backendUrl || !/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(?:\?.*)?$/.test(backendUrl)) {
     return sendJson(res, 503, { ok: false, data: null, error: { code: 'GAS_NOT_CONFIGURED', message: 'URL backend GAS dalam proxy tidak valid.' } });
   }
@@ -84,6 +85,11 @@ export default async function handler(req: any, res: any) {
       if (!parsed || typeof parsed !== 'object' ||
           (typeof parsed.ok !== 'boolean' && typeof parsed.success !== 'boolean')) {
         return sendJson(res, 502, { ok: false, request_id: envelope.request_id || null, data: null, error: { code: 'GAS_INVALID_ENVELOPE', message: 'Respons GAS tidak memiliki status keberhasilan yang valid.' } });
+      }
+      // Do not retry writes against a different deployment: persistence may be uncertain.
+      if (['attendance.capabilities','activity.attendance.record','agenda.attendance.record'].includes(envelope.action) &&
+          (parsed.ok === false || parsed.success === false) && ['ACTION_NOT_FOUND','UNKNOWN_ACTION','INVALID_ACTION'].includes(String(parsed.error?.code || ''))) {
+        return sendJson(res, 200, {ok:false,request_id:parsed.request_id || envelope.request_id || null,data:null,error:{code:'BACKEND_DEPLOYMENT_OUTDATED',message:'Deployment GAS yang diakses belum mendukung poin aktivitas/jadwal. Perbarui deployment GAS ke versi terbaru dan pastikan URL /exec pada proxy menunjuk deployment tersebut. Belum ada konfirmasi penyimpanan poin.'}});
       }
       return sendJson(res, 200, parsed);
     } finally {
