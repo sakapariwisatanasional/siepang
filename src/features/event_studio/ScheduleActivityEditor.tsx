@@ -153,7 +153,7 @@ export const ScheduleActivityEditor: React.FC = () => {
     location?: string;
     scheduleTime?: string;
   } | null>(null);
-  const [pointScanTarget, setPointScanTarget] = useState<{ title: string; scheduleId?: string } | null>(null);
+  const [pointScanTarget, setPointScanTarget] = useState<{ title: string; scheduleId?: string; activityId?: string } | null>(null);
   const [printSignConfigs, setPrintSignConfigs] = useState<ActivityQrConfig[] | null>(null);
 
   // Batch Print QR State (Requirement 5)
@@ -751,7 +751,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                 </div>
 
                 <div className="flex flex-wrap gap-2 justify-end pt-2 border-t border-slate-200">
-                  <button type="button" onClick={() => setPointScanTarget({title:act.name || act.title || 'Aktivitas'})} className="px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold min-h-[44px]">
+                  <button type="button" onClick={() => setPointScanTarget({title:act.name || act.title || 'Aktivitas',activityId:act.id})} className="px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold min-h-[44px]">
                     Scan ID Card &amp; Beri Poin
                   </button>
                   <button
@@ -1171,8 +1171,8 @@ export const ScheduleActivityEditor: React.FC = () => {
               </div>
               <button type="button" aria-label="Tutup panel poin" onClick={() => setPointScanTarget(null)} className="min-h-[44px] min-w-[44px] p-3 rounded-xl border"><X className="w-5 h-5" /></button>
             </div>
-            <p className="text-sm text-slate-600 dark:text-slate-300">{pointScanTarget.scheduleId ? 'Agenda ini sudah dipilih. Periksa agenda dan pindai ID card peserta untuk mencatat poin.' : 'Pilih agenda pelaksanaan yang sesuai terlebih dahulu. Poin mengikuti agenda di GAS, bukan otomatis dicocokkan dari nama aktivitas.'}</p>
-            <AttendanceScanner key={pointScanTarget.scheduleId || pointScanTarget.title} activityOnly initialScheduleId={pointScanTarget.scheduleId} />
+            <p className="text-sm text-slate-600 dark:text-slate-300">{pointScanTarget.activityId ? 'Poin aktivitas mengikuti Activities.xp_points dan terpisah dari poin jadwal.' : 'Poin jadwal mengikuti Schedules.xp_reward dan terpisah dari poin aktivitas.'}</p>
+            <AttendanceScanner key={pointScanTarget.activityId || pointScanTarget.scheduleId || pointScanTarget.title} activityOnly sourceKind={pointScanTarget.activityId ? 'activity' : 'schedule'} initialScheduleId={pointScanTarget.activityId || pointScanTarget.scheduleId} />
           </div>
         </div>
       )}
