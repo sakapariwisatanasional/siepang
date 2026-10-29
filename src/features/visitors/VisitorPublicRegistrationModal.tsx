@@ -7,7 +7,7 @@
  * - Secure digital pass generation with dynamic QR
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Users,
   Search,
@@ -74,10 +74,10 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
   const [identityType, setIdentityType] = useState<'KTP' | 'SIM' | 'Kartu Pegawai' | 'Paspor' | 'Lainnya'>('KTP');
   const [identityNumber, setIdentityNumber] = useState('');
   const [organization, setOrganization] = useState('');
-  const [purpose, setPurpose] = useState('');
+  const [purpose, setPurpose] = useState('Mengunjungi peserta / berkunjung ke perkemahan');
   const [visitDate, setVisitDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [expectedArrival, setExpectedArrival] = useState('');
-  const [expectedDeparture, setExpectedDeparture] = useState('');
+  const [expectedArrival, setExpectedArrival] = useState('09:00');
+  const [expectedDeparture, setExpectedDeparture] = useState('14:00');
   const [accompanyingCount, setAccompanyingCount] = useState(0);
   const [vehicleInfo, setVehicleInfo] = useState('');
 
@@ -85,11 +85,11 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
   const [personSearchQuery, setPersonSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<PersonBeingVisited[]>([]);
   const [selectedPerson, setSelectedPerson] = useState<PersonBeingVisited | null>(null);
-  const [relationship, setRelationship] = useState('');
+  const [relationship, setRelationship] = useState('Keluarga / Kerabat');
 
   const categoryConfig: Record<string, { description: string; organizationLabel: string; organizationRequired: boolean; purposeLabel: string; purposePlaceholder: string; showPerson: boolean; showRelationship: boolean; relationshipLabel: string }> = {
-    'Orang Tua / Wali': { description: 'Nama peserta dan hubungan keluarga boleh diisi jika diketahui.', organizationLabel: 'Sekolah / Gudep / Asal Daerah (Opsional)', organizationRequired: false, purposeLabel: 'Keperluan kunjungan', purposePlaceholder: 'Contoh: mengunjungi putra/putri peserta', showPerson: true, showRelationship: true, relationshipLabel: 'Hubungan dengan peserta' },
-    'Keluarga': { description: 'Nama peserta dan hubungan keluarga bersifat opsional.', organizationLabel: 'Asal Daerah (Opsional)', organizationRequired: false, purposeLabel: 'Keperluan kunjungan', purposePlaceholder: 'Contoh: kunjungan keluarga', showPerson: true, showRelationship: true, relationshipLabel: 'Hubungan keluarga' },
+    'Orang Tua / Wali': { description: 'Lengkapi hubungan dengan peserta yang akan dikunjungi.', organizationLabel: 'Sekolah / Gudep / Asal Daerah (Opsional)', organizationRequired: false, purposeLabel: 'Keperluan kunjungan', purposePlaceholder: 'Contoh: mengunjungi putra/putri peserta', showPerson: true, showRelationship: true, relationshipLabel: 'Hubungan dengan peserta' },
+    'Keluarga': { description: 'Pilih peserta yang akan dikunjungi dan jelaskan hubungan keluarga.', organizationLabel: 'Asal Daerah (Opsional)', organizationRequired: false, purposeLabel: 'Keperluan kunjungan', purposePlaceholder: 'Contoh: kunjungan keluarga', showPerson: true, showRelationship: true, relationshipLabel: 'Hubungan keluarga' },
     'Tamu Undangan': { description: 'Cantumkan instansi pengundang atau pihak yang menjadi tujuan kunjungan.', organizationLabel: 'Instansi / Asal Undangan', organizationRequired: true, purposeLabel: 'Agenda / tujuan undangan', purposePlaceholder: 'Tuliskan agenda atau alasan undangan', showPerson: true, showRelationship: false, relationshipLabel: '' },
     'Umum': { description: 'Formulir kunjungan umum untuk keperluan di area perkemahan.', organizationLabel: 'Instansi / Asal Daerah (Opsional)', organizationRequired: false, purposeLabel: 'Tujuan kunjungan', purposePlaceholder: 'Tuliskan tujuan kunjungan', showPerson: true, showRelationship: false, relationshipLabel: '' },
     'Alumni': { description: 'Cantumkan asal pangkalan atau angkatan jika relevan.', organizationLabel: 'Pangkalan / Angkatan / Asal Daerah', organizationRequired: false, purposeLabel: 'Tujuan kunjungan alumni', purposePlaceholder: 'Contoh: silaturahmi atau kunjungan alumni', showPerson: true, showRelationship: false, relationshipLabel: '' },
@@ -102,25 +102,20 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
     'Lainnya': { description: 'Jelaskan kategori atau kebutuhan kunjungan secara spesifik.', organizationLabel: 'Instansi / Asal Daerah (Opsional)', organizationRequired: false, purposeLabel: 'Rincian tujuan kunjungan', purposePlaceholder: 'Jelaskan kategori dan tujuan kunjungan secara spesifik', showPerson: false, showRelationship: false, relationshipLabel: '' },
   };
   const activeCategory = categoryConfig[category] || categoryConfig['Umum'];
-  const isFamilyVisit = visitType === 'VISITOR' && (category === 'Orang Tua / Wali' || category === 'Keluarga');
-  const purposeRequired = ['Lainnya','Media','Mitra','VIP','VVIP','Mabiran','Mabigus','Tamu Undangan'].includes(category);
-  useEffect(() => { setSelectedPerson(null); setPersonSearchQuery(''); setSearchResults([]); setRelationship(''); }, [category,visitType]);
+  const isFamilyVisit = category === 'Orang Tua / Wali' || category === 'Keluarga';
 
   const handleSearchPerson = (q: string) => {
     setPersonSearchQuery(q);
-    if (isFamilyVisit) { setSelectedPerson(null); return; }
     const results = visitorManagementService.searchPersonToVisit(q);
     setSearchResults(results);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submitLock.current) return;
-    if (name.trim().length < 2 || name.trim().length > 120) {setSubmitError('Nama lengkap wajib 2 sampai 120 karakter.');return;}
-    if (!/^[+0-9() .-]{7,25}$/.test(phone.trim()) || phone.replace(/\D/g,'').length < 7 || phone.replace(/\D/g,'').length > 15) {setSubmitError('Nomor HP wajib memiliki 7 sampai 15 digit angka.');return;}
+    if (!name.trim() || !phone.trim() || submitLock.current) return;
     if (activeCategory.organizationRequired && !organization.trim()) { setSubmitError('Instansi wajib diisi untuk kategori kunjungan ini.'); return; }
+    if (isFamilyVisit && !selectedPerson) { setSubmitError('Pilih peserta yang akan dikunjungi untuk kategori ini.'); return; }
     if ((category === 'Lainnya' || category === 'Media' || category === 'Mitra' || category === 'VIP' || category === 'VVIP' || category === 'Mabiran' || category === 'Mabigus' || category === 'Tamu Undangan') && !purpose.trim()) { setSubmitError('Tujuan atau agenda kunjungan wajib diisi untuk kategori ini.'); return; }
-    if (expectedArrival && expectedDeparture && expectedDeparture <= expectedArrival) {setSubmitError('Rencana pulang harus sesudah rencana datang.');return;}
     if (visitType === 'SPEAKER' && !speakerAgenda.trim()) { setSubmitError('Agenda yang diisi narasumber wajib disebutkan.'); return; }
     submitLock.current = true;
     setIsSubmitting(true);
@@ -180,7 +175,6 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
 
         {step === 'form' ? (
           <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-            <p className="text-slate-500">Isian bertanda * wajib diisi. Isian berlabel Opsional boleh dikosongkan.</p>
             {/* Visiting Notice */}
             <div className="p-3 bg-slate-50 dark:bg-white/5 rounded-2xl border border-slate-200 dark:border-white/10 text-[11px] space-y-1">
               <div className="font-bold flex items-center gap-1.5 text-slate-800 dark:text-slate-200">
@@ -195,11 +189,11 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
             <fieldset className="space-y-2 rounded-2xl border border-slate-200 dark:border-white/10 p-3">
               <legend className="px-1 font-bold">Jenis Registrasi</legend>
               <label className="flex items-center gap-2"><input type="radio" name="visitType" checked={visitType === 'VISITOR'} onChange={() => setVisitType('VISITOR')} /> Pengunjung</label>
-              <label className="flex items-center gap-2"><input type="radio" name="visitType" checked={visitType === 'SPEAKER'} onChange={() => {setVisitType('SPEAKER');setCategory('Umum');}} /> Narasumber / Pemateri</label>
+              <label className="flex items-center gap-2"><input type="radio" name="visitType" checked={visitType === 'SPEAKER'} onChange={() => setVisitType('SPEAKER')} /> Narasumber / Pemateri</label>
               {visitType === 'SPEAKER' && <div className="space-y-2 pt-2">
                 <label className="block">Agenda / sesi yang diisi *</label>
                 <input required value={speakerAgenda} onChange={e => setSpeakerAgenda(e.target.value)} placeholder="Contoh: Giat Wawasan Kebangsaan" className="w-full rounded-xl border border-slate-300 bg-transparent p-2 dark:border-white/20" />
-                <label className="block">Topik / judul materi (Opsional)</label>
+                <label className="block">Topik / judul materi</label>
                 <input value={speakerTopic} onChange={e => setSpeakerTopic(e.target.value)} placeholder="Judul materi" className="w-full rounded-xl border border-slate-300 bg-transparent p-2 dark:border-white/20" />
               </div>}
             </fieldset>
@@ -212,10 +206,10 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
-                  <label className="text-slate-600 dark:text-slate-400 font-semibold block mb-1">Nama Lengkap *:</label>
+                  <label className="text-slate-600 dark:text-slate-400 font-semibold block mb-1">Nama Lengkap:</label>
                   <input
                     type="text"
-                    required minLength={2} maxLength={120}
+                    required
                     value={name}
                     onChange={e => setName(e.target.value)}
                     placeholder="Nama Lengkap"
@@ -224,10 +218,10 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
                 </div>
 
                 <div>
-                  <label className="text-slate-600 dark:text-slate-400 font-semibold block mb-1">Nomor WhatsApp / HP *:</label>
+                  <label className="text-slate-600 dark:text-slate-400 font-semibold block mb-1">Nomor WhatsApp / HP:</label>
                   <input
                     type="tel"
-                    required minLength={7} maxLength={25} inputMode="tel"
+                    required
                     value={phone}
                     onChange={e => setPhone(e.target.value)}
                     placeholder="08xxxxxxxxxx"
@@ -238,7 +232,7 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
-                  <label className="text-slate-600 dark:text-slate-400 font-semibold block mb-1">Kategori Kunjungan *:</label>
+                  <label className="text-slate-600 dark:text-slate-400 font-semibold block mb-1">Kategori Kunjungan:</label>
                   <select
                     value={category}
                     onChange={e => {
@@ -280,13 +274,22 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
             {/* Step 2: Person Being Visited - shown only for relevant categories */}
             {activeCategory.showPerson && <div className="space-y-2.5 pt-2 border-t border-[#ECECEF] dark:border-white/10">
               <h4 className="font-bold text-[#171717] dark:text-white uppercase text-[11px] tracking-wider">
-                2. {isFamilyVisit ? 'Peserta yang Dikunjungi (Opsional)' : category === 'Media' ? 'Narahubung / Koordinator Peliputan' : category === 'VIP' || category === 'VVIP' ? 'Pihak Penerima / Protokol (Opsional)' : visitType === 'SPEAKER' ? 'Pihak Koordinasi di Perkemahan (Opsional)' : 'Siapa yang Dikunjungi di Perkemahan? (Opsional)'}
+                2. {category === 'Media' ? 'Narahubung / Koordinator Peliputan' : category === 'VIP' || category === 'VVIP' ? 'Pihak Penerima / Protokol (Opsional)' : visitType === 'SPEAKER' ? 'Pihak Koordinasi di Perkemahan (Opsional)' : 'Siapa yang Dikunjungi di Perkemahan? (Opsional)'}
               </h4>
 
               <div className="space-y-2">
-                {isFamilyVisit ? <div className="space-y-2"><label className="block font-semibold">Nama peserta yang dikunjungi (Opsional)</label><input type="text" maxLength={150} value={selectedPerson?.targetName || ''} onChange={e => setSelectedPerson(e.target.value.trim() ? { type: 'participant', targetName: e.target.value, targetDetail: organization.trim() } : null)} placeholder="Ketik nama peserta jika diketahui" className="w-full rounded-xl border border-slate-300 bg-transparent p-3"/><p className="text-slate-500">Boleh dikosongkan. Nama ini menjadi catatan kunjungan, tidak menautkan data peserta secara otomatis.</p></div> : <div className="relative"><Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"/><input type="text" value={personSearchQuery} onChange={e => handleSearchPerson(e.target.value)} placeholder="Cari pihak yang dikunjungi (Opsional)" className="w-full rounded-xl border bg-transparent py-2 pl-8 pr-3"/></div>}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={personSearchQuery}
+                    onChange={e => handleSearchPerson(e.target.value)}
+                    placeholder={category === 'Media' ? 'Cari narahubung atau koordinator...' : category === 'VIP' || category === 'VVIP' ? 'Cari pihak penerima atau petugas protokol...' : 'Cari nama peserta atau kontingen...'}
+                    className="w-full pl-8 pr-3 py-2 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white text-xs placeholder:text-slate-400 outline-none focus:border-[#C62828] focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/40"
+                  />
+                </div>
 
-                {!isFamilyVisit && searchResults.length > 0 && (
+                {searchResults.length > 0 && (
                   <div className="p-1 bg-white dark:bg-[#1a1a20] rounded-xl border border-[#ECECEF] dark:border-white/10 space-y-1 max-h-36 overflow-y-auto shadow-sm">
                     {searchResults.map((r, i) => (
                       <button
@@ -313,24 +316,24 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
                       <div className="text-[10px] text-slate-500 dark:text-slate-400">{selectedPerson.targetDetail}</div>
                     </div>
                     <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold text-[10px]">
-                      {isFamilyVisit ? 'Diisi manual' : 'Terpilih ✓'}
+                      Terpilih ✓
                     </span>
                   </div>
                 ) : (
                   <p className="text-[11px] text-amber-600 dark:text-amber-400">
-                    Nama peserta atau pihak yang dikunjungi boleh dikosongkan.
+                    {isFamilyVisit ? '* Untuk kategori keluarga, pilih peserta yang akan dikunjungi.' : '* Pilihan pihak yang dikunjungi bersifat opsional.'}
                   </p>
                 )}
 
                 {activeCategory.showRelationship && <div>
-                  <label className="text-slate-600 dark:text-slate-400 font-semibold block mb-1">{activeCategory.relationshipLabel} (Opsional):</label>
-                  {isFamilyVisit ? <select value={relationship} onChange={e => setRelationship(e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white p-3 text-slate-900"><option value="">Pilih hubungan</option>{['Ayah','Ibu','Wali','Kakak / Adik','Keluarga / Kerabat'].map(v => <option key={v}>{v}</option>)}</select> : <input
+                  <label className="text-slate-600 dark:text-slate-400 font-semibold block mb-1">{activeCategory.relationshipLabel}:</label>
+                  <input
                     type="text"
                     value={relationship}
                     onChange={e => setRelationship(e.target.value)}
                     placeholder={category === 'Media' ? 'Nama koordinator peliputan' : category === 'VIP' || category === 'VVIP' ? 'Jabatan atau petugas protokol' : category === 'Mabiran' || category === 'Mabigus' ? 'Jabatan atau peran dalam kwartir/gudep' : 'Contoh: Orang Tua, Pembina, Kerabat...'}
                     className="w-full px-3 py-3 sm:py-2.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white outline-none focus:border-[#C62828] focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/40"
-                  />}
+                  />
                 </div>}
               </div>
             </div>}
@@ -343,16 +346,16 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
 
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">Tanggal Kunjungan *:</label>
+                  <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">Tanggal Izin:</label>
                   <input
-                    type="date" required
+                    type="date"
                     value={visitDate}
                     onChange={e => setVisitDate(e.target.value)}
                     className="w-full px-2 py-1.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono text-xs outline-none"
                   />
                 </div>
                 <div>
-                  <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">Rencana Datang (Opsional):</label>
+                  <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">Rencana Datang:</label>
                   <input
                     type="time"
                     value={expectedArrival}
@@ -361,7 +364,7 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
                   />
                 </div>
                 <div>
-                  <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">Rencana Pulang (Opsional):</label>
+                  <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">Rencana Pulang:</label>
                   <input
                     type="time"
                     value={expectedDeparture}
@@ -373,7 +376,7 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
 
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">Jumlah Pendamping (Opsional, selain pendaftar):</label>
+                  <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">Jumlah Rombongan Pendamping:</label>
                   <input
                     type="number"
                     min="0"
@@ -396,10 +399,9 @@ export const VisitorPublicRegistrationModal: React.FC<VisitorPublicRegistrationM
               </div>
 
               <div>
-                <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">{activeCategory.purposeLabel}{purposeRequired ? ' *' : ' (Opsional)'}:</label>
+                <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">{activeCategory.purposeLabel}:</label>
                 <input
                   type="text"
-                  required={purposeRequired}
                   value={purpose}
                   onChange={e => setPurpose(e.target.value)}
                   placeholder={activeCategory.purposePlaceholder}
