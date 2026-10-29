@@ -69,6 +69,38 @@ import { MediaItem, LeaderboardEntry, ScheduleItem, Announcement } from '../../t
 import { ParticipantAvatar } from '../../components/ParticipantAvatar';
 import { resolveGoogleDriveImageUrl } from '../../utils/googleDriveImage';
 
+/** Resolve display URLs only. GAS records and publication rules stay authoritative. */
+function portalThumbnailUrls(item: MediaItem): string[] {
+  const raw = (item.thumbnail_url || item.source_url || '').trim();
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' || url.username || url.password) return [];
+    if (url.hostname === 'drive.google.com') {
+      if (url.pathname.includes('/folders/')) return [];
+      const id = url.pathname.match(/\/file\/d\/([A-Za-z0-9_-]+)/)?.[1] || url.searchParams.get('id') || '';
+      if (!/^[A-Za-z0-9_-]{10,}$/.test(id)) return [];
+      return [`https://lh3.googleusercontent.com/d/${id}`, `https://drive.google.com/thumbnail?id=${id}&sz=w1280`];
+    }
+    if (['youtu.be', 'www.youtube.com', 'youtube.com', 'm.youtube.com'].includes(url.hostname)) {
+      const id = url.hostname === 'youtu.be' ? url.pathname.split('/')[1] : url.searchParams.get('v') || url.pathname.match(/\/(?:shorts|embed)\/([A-Za-z0-9_-]+)/)?.[1];
+      return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? [`https://i.ytimg.com/vi/${id}/hqdefault.jpg`] : [];
+    }
+    return [raw];
+  } catch { return []; }
+}
+
+const PortalGalleryThumbnail: React.FC<{ item: MediaItem }> = ({ item }) => {
+  const urls = portalThumbnailUrls(item);
+  const signature = urls.join('|');
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => setAttempt(0), [signature]);
+  if (!urls[attempt]) return <div role="status" className="flex h-full w-full flex-col items-center justify-center gap-2 p-3 text-center text-slate-500 bg-slate-100">
+    <ImageIcon className="h-7 w-7"/>
+    <span className="text-[10px]">Pratinjau belum dapat dimuat. Buka galeri untuk melihat tautan dokumentasi.</span>
+  </div>;
+  return <img key={urls[attempt]} src={urls[attempt]} alt={item.title} loading="lazy" referrerPolicy="no-referrer" onError={() => setAttempt(value => value + 1)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"/>;
+};
+
 export type InstallationState = 'LOADING' | 'CONFIGURED' | 'NOT_CONFIGURED' | 'BACKEND_UNREACHABLE';
 
 interface PublicEventHomepageProps {
@@ -1073,14 +1105,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                 role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onNavigateToGallery?.('photos'); }} className="group relative min-w-0 cursor-pointer overflow-hidden rounded-xl sm:rounded-2xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 hover:border-[#C5141E]/50 transition-all duration-300 flex flex-col shadow-xs focus:outline-none focus:ring-2 focus:ring-[#C5141E]"
               >
                 <div className="aspect-square w-full overflow-hidden bg-slate-100 dark:bg-black/40">
-                  <img
-                    src={photo.thumbnail_url}
-                    alt={photo.title}
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                    onError={event => { event.currentTarget.style.display = 'none'; }}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
+                  <PortalGalleryThumbnail item={photo}/>
                 </div>
                 <div className="p-2.5">
                   <h3 className="text-[11px] font-bold text-slate-900 dark:text-white line-clamp-1 group-hover:text-[#C5141E] dark:group-hover:text-[#E31B23] transition-colors">
@@ -1141,14 +1166,7 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
                 role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setActiveVideoModal(video); }} className="group relative min-w-0 cursor-pointer overflow-hidden rounded-xl sm:rounded-[24px] bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 hover:border-[#E31B23]/50 transition-all shadow-xs flex flex-col focus:outline-none focus:ring-2 focus:ring-[#E31B23]"
               >
                 <div className="aspect-video w-full overflow-hidden bg-black/80 relative">
-                  <img
-                    src={video.thumbnail_url}
-                    alt={video.title}
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                    onError={event => { event.currentTarget.style.display = 'none'; }}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
+                  <PortalGalleryThumbnail item={video}/>
                   <div className="absolute inset-0 bg-black/30 group-hover:bg-black/15 transition-colors flex items-center justify-center">
                     <div className="w-12 h-12 rounded-full p-[2px] bg-gradient-to-tr from-[#C5141E] via-[#E31B23] to-[#FFD36A] shadow-2xl group-hover:scale-110 transition-transform">
                       <div className="w-full h-full rounded-full bg-black/75 backdrop-blur-xs flex items-center justify-center text-white">
