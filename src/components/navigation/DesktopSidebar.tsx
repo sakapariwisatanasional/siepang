@@ -110,6 +110,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           roles: ['workspace_admin', 'event_admin', 'kontingen_admin', 'registration_officer', 'superadmin'],
           featureKey: 'PARTICIPANT_MANAGEMENT',
         },
+        { id: 'visitor_attendance' as NavTab, label: 'Daftar Hadir Tamu', icon: Users, roles: ['superadmin', 'workspace_admin', 'event_admin'] },
         { id: 'gudep_attendance' as NavTab, label: 'Kehadiran Kontingen / Gudep', icon: Users, roles: ['superadmin', 'workspace_admin', 'event_admin', 'registration_officer', 'kontingen_admin'] },
         {
           id: 'contingent_regus' as NavTab,
