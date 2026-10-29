@@ -648,6 +648,7 @@ export const AdminDaerahDashboard: React.FC<AdminDaerahDashboardProps> = ({
           isOpen={expandedSections.kegiatan}
           onToggle={() => toggleSection('kegiatan')}
           items={[
+            { id: 'visitor_attendance', title: 'Daftar Hadir Tamu', icon: Users, status: 'Pantau Kehadiran', statusColor: 'purple', onClick: () => onNavigate('visitor_attendance') },
             {
               id: 'participants',
               title: 'Data Peserta',
