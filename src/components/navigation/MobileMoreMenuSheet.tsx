@@ -114,6 +114,7 @@ export const MobileMoreMenuSheet: React.FC<MobileMoreMenuSheetProps> = ({
       title: 'Kegiatan',
       items: [
         { id: 'participants', label: 'Data Peserta & Berkas', icon: Users, feature: 'PARTICIPANT_MANAGEMENT' },
+        { id: 'visitor_attendance', label: 'Daftar Hadir Tamu', icon: Users, roles: ['superadmin', 'workspace_admin', 'event_admin'] },
         { id: 'gudep_attendance', label: 'Kehadiran Kontingen / Gudep', icon: Users, roles: ['superadmin', 'workspace_admin', 'event_admin', 'registration_officer', 'kontingen_admin'] },
         { id: 'contingent_regus', label: 'Data Kontingen per Gudep', icon: Users, roles: ['superadmin', 'workspace_admin', 'event_admin', 'registration_officer', 'kontingen_admin'] },
         { id: 'schedule', label: 'Jadwal & Agenda', icon: Calendar, feature: 'SCHEDULE' },
