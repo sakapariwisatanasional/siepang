@@ -25,6 +25,7 @@ import {
   AlertTriangle,
   Lock,
   Loader2,
+  Home,
 } from 'lucide-react';
 import { participantService } from '../../services/participantService';
 import { attendanceService } from '../../services/attendanceService';
@@ -40,6 +41,7 @@ import { Participant, PeerAppreciationType, VisitorRegistration } from '../../ty
 interface QrScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onNavigateHome?: () => void;
   onSuccessFeedback?: (message: string) => void;
 }
 
@@ -47,6 +49,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   isOpen,
   onClose,
   onSuccessFeedback,
+  onNavigateHome,
 }) => {
   const [flashlightOn, setFlashlightOn] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -112,12 +115,14 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   const [pointResult, setPointResult] = useState('');
   const [pointReload, setPointReload] = useState(0);
   const pointSubmitLock = useRef(false);
+  const scanSessionVersion = useRef(0);
   const pointCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelPointClose = () => {
     if (pointCloseTimer.current) clearTimeout(pointCloseTimer.current);
     pointCloseTimer.current = null;
   };
   const finishPointScan = () => {
+    scanSessionVersion.current++;
     cancelPointClose();
     streamRef.current?.getTracks().forEach(track => track.stop());
     setPointKind(null);setScannedParticipant(null);setShowPeerModal(false);setShowHealthModal(false);
@@ -423,12 +428,14 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     if (!scannedParticipant || !pointKind || !pointOptionId || !pointBackendReady || pointSubmitLock.current) return;
     const selected = pointOptions.find(option => option.id === pointOptionId);
     if (!selected) return;
+    const operationVersion=scanSessionVersion.current;
     pointSubmitLock.current = true; setPointBusy(true); setPointError(''); setPointResult('');
     try {
       const response = await apiTransport.send<any>(pointKind === 'activity' ? 'activity.attendance.record' : 'agenda.attendance.record', {
         participant_id: scannedParticipant.id,
         ...(pointKind === 'activity' ? {activity_id: selected.id} : {schedule_id: selected.id}),
       }, {timeoutMs:45000});
+      if(operationVersion!==scanSessionVersion.current)return;
       const saved = response.data;
       if (!response.ok || !saved?.success || !saved?.attendance_recorded || String(saved.participant_id) !== scannedParticipant.id || String(pointKind === 'activity' ? saved.activity_id : saved.schedule_id) !== selected.id) throw new Error(response.error?.message || 'GAS belum mengonfirmasi kehadiran dan poin peserta.');
       const awarded = Number(saved.xp_awarded || 0);
@@ -439,7 +446,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
       if (saved.xp_balance !== null && saved.xp_balance !== undefined) setScannedParticipant(previous => previous ? {...previous,xp:Number(saved.xp_balance)} : previous);
       // GAS returns the confirmed balance for this participant; avoid a full-roster request after every award.
     } catch (error) {
-      setPointError(error instanceof Error ? error.message : String(error));
+      if(operationVersion===scanSessionVersion.current)setPointError(error instanceof Error ? error.message : String(error));
     } finally {pointSubmitLock.current=false;setPointBusy(false);}
   };
 
@@ -486,11 +493,12 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black/95 text-white animate-in fade-in duration-200">
+    <>
+    <div className="fixed inset-x-0 top-0 bottom-[calc(76px+env(safe-area-inset-bottom,0px))] z-50 flex flex-col bg-black/95 text-white animate-in fade-in duration-200">
       {/* Top Scanner Controls */}
       <div className="flex items-center justify-between p-4 z-20">
         <button
-          onClick={onClose}
+          onClick={finishPointScan}
           className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
           aria-label="Tutup Pemindai"
         >
@@ -591,8 +599,8 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
 
       {/* Scanned Participant Action Bottom Sheet */}
       {scannedParticipant && (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/60 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-lg mx-auto bg-white dark:bg-[#141418] border-t border-[#ECECEF] dark:border-white/10 rounded-t-[28px] p-5 shadow-2xl animate-in slide-in-from-bottom duration-300">
+        <div className="fixed inset-x-0 top-0 bottom-[calc(76px+env(safe-area-inset-bottom,0px))] z-50 flex items-end bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="w-full max-w-lg mx-auto bg-white dark:bg-[#141418] border-t border-[#ECECEF] dark:border-white/10 rounded-t-[28px] p-5 max-h-full overflow-y-auto shadow-2xl animate-in slide-in-from-bottom duration-300">
             {/* Sheet Handle */}
             <div className="w-10 h-1.5 bg-slate-300 dark:bg-slate-600 rounded-full mx-auto mb-4" />
 
@@ -721,8 +729,8 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
 
       {/* Peer Appreciation Modal */}
       {pointKind && scannedParticipant && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-3 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Poin kegiatan peserta">
-          <div className="w-full max-w-lg max-h-[90dvh] overflow-y-auto rounded-3xl bg-white dark:bg-[#141418] p-5 space-y-4 text-slate-900 dark:text-white">
+        <div className="fixed inset-x-0 top-0 bottom-[calc(76px+env(safe-area-inset-bottom,0px))] z-[80] flex items-center justify-center bg-black/80 p-3 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Poin kegiatan peserta">
+          <div className="w-full max-w-lg max-h-[calc(100dvh-110px-env(safe-area-inset-bottom,0px))] overflow-y-auto rounded-3xl bg-white dark:bg-[#141418] p-5 space-y-4 text-slate-900 dark:text-white">
             <div className="flex justify-between gap-3 items-start">
               <h3 className="font-bold text-lg">{pointKind === 'activity' ? 'XP Aktivitas Perkemahan' : 'XP Jadwal Kegiatan'}</h3>
               <button type="button" disabled={pointBusy} onClick={finishPointScan} aria-label="Tutup scanner" className="min-w-[44px] min-h-[44px] p-3"><X className="w-5 h-5" /></button>
@@ -756,7 +764,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
       )}
 
       {showPeerModal && scannedParticipant && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+        <div className="fixed inset-x-0 top-0 bottom-[calc(76px+env(safe-area-inset-bottom,0px))] z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <div className="w-full max-w-sm bg-white dark:bg-[#141418] border border-amber-500/30 rounded-[28px] p-5 space-y-4 shadow-2xl">
             <div className="text-center space-y-1">
               <div className="text-sm font-bold text-[#171717] dark:text-white">Apresiasi Kawan Kemah ⚜️</div>
@@ -805,7 +813,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
 
       {/* Health Officer Confidential Record Modal */}
       {showHealthModal && scannedParticipant && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+        <div className="fixed inset-x-0 top-0 bottom-[calc(76px+env(safe-area-inset-bottom,0px))] z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <div className="w-full max-w-sm bg-white dark:bg-[#141418] border border-rose-500/40 rounded-[28px] p-5 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between pb-2 border-b border-[#ECECEF] dark:border-white/10">
               <div className="flex items-center gap-2 text-rose-600 dark:text-rose-300 font-bold text-xs">
@@ -854,7 +862,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
 
       {/* User / Committee QR Result */}
       {scannedUserQr && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
+        <div className="fixed inset-x-0 top-0 bottom-[calc(76px+env(safe-area-inset-bottom,0px))] z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
           <div className="w-full max-w-sm bg-white dark:bg-[#141418] border border-emerald-500/40 rounded-3xl p-6 shadow-2xl space-y-4">
             <div className="text-center space-y-2">
               <div className="mx-auto w-16 h-16 rounded-full overflow-hidden bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center">
@@ -938,7 +946,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
 
       {/* Activity QR Scan Result Modal (Requirements 8-10, 11, 12, 14, 15) */}
       {scannedGudepQr && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-4">
+        <div className="fixed inset-x-0 top-0 bottom-[calc(76px+env(safe-area-inset-bottom,0px))] z-[70] flex items-center justify-center bg-black/75 p-4">
           <div className="w-full max-w-sm space-y-4 rounded-3xl border border-emerald-500/30 bg-slate-950 p-5 text-white shadow-2xl">
             <div className="text-center">
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-300">
@@ -1003,7 +1011,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
       )}
 
       {scannedActivityResult && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
+        <div className="fixed inset-x-0 top-0 bottom-[calc(76px+env(safe-area-inset-bottom,0px))] z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
           <div className="w-full max-w-sm bg-gradient-to-b from-[#14291c] to-[#0c1810] border border-emerald-500/40 rounded-3xl p-6 shadow-2xl text-center space-y-4">
             {scannedActivityResult.success ? (
               <>
@@ -1100,7 +1108,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
 
       {/* Visitor Gate Check-in & Check-out Modal (Requirements 31, 32, 33) */}
       {scannedVisitor && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
+        <div className="fixed inset-x-0 top-0 bottom-[calc(76px+env(safe-area-inset-bottom,0px))] z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
           <div className="w-full max-w-sm bg-gradient-to-b from-[#142319] to-[#0c160f] border border-emerald-500/40 rounded-3xl p-6 shadow-2xl space-y-4">
             <div className="text-center space-y-1">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold">
@@ -1194,5 +1202,12 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
         </div>
       )}
     </div>
+    <div className="fixed inset-x-0 bottom-0 z-[200] bg-white dark:bg-[#141418] border-t border-slate-200 dark:border-white/10 px-3 pt-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))] text-slate-900 dark:text-white shadow-xl">
+      <div className="max-w-lg mx-auto flex gap-2">
+        <button type="button" onClick={() => {finishPointScan();onNavigateHome?.();}} className="flex-1 min-h-[52px] flex items-center justify-center gap-2 rounded-xl bg-emerald-700 text-white font-bold text-sm"><Home className="w-5 h-5"/>Beranda</button>
+        <button type="button" onClick={finishPointScan} className="flex-1 min-h-[52px] flex items-center justify-center gap-2 rounded-xl border font-bold text-sm"><X className="w-5 h-5"/>Keluar Scanner</button>
+      </div>
+    </div>
+    </>
   );
 };
