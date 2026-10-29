@@ -112,7 +112,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         },
         {
           id: 'contingent_regus' as NavTab,
-          label: 'Data Kontingen per Regu',
+          label: 'Data Kontingen per Gudep',
           icon: Users,
           roles: ['superadmin', 'workspace_admin', 'event_admin', 'registration_officer', 'kontingen_admin'],
         },
