@@ -80,6 +80,7 @@ class AttendanceService {
     if (this.inFlight.has(key)) throw new Error('Presensi peserta ini sedang diproses.');
     this.inFlight.add(key);
     try {
+      if (!sessionId) {
       const previous = await apiTransport.send<{ records: any[] }>('admin.entity.list', {
         entity: 'attendance',
         filters: { participant_id: participant.id, checkpoint_or_schedule_id: sessionId },
@@ -121,6 +122,25 @@ class AttendanceService {
         syncStatus: 'Synced to Cloud',
       };
       this.records = [record, ...this.records.filter(r => r.id !== record.id)];
+      return { record, offline: false, destination: 'cloud' };
+      }
+      const response = await apiTransport.send<any>('agenda.attendance.record', {
+        schedule_id: sessionId, participant_id: participant.id,
+      });
+      const stored = response.data;
+      if (!response.ok || !stored?.success || !stored?.attendance_recorded || !stored?.attendance_id || !stored?.attendance_at) {
+        throw new Error(response.error?.message || 'GAS belum mengonfirmasi kehadiran dan poin kegiatan.');
+      }
+      const record: AttendanceRecord = {
+        id: String(stored.attendance_id),
+        participantId: String(stored.participant_id), participantName: participant.name,
+        participantCode: participant.code, contingentName: participant.contingentName,
+        sessionId: String(stored.schedule_id), sessionName: String(stored.activity_title || sessionName),
+        timestamp: String(stored.attendance_at), xpAwarded: Number(stored.xp_awarded || 0),
+        synced: true, syncStatus: 'Synced to Cloud',
+      };
+      this.records = [record, ...this.records.filter(r => r.id !== record.id)];
+      void participantService.loadParticipants().catch(error => console.warn('Presensi tersimpan; pembaruan saldo tampilan tertunda:', error));
       return { record, offline: false, destination: 'cloud' };
     } finally {
       this.inFlight.delete(key);
