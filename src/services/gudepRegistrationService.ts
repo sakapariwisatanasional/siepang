@@ -29,6 +29,7 @@ export type GudepDetail = {
   gudep: GudepRecord; regu: GudepRegu[]; advisors: GudepAdvisor[]; operators: GudepOperator[];
   participantLinks: Array<{ id: string; participant_id: string; regu_id: string; gudep_id: string; status: string }>;
   advisorRegu: unknown[];
+  gudepParticipants?: Array<{ id: string; name: string; gender: string; regu_id: string; gudep_id?: string; membership_number?: string; profile_photo_url?: string; profile_photo_file_id?: string; status?: string }>;
   participants?: Array<{ id: string; name: string; gender: string; regu_id: string; gudep_id?: string; membership_number?: string; profile_photo_url?: string; profile_photo_file_id?: string; status?: string }>;
   eligibleParticipants?: Array<{ id: string; name: string; gender: string; membership_number?: string; profile_photo_url?: string; profile_photo_file_id?: string; institution?: string; contingent_id?: string; status?: string }>;
 };
