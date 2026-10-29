@@ -1335,6 +1335,7 @@ export default function App() {
       <QrScannerModal
         isOpen={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
+        onNavigateHome={() => navigateToTab('home')}
       />
 
       {/* Global Sync Center Modal */}
