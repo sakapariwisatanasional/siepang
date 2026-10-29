@@ -39,6 +39,7 @@ import { activityQrService } from '../../services/activityQrService';
 import { ScheduleItem, CampActivity, ActivityType, ScheduleConflict, ActivityQrConfig } from '../../types';
 import { ActivityQrModal } from '../activities/ActivityQrModal';
 import { ActivityQrSignPrint } from '../activities/ActivityQrSignPrint';
+import { AttendanceScanner } from '../attendance/AttendanceScanner';
 
 
 // Dates are read only from the active event. No synthetic event or sample dates.
@@ -152,6 +153,7 @@ export const ScheduleActivityEditor: React.FC = () => {
     location?: string;
     scheduleTime?: string;
   } | null>(null);
+  const [pointScanTarget, setPointScanTarget] = useState<{ title: string; scheduleId?: string } | null>(null);
   const [printSignConfigs, setPrintSignConfigs] = useState<ActivityQrConfig[] | null>(null);
 
   // Batch Print QR State (Requirement 5)
@@ -637,6 +639,9 @@ export const ScheduleActivityEditor: React.FC = () => {
                         <QrCode className="w-3.5 h-3.5 text-amber-300" />
                         <span>QR Pos</span>
                       </button>
+                      <button type="button" onClick={() => setPointScanTarget({title:item.title,scheduleId:item.id})} className="px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold min-h-[44px]">
+                        Scan ID Card &amp; Beri Poin
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleTogglePublish(item)}
@@ -745,7 +750,10 @@ export const ScheduleActivityEditor: React.FC = () => {
                   <div>Kapasitas: <span className="text-slate-800 dark:text-slate-900 font-medium">{act.capacity} Orang</span></div>
                 </div>
 
-                <div className="flex justify-end pt-2 border-t border-slate-200">
+                <div className="flex flex-wrap gap-2 justify-end pt-2 border-t border-slate-200">
+                  <button type="button" onClick={() => setPointScanTarget({title:act.name || act.title || 'Aktivitas'})} className="px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold min-h-[44px]">
+                    Scan ID Card &amp; Beri Poin
+                  </button>
                   <button
                     type="button"
                     onClick={() => setSelectedQrActivity({
@@ -1149,6 +1157,22 @@ export const ScheduleActivityEditor: React.FC = () => {
                 Kirim Pengumuman
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {pointScanTarget && (
+        <div className="fixed inset-0 z-[70] bg-black/60 p-2 sm:p-5 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Scan ID card dan beri poin kegiatan">
+          <div className="max-w-4xl mx-auto bg-white dark:bg-[#141418] rounded-2xl p-4 sm:p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-lg">Scan ID Card &amp; Beri Poin</h3>
+                <p className="text-sm">{pointScanTarget.title}</p>
+              </div>
+              <button type="button" aria-label="Tutup panel poin" onClick={() => setPointScanTarget(null)} className="min-h-[44px] min-w-[44px] p-3 rounded-xl border"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-sm text-slate-600 dark:text-slate-300">{pointScanTarget.scheduleId ? 'Agenda ini sudah dipilih. Periksa agenda dan pindai ID card peserta untuk mencatat poin.' : 'Pilih agenda pelaksanaan yang sesuai terlebih dahulu. Poin mengikuti agenda di GAS, bukan otomatis dicocokkan dari nama aktivitas.'}</p>
+            <AttendanceScanner key={pointScanTarget.scheduleId || pointScanTarget.title} activityOnly initialScheduleId={pointScanTarget.scheduleId} />
           </div>
         </div>
       )}
