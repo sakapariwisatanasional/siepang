@@ -33,8 +33,10 @@ const DEFAULT_PLOT: PlotShape = { width: 5, height: 5, rotation: 0, locked: fals
 const clampPct = (n:number) => Math.max(1, Math.min(99, n));
 
 type CampsiteAssignmentRegu = { regu_id: string; regu_name: string; gudep_id: string; gudep_name: string; gender: string; quota: number; member_count: number };
-type CampsiteAssignmentLot = { id: string; lot_code: string; subcamp_name: string; capacity: number; gender: string; status: string; assigned_regu_id: string; assigned_regu_name: string; assigned_gudep_id: string };
-type CampsiteAssignmentOptions = { lots: CampsiteAssignmentLot[]; regus: CampsiteAssignmentRegu[] };
+type CampsiteAssignmentLot = { id: string; lot_code: string; subcamp_name: string; capacity: number; gender: string; status: string; assigned_regu_id: string; assigned_regu_name: string; assigned_gudep_id: string; member_count?:number;participant_ids?:string[];allocation_version?:string;legacy_locked?:boolean };
+type CampsiteGudep = {can_assign?:boolean;gudep_id:string;gudep_name:string;gudep_number:string};
+type CampsiteGudepParticipant = {id:string;name:string;gudep_id:string;gender:string;lot_number:string};
+type CampsiteAssignmentOptions = {mode?:string;lots:CampsiteAssignmentLot[];regus:CampsiteAssignmentRegu[];gudeps?:CampsiteGudep[];participants?:CampsiteGudepParticipant[];unresolved_count?:number};
 
 export const CampsiteManager: React.FC = () => {
   const [lotQuery, setLotQuery] = useState('');
@@ -43,6 +45,8 @@ export const CampsiteManager: React.FC = () => {
   const [lotStatusFilter, setLotStatusFilter] = useState('');
   const [lotEditor, setLotEditor] = useState('');
   const [lotDrafts, setLotDrafts] = useState<Record<string,string>>({});
+  const [participantDrafts,setParticipantDrafts] = useState<Record<string,string[]>>({});
+  const [participantQuery,setParticipantQuery] = useState('');
   const [capacityEditor, setCapacityEditor] = useState('');
   const [capacityDraft, setCapacityDraft] = useState('');
   const [capacityBusy, setCapacityBusy] = useState(false);
@@ -62,6 +66,8 @@ export const CampsiteManager: React.FC = () => {
   const [structurePreview, setStructurePreview] = useState<StructurePreview | null>(null);
   const [structureNodes, setStructureNodes] = useState<Array<{id: string; code: string; name: string; node_type: string}>>([]);
   const [structureBusy, setStructureBusy] = useState(false);
+  const [structureLoading, setStructureLoading] = useState(false);
+  const structureLock = useRef(false);
   const [structureError, setStructureError] = useState('');
   const [structureMessage, setStructureMessage] = useState('');
   const structurePlan = () => {
@@ -79,43 +85,68 @@ export const CampsiteManager: React.FC = () => {
     };
   };
   const loadStructure = async () => {
+    setStructureLoading(true);
     setStructureError('');
     try {
       const response = await apiTransport.send<{nodes: Array<{id:string;code:string;name:string;node_type:string}>}>('campsite.structure.get', {}, {timeoutMs:45000});
       if (!response.ok) throw new Error(response.error?.message || 'Gagal memuat struktur GAS.');
       setStructureNodes(response.data?.nodes || []);
       const kab = response.data?.nodes?.find(n => n.node_type === 'KABUPATEN');
-      if (kab) setStructureKabupaten(kab.name);
+      if (kab) setStructureKabupaten(old => old.trim() ? old : kab.name);
     } catch (error: any) { setStructureError(error?.message || 'Gagal memuat struktur.'); }
+    finally {setStructureLoading(false);}
+  };
+  const structureFailure = (error: any) => {
+    const raw = String(error?.message || 'Permintaan struktur belum berhasil.');
+    if (/UNKNOWN_ACTION|UNKNOWN_CAMPSITE|not found|tidak dikenal|belum dipetakan/i.test(raw)) return `${raw} Pastikan deployment GAS aktif mendukung campsite.structure.preview dan campsite.structure.generate.`;
+    if (/FORBIDDEN|UNAUTHORIZED|ADMIN_ONLY|PERMISSION|akses|izin/i.test(raw)) return `${raw} Gunakan akun yang memiliki izin pengelolaan event pada GAS.`;
+    return raw;
   };
   const previewStructure = async () => {
+    if (structureLock.current) return;
+    structureLock.current=true;
     setStructureBusy(true); setStructureError(''); setStructureMessage(''); setStructurePreview(null);
     try {
       const plan = structurePlan();
+      if (plan.putra.kelurahanCount * plan.putra.lotsPerVillage + plan.putri.kelurahanCount * plan.putri.lotsPerVillage === 0) throw new Error('Rencana masih 0 kapling. Isi jumlah kelurahan dan kapling per kelurahan pada minimal satu sektor.');
       const response = await apiTransport.send<StructurePreview>('campsite.structure.preview', {plan}, {timeoutMs:60000});
       if (!response.ok || !response.data) throw new Error(response.error?.message || 'Gagal membaca pratinjau GAS.');
       setStructurePreview(response.data);
-    } catch (error: any) { setStructureError(error?.message || 'Gagal memeriksa rencana.'); }
-    finally { setStructureBusy(false); }
+      if (response.data.newLots === 0) setStructureMessage('Semua kapling pada rencana ini sudah tersedia. Tidak ada kapling baru yang perlu dibuat.');
+      else if (!response.data.canGenerate) setStructureError(response.data.conflicts?.join('; ') || 'GAS belum mengizinkan pembuatan. Maksimal 250 kapling baru per proses; kurangi rencana lalu periksa kembali.');
+    } catch (error: any) { setStructureError(structureFailure(error)); }
+    finally {setStructureBusy(false);structureLock.current=false;}
   };
   const generateStructure = async () => {
-    if (!structurePreview?.canGenerate || structureBusy) return;
-    if (!window.confirm(`Buat ${structurePreview.newLots} kavling baru di GAS? Data yang sudah ada tidak akan ditimpa.`)) return;
-    setStructureBusy(true); setStructureError(''); setStructureMessage('');
+    if (structureLock.current) return;
+    structureLock.current=true;
+    setStructureBusy(true); setStructureError(''); setStructureMessage(''); setStructurePreview(null);
+    let committed = false;
     try {
       const plan = structurePlan();
-      // Recheck immediately before writing; layout or other admins may have changed.
+      const requested = plan.putra.kelurahanCount * plan.putra.lotsPerVillage + plan.putri.kelurahanCount * plan.putri.lotsPerVillage;
+      if (requested === 0) throw new Error('Rencana masih 0 kapling. Isi jumlah kelurahan dan kapling per kelurahan pada minimal satu sektor.');
+      // A click always performs a fresh backend preflight; an old preview is never authority.
       const fresh = await apiTransport.send<StructurePreview>('campsite.structure.preview', {plan}, {timeoutMs:60000});
-      if (!fresh.ok || !fresh.data?.canGenerate) throw new Error(fresh.error?.message || 'Rencana berubah atau memiliki konflik. Ulangi pratinjau.');
+      if (!fresh.ok || !fresh.data) throw new Error(fresh.error?.message || 'GAS tidak mengonfirmasi pemeriksaan rencana.');
+      setStructurePreview(fresh.data);
+      if (!fresh.data.canGenerate) throw new Error(fresh.data.conflicts?.join('; ') || 'GAS belum mengizinkan pembuatan. Maksimal 250 kapling baru per proses; kurangi rencana lalu periksa kembali.');
+      if (!Number.isInteger(fresh.data.newLots) || fresh.data.newLots < 0) throw new Error('Jumlah kapling baru dari GAS tidak valid. Tidak ada penulisan yang dikirim.');
+      if (fresh.data.newLots === 0) {setStructureMessage('Semua kapling pada rencana ini sudah tersedia. Tidak ada kapling baru yang perlu dibuat.');return;}
+      if (!window.confirm(`Hasil pemeriksaan GAS: ${fresh.data.newLots} kapling baru akan dibuat, ${fresh.data.existingLots} sudah ada. Lanjutkan? Data yang sudah ada tidak akan ditimpa.`)) {setStructureMessage('Pembuatan dibatalkan. Tidak ada permintaan generate yang dikirim.');return;}
       const result = await apiTransport.send<StructureResult>('campsite.structure.generate', {plan}, {timeoutMs:120000});
-      if (!result.ok || !result.data) throw new Error(result.error?.message || 'Generator tidak mengembalikan konfirmasi GAS. Periksa sebelum mencoba ulang.');
-      setStructureMessage(`${result.data.createdLots || 0} kavling dan ${result.data.createdNodes || 0} node wilayah dibuat di GAS. ${result.data.message || ''}`);
+      if (!result.ok || !result.data || !Number.isInteger(result.data.createdLots) || result.data.createdLots < 0) throw new Error(result.error?.message || 'Pembuatan belum terkonfirmasi. Periksa GAS sebelum mencoba ulang.');
+      committed=true;
+      setStructureMessage(`${result.data.createdLots} kapling dan ${result.data.createdNodes || 0} node wilayah dikonfirmasi GAS. ${result.data.message || ''}`);
       setStructurePreview(null);
       await loadStructure();
-      await eventStudioService.initialSync();
-      setLots([...eventStudioService.listLots()]);
-    } catch (error: any) { setStructureError(error?.message || 'Generator gagal. Periksa data GAS sebelum mencoba ulang.'); }
-    finally { setStructureBusy(false); }
+      try {
+        await eventStudioService.initialSync();
+        setLots([...eventStudioService.listLots()]);
+        if (!await loadCampsiteAssignmentOptions()) setStructureError('Kapling sudah dibuat, tetapi pilihan alokasi gagal dimuat. Gunakan Muat Ulang, jangan mengulang generate.');
+      } catch {setStructureError('Kapling sudah dibuat, tetapi daftar gagal dimuat ulang. Gunakan Muat Ulang untuk memeriksa data terbaru.');}
+    } catch (error: any) {setStructureError(`${structureFailure(error)}${committed ? ' Pembuatan sudah dikonfirmasi GAS; cukup muat ulang daftar.' : ''}`);}
+    finally {setStructureBusy(false);structureLock.current=false;}
   };
   const [selectedLot, setSelectedLot] = useState<CampsiteLot | null>(null);
   const [selectedFacility, setSelectedFacility] = useState<CampFacility | null>(null);
@@ -150,9 +181,10 @@ export const CampsiteManager: React.FC = () => {
     setAssignmentOptionsLoading(true);
     setAssignmentError('');
     try {
-      const response = await apiTransport.send<CampsiteAssignmentOptions>('participants.admin.campsiteOptions', {}, { timeoutMs: 45000 });
+      const response = await apiTransport.send<CampsiteAssignmentOptions>('participants.admin.campsiteOptions', {mode:'GUDEP'}, { timeoutMs: 45000 });
       if (!response.ok || !response.data) throw new Error(response.error?.message || 'Gagal memuat pilihan Gudep dan regu dari GAS.');
-      setCampsiteAssignmentOptions({ lots: response.data.lots || [], regus: response.data.regus || [] });
+      if (response.data.mode !== 'GUDEP' || !Array.isArray(response.data.gudeps) || !Array.isArray(response.data.participants)) throw new Error('Backend belum mendukung alokasi Gudep. Pasang CampsiteGudepApi.gs dan ParticipantAdminApi.gs terbaru, lalu deploy GAS.');
+      setCampsiteAssignmentOptions(response.data);
       return true;
     } catch (error: any) {
       setAssignmentError(error?.message || 'Gagal memuat pilihan regu.');
@@ -163,27 +195,26 @@ export const CampsiteManager: React.FC = () => {
   useEffect(() => { void loadCampsiteAssignmentOptions(); }, [eventId]);
 
   const feedbackFor = (lotId: string, feedback: {error?:string;notice?:string}) => setLotFeedback(old => ({...old,[lotId]:feedback}));
-  const handleAssignReguToLot = async (lotId: string, reguId: string) => {
-    if (!reguId || lotMutationLock.current) return;
-    const regu = campsiteAssignmentOptions.regus.find(r => r.regu_id === reguId);
-    const lot = campsiteAssignmentOptions.lots.find(l => l.id === lotId);
-    if (!regu || !lot) { feedbackFor(lotId,{error:'Data kavling atau regu tidak ditemukan. Muat ulang daftar.'}); return; }
-    if (lot.assigned_regu_id && lot.assigned_regu_id !== reguId) { feedbackFor(lotId,{error:'Kapling sudah ditempati regu lain. Perubahan alokasi harus mengikuti alur backend.'}); return; }
-    if (regu.member_count > lot.capacity) {feedbackFor(lotId,{error:'Jumlah anggota regu melebihi kapasitas kapling.'}); return;}
-    if (!window.confirm(`Tempatkan regu ${regu.regu_name} dari ${regu.gudep_name} pada kapling ${lot.lot_code || lotId}?`)) return;
-    lotMutationLock.current = true;
-    setAssignmentLotBusy(lotId); feedbackFor(lotId,{});
+  const handleAssignGudepToLot = async (lotId:string) => {
+    if (lotMutationLock.current) return;
+    const gid=lotDrafts[lotId] || '';
+    const ids=participantDrafts[lotId] || [];
+    const gudep=campsiteAssignmentOptions.gudeps?.find(g=>g.gudep_id===gid);
+    const lot=campsiteAssignmentOptions.lots.find(l=>l.id===lotId);
+    if (!gudep || !lot?.allocation_version || lot.legacy_locked) {feedbackFor(lotId,{error:'Gudep/kapling belum siap atau alokasi lama masih aktif. Muat ulang untuk memeriksa.'});return;}
+    if (ids.length > lot.capacity || (ids.length > 0 && lot.capacity<=0)) {feedbackFor(lotId,{error:'Isi kapasitas kapling dan pilih peserta tidak melebihi kapasitasnya.'});return;}
+    if (!window.confirm(ids.length ? `Tempatkan ${ids.length} peserta ${gudep.gudep_name} di ${lot.lot_code}?` : `Lepaskan seluruh peserta ${gudep.gudep_name} dari ${lot.lot_code}?`)) return;
+    lotMutationLock.current=true;setAssignmentLotBusy(lotId);feedbackFor(lotId,{});
     try {
-      const response = await apiTransport.send<{lot_id:string; lot_code:string; regu_id:string; gudep_id:string; assigned_count:number}>('participants.admin.assignCampsite', {lot_id:lotId,regu_id:reguId}, {timeoutMs:60000});
-      if (!response.ok || !response.data || response.data.lot_id !== lotId || response.data.regu_id !== reguId) throw new Error(response.error?.message || 'GAS belum mengonfirmasi penempatan. Periksa data sebelum mencoba kembali.');
-      const message = `Penempatan ${regu.regu_name} (${regu.gudep_name}) dikonfirmasi GAS. ${response.data.assigned_count} data peserta diperbarui.`;
-      setLotEditor('');
-      feedbackFor(lotId,{notice:message});
-      let refreshed = await loadCampsiteAssignmentOptions();
-      try {await eventStudioService.initialSync();setLots([...eventStudioService.listLots()]);} catch {refreshed=false;}
-      if (!refreshed) feedbackFor(lotId,{notice:message,error:'Daftar terbaru gagal dimuat. Muat ulang; jangan mengulang penempatan yang telah dikonfirmasi.'});
-    } catch (error: any) {feedbackFor(lotId,{error:error?.message || 'Penempatan gagal atau belum terkonfirmasi. Periksa GAS sebelum mencoba ulang.'});}
-    finally {setAssignmentLotBusy(null); lotMutationLock.current=false;}
+      const response=await apiTransport.send<{mode:string;lot_id:string;gudep_id:string;assigned_count:number;participant_ids:string[]}>('participants.admin.assignCampsite',{mode:'GUDEP',lot_id:lotId,gudep_id:gid,participant_ids:ids,allocation_version:lot.allocation_version},{timeoutMs:60000});
+      if(!response.ok || response.data?.mode!=='GUDEP' || response.data.lot_id!==lotId || response.data.gudep_id!==gid || response.data.assigned_count!==ids.length || !Array.isArray(response.data.participant_ids) || response.data.participant_ids.length!==ids.length || ids.some(id=>!response.data!.participant_ids.includes(id))) throw new Error(response.error?.message || 'Hasil penempatan Gudep belum terkonfirmasi. Periksa GAS sebelum mencoba kembali.');
+      const message=ids.length?`${ids.length} peserta ${gudep.gudep_name} ditempatkan. GAS telah mengonfirmasi.`:'Penempatan kapling dilepaskan. GAS telah mengonfirmasi.';
+      feedbackFor(lotId,{notice:message});setLotEditor('');
+      let refreshed=await loadCampsiteAssignmentOptions();
+      try {await eventStudioService.initialSync();setLots([...eventStudioService.listLots()]);}catch{refreshed=false;}
+      if(!refreshed)feedbackFor(lotId,{notice:message,error:'Daftar gagal dimuat ulang. Gunakan Muat Ulang; jangan mengulang perubahan yang sudah dikonfirmasi.'});
+    }catch(error:any){feedbackFor(lotId,{error:error?.message || 'Perubahan belum terkonfirmasi. Periksa GAS sebelum mencoba kembali.'});}
+    finally {setAssignmentLotBusy(null);lotMutationLock.current=false;}
   };
 
   const refreshLots = async () => {
@@ -199,7 +230,7 @@ export const CampsiteManager: React.FC = () => {
     const value = Number(capacityDraft);
     if (!/^\d+$/.test(capacityDraft.trim()) || !Number.isSafeInteger(value) || value < 1) {feedbackFor(lot.id,{error:'Kapasitas harus bilangan bulat minimal 1.'}); return;}
     const current = campsiteAssignmentOptions.lots.find(item => item.id === lot.id);
-    if (!current || current.assigned_regu_id || lot.contingentId || String(lot.status).toLowerCase() !== 'available') {feedbackFor(lot.id,{error:'Edit kapasitas hanya untuk kapling kosong yang sudah terkonfirmasi dari GAS.'}); return;}
+    if (!current || current.legacy_locked || current.assigned_gudep_id || current.assigned_regu_id || lot.contingentId || String(lot.status).toLowerCase() !== 'available') {feedbackFor(lot.id,{error:'Edit kapasitas hanya untuk kapling kosong yang sudah terkonfirmasi dari GAS.'}); return;}
     lotMutationLock.current=true;setCapacityBusy(true);feedbackFor(lot.id,{});
     try {
       await eventStudioService.updateLot(lot.id,{capacity:value});
@@ -501,17 +532,8 @@ export const CampsiteManager: React.FC = () => {
     } finally { setRemovingLot(false); }
   };
 
-  const handleAssignContingent = async (lotId: string, contingentId: string) => {
-    try {
-      const c = contingents.find(x => x.id === contingentId);
-      const cName = c ? c.name : '';
-      const updated = await eventStudioService.assignContingentToLot(lotId, contingentId, cName);
-      setLots([...eventStudioService.listLots()]);
-      setSelectedLot(updated);
-      showToast(contingentId ? `✅ Alokasi kavling untuk '${cName}' berhasil disimpan!` : 'Alokasi kontingen dibatalkan.');
-    } catch (err: any) {
-      showToast(`❌ Gagal: ${err.message}`);
-    }
+  const handleAssignContingent = async (_lotId: string, _contingentId: string) => {
+    showToast('Gunakan Gudep dan checklist peserta pada kartu kapling.');
   };
 
   // ==================== AUTO-ASSIGN WIZARD (Requirement 17) ====================
@@ -565,19 +587,18 @@ export const CampsiteManager: React.FC = () => {
 
   const assignmentById = new Map(campsiteAssignmentOptions.lots.map(l => [l.id,l]));
   const reguById = new Map(campsiteAssignmentOptions.regus.map(r => [r.regu_id,r]));
-  const isAllocated = (lot: CampsiteLot) => Boolean(assignmentById.get(lot.id)?.assigned_regu_id || lot.contingentId || ['occupied','reserved'].includes(String(lot.status).toLowerCase()));
+  const isAllocated = (lot: CampsiteLot) => Boolean(assignmentById.get(lot.id)?.assigned_gudep_id || assignmentById.get(lot.id)?.assigned_regu_id || lot.contingentId || ['occupied','reserved'].includes(String(lot.status).toLowerCase()));
   const totalCapacity = lots.reduce((sum,l) => sum + Number(l.capacity || 0),0);
   const occupiedCount = lots.filter(isAllocated).length;
   const assignedPopulation = lots.reduce((sum,l) => {
-    const linked = reguById.get(assignmentById.get(l.id)?.assigned_regu_id || '');
-    return sum + (linked ? linked.member_count : 0);
+    return sum + Number(assignmentById.get(l.id)?.member_count || 0);
   },0);
-  const unknownOccupancy = lots.some(l => isAllocated(l) && !reguById.has(assignmentById.get(l.id)?.assigned_regu_id || ''));
+  const unknownOccupancy = lots.some(l => !assignmentById.has(l.id) || typeof assignmentById.get(l.id)?.member_count !== 'number');
   const remainingCapacity = totalCapacity - assignedPopulation;
   const isOverflow = !unknownOccupancy && remainingCapacity < 0;
   const visibleLots = lots.filter(l => {
-    const assigned = reguById.get(assignmentById.get(l.id)?.assigned_regu_id || '');
-    const haystack = [l.lotNumber,l.subCamp,l.block,assigned?.regu_name,assigned?.gudep_name,l.contingentName].join(' ').toLocaleLowerCase('id');
+    const assigned = campsiteAssignmentOptions.gudeps?.find(g=>g.gudep_id===assignmentById.get(l.id)?.assigned_gudep_id);
+    const haystack = [l.lotNumber,l.subCamp,l.block,assigned?.gudep_number,assigned?.gudep_name,l.contingentName].join(' ').toLocaleLowerCase('id');
     return (!lotQuery.trim() || haystack.includes(lotQuery.trim().toLocaleLowerCase('id'))) && (!campFilter || l.subCamp === campFilter) && (!genderFilter || l.gender === genderFilter) && (!lotStatusFilter || (lotStatusFilter === 'allocated' ? isAllocated(l) : !isAllocated(l)));
   });
 
@@ -623,7 +644,7 @@ export const CampsiteManager: React.FC = () => {
               <span>Kapling Tenda Buper</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Kelola kapasitas dan penempatan regu langsung pada kartu kapling.
+              Satu Gudep dapat menempati beberapa kapling. Admin memilih peserta pada setiap kapling.
             </p>
           </div>
 
@@ -672,35 +693,43 @@ export const CampsiteManager: React.FC = () => {
       <section className="space-y-4" aria-label="Daftar kapling tenda">
         <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-semibold text-slate-900 dark:text-white">Daftar Kapling · {visibleLots.length} ditampilkan</h3><button type="button" onClick={() => void refreshLots()} disabled={refreshingLots || Boolean(assignmentLotBusy) || capacityBusy} className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 text-sm dark:border-white/20 dark:text-white disabled:opacity-50">{refreshingLots ? 'Memuat dari GAS…' : 'Muat Ulang'}</button></div>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-          <label className="text-xs text-slate-600 dark:text-slate-300">Cari kapling / sekolah / regu<input value={lotQuery} onChange={e => setLotQuery(e.target.value)} placeholder="Kode, sekolah, atau nama regu" className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-900 dark:border-white/20 dark:bg-[#202027] dark:text-white" /></label>
+          <label className="text-xs text-slate-600 dark:text-slate-300">Cari kapling / Gudep / sekolah<input value={lotQuery} onChange={e => setLotQuery(e.target.value)} placeholder="Kode, nomor Gudep, atau sekolah" className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-900 dark:border-white/20 dark:bg-[#202027] dark:text-white" /></label>
           <label className="text-xs text-slate-600 dark:text-slate-300">Subcamp<select value={campFilter} onChange={e => setCampFilter(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-900 dark:border-white/20 dark:bg-[#202027] dark:text-white"><option value="">Semua Subcamp</option>{Array.from(new Set(lots.map(l => l.subCamp).filter(Boolean))).sort().map(c => <option key={c}>{c}</option>)}</select></label>
           <label className="text-xs text-slate-600 dark:text-slate-300">Sektor<select value={genderFilter} onChange={e => setGenderFilter(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-900 dark:border-white/20 dark:bg-[#202027] dark:text-white"><option value="">Semua Sektor</option><option value="male">Putra</option><option value="female">Putri</option><option value="mixed">Campuran</option></select></label>
           <label className="text-xs text-slate-600 dark:text-slate-300">Status<select value={lotStatusFilter} onChange={e => setLotStatusFilter(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-900 dark:border-white/20 dark:bg-[#202027] dark:text-white"><option value="">Semua Status</option><option value="empty">Kosong</option><option value="allocated">Teralokasi</option></select></label>
         </div>
         {assignmentError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{assignmentError} Gunakan Muat Ulang untuk memeriksa pilihan dari GAS.</div>}
+        {Boolean(campsiteAssignmentOptions.unresolved_count) && <p className="text-sm text-amber-700 dark:text-amber-300">{campsiteAssignmentOptions.unresolved_count} peserta belum memiliki relasi Gudep yang unik. Periksa ID kontingen atau keanggotaan Gudep di GAS.</p>}
         {assignmentOptionsLoading && <p role="status" className="text-sm text-slate-600 dark:text-slate-300">Memuat status dan pilihan regu dari GAS…</p>}
         {!visibleLots.length && <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-600 dark:text-slate-300">{lots.length ? 'Tidak ada kapling yang sesuai pencarian atau filter.' : 'Belum ada kapling. Tambahkan kapling atau buka Generator Struktur di bawah.'}</div>}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
           {visibleLots.map(lot => {
             const canonical = assignmentById.get(lot.id);
-            const assigned = reguById.get(canonical?.assigned_regu_id || '');
+            const assigned = campsiteAssignmentOptions.gudeps?.find(g=>g.gudep_id===canonical?.assigned_gudep_id);
             const allocated = isAllocated(lot);
             const confirmed = Boolean(canonical) && !assignmentOptionsLoading && !assignmentError;
-            const count = assigned ? assigned.member_count : allocated ? null : 0;
+            const count = typeof canonical?.member_count === 'number' ? canonical.member_count : null;
             const capacity = Number(canonical?.capacity ?? lot.capacity);
             const busy = Boolean(assignmentLotBusy) || capacityBusy || removingLot || refreshingLots;
-            const choices = campsiteAssignmentOptions.regus.filter(item => {
-              const normalizeGender = (value:string) => ['M','MALE','PUTRA'].includes(value.toUpperCase()) ? 'male' : ['F','FEMALE','PUTRI'].includes(value.toUpperCase()) ? 'female' : 'mixed';
-              return normalizeGender(item.gender) === normalizeGender(canonical?.gender || lot.gender) && item.member_count > 0 && item.member_count <= capacity && (!canonical?.assigned_regu_id || canonical.assigned_regu_id === item.regu_id);
-            });
+            const gid=lotDrafts[lot.id] || '';
+            const choices=(campsiteAssignmentOptions.participants || []).filter(p=>p.gudep_id===gid && (canonical?.gender==='MIXED' || p.gender===canonical?.gender));
+            const displayed=choices.filter(p=>[p.name,p.id].join(' ').toLocaleLowerCase('id').includes(participantQuery.trim().toLocaleLowerCase('id')));
+            const draft=participantDrafts[lot.id] || [];
+            const selectable=displayed.filter(p=>!p.lot_number || p.lot_number===canonical?.lot_code);
             const feedback = lotFeedback[lot.id];
             return <article key={lot.id} className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#141418] space-y-3">
               <header><div className="flex flex-wrap items-center justify-between gap-2"><h4 className="text-base font-bold text-slate-900 dark:text-white break-words">{canonical?.lot_code || lot.lotNumber}</h4><span className="rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-700 dark:bg-white/10 dark:text-slate-200">{lot.gender === 'male' ? 'Putra' : lot.gender === 'female' ? 'Putri' : 'Campuran'}</span></div><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Subcamp {lot.subCamp || '—'} · Blok {lot.block || '—'}</p></header>
-              <div><div className="flex flex-wrap justify-between items-center gap-2"><strong className="text-sm text-slate-900 dark:text-white">{confirmed ? count === null ? `Kapasitas ${capacity} tempat` : `${count} / ${capacity} tempat` : `Kapasitas ${lot.capacity} tempat`}</strong><span className={`rounded-lg px-2 py-1 text-xs ${allocated ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200' : 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'}`}>{confirmed ? allocated ? 'Teralokasi' : 'Kosong' : 'Perlu konfirmasi'}</span></div>{confirmed && count !== null && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-white/10"><div className="h-full bg-emerald-600" style={{width:`${capacity > 0 ? Math.min(100,count / capacity * 100) : 0}%`}} /></div>}<p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{confirmed && count !== null ? `${Math.max(0,capacity-count)} tempat tersisa berdasarkan alokasi anggota regu` : 'Jumlah anggota teralokasi belum terkonfirmasi; bukan jumlah peserta hadir.'}</p></div>
-              <div className="min-h-16 border-y border-slate-100 py-3 dark:border-white/10"><p className="break-words text-sm font-semibold text-slate-900 dark:text-white">{assigned?.gudep_name || lot.contingentName || (allocated ? 'Identitas sekolah perlu dimuat ulang' : 'Belum ada sekolah')}</p><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{assigned?.regu_name || canonical?.assigned_regu_name || (allocated ? 'Regu belum terkonfirmasi' : 'Siap untuk penempatan regu')}</p></div>
-              <button type="button" disabled={!confirmed || busy || allocated} onClick={() => {setLotEditor(lotEditor === lot.id ? '' : lot.id);setCapacityEditor('');setLotDrafts(old => ({...old,[lot.id]:canonical?.assigned_regu_id || ''}));feedbackFor(lot.id,{});}} className="min-h-11 w-full rounded-xl bg-[#C62828] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{allocated ? 'Sudah Teralokasi' : 'Tempatkan Regu'}</button>
-              {allocated && <p className="text-xs text-slate-500 dark:text-slate-400">Untuk memindahkan regu, buka kapling tujuan yang kosong. GAS memvalidasi dan membersihkan hubungan kapling sebelumnya.</p>}
-              {lotEditor === lot.id && <form onSubmit={e => {e.preventDefault();void handleAssignReguToLot(lot.id,lotDrafts[lot.id] || '');}} className="space-y-3 border-t border-slate-100 pt-3 dark:border-white/10"><label className="block text-xs text-slate-600 dark:text-slate-300">Sekolah / Regu tujuan<select required disabled={busy || !confirmed} value={lotDrafts[lot.id] || ''} onChange={e => setLotDrafts(old => ({...old,[lot.id]:e.target.value}))} className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white p-2.5 text-sm text-slate-900 dark:border-white/20 dark:bg-[#202027] dark:text-white"><option value="">{choices.length ? 'Pilih regu yang sesuai' : 'Tidak ada regu aktif yang sesuai'}</option>{choices.map(r => <option key={r.regu_id} value={r.regu_id}>{r.gudep_name} · {r.regu_name} ({r.member_count} peserta)</option>)}</select></label><p className="text-xs text-slate-500 dark:text-slate-400">Pilihan mengikuti sektor, kapasitas, anggota aktif dan verifikasi GAS. Regu dari kapling lain dapat dipindahkan ke kapling kosong ini.</p><div className="flex flex-wrap gap-2"><button type="submit" disabled={busy || !confirmed || !lotDrafts[lot.id]} className="min-h-11 rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{assignmentLotBusy === lot.id ? 'Menyimpan…' : 'Simpan Penempatan'}</button><button type="button" disabled={busy} onClick={() => setLotEditor('')} className="min-h-11 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:text-slate-200">Batal</button></div></form>}
+              <div><div className="flex flex-wrap justify-between items-center gap-2"><strong className="text-sm text-slate-900 dark:text-white">{confirmed ? count === null ? `Kapasitas ${capacity} tempat` : `${count} / ${capacity} tempat` : `Kapasitas ${lot.capacity} tempat`}</strong><span className={`rounded-lg px-2 py-1 text-xs ${allocated ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200' : 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'}`}>{confirmed ? allocated ? 'Teralokasi' : 'Kosong' : 'Perlu konfirmasi'}</span></div>{confirmed && count !== null && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-white/10"><div className="h-full bg-emerald-600" style={{width:`${capacity > 0 ? Math.min(100,count / capacity * 100) : 0}%`}} /></div>}<p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{confirmed && count !== null ? `${Math.max(0,capacity-count)} tempat tersisa berdasarkan penempatan peserta Gudep` : 'Jumlah anggota teralokasi belum terkonfirmasi; bukan jumlah peserta hadir.'}</p></div>
+              <div className="min-h-16 border-y border-slate-100 py-3 dark:border-white/10"><p className="break-words text-sm font-semibold text-slate-900 dark:text-white">{assigned?.gudep_name || lot.contingentName || (allocated ? 'Identitas sekolah perlu dimuat ulang' : 'Belum ada sekolah')}</p><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{canonical?.legacy_locked ? `Alokasi lama: ${canonical.assigned_regu_name || 'kontingen/regu'}` : assigned ? `Gudep ${assigned.gudep_number || '—'}` : 'Siap untuk penempatan Gudep'}</p></div>
+              <button type="button" disabled={!confirmed || busy || canonical?.legacy_locked} onClick={() => {setLotEditor(lotEditor === lot.id ? '' : lot.id);setCapacityEditor('');setParticipantQuery('');setLotDrafts(old=>({...old,[lot.id]:canonical?.assigned_gudep_id || ''}));setParticipantDrafts(old=>({...old,[lot.id]:canonical?.participant_ids || []}));feedbackFor(lot.id,{});}} className="min-h-11 w-full rounded-xl bg-[#C62828] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{canonical?.legacy_locked ? 'Alokasi Lama Dilindungi' : allocated ? 'Kelola Peserta Gudep' : 'Tempatkan Gudep'}</button>
+              {canonical?.legacy_locked && <p className="text-xs text-amber-700 dark:text-amber-300">Alokasi berbasis regu/kontingen sebelumnya tetap tersimpan. Rekonsiliasi alokasi lama diperlukan sebelum memakai checklist Gudep.</p>}
+              {lotEditor===lot.id && <form onSubmit={e=>{e.preventDefault();void handleAssignGudepToLot(lot.id);}} className="space-y-3 border-t border-slate-100 pt-3 dark:border-white/10">
+                <label className="block text-xs text-slate-600 dark:text-slate-300">Gudep / Sekolah<select required value={gid} disabled={busy || allocated} onChange={e=>{setLotDrafts(old=>({...old,[lot.id]:e.target.value}));setParticipantDrafts(old=>({...old,[lot.id]:[]}));setParticipantQuery('');}} className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white p-2 text-sm text-slate-900 dark:bg-[#202027] dark:text-white"><option value="">Pilih Gudep terverifikasi</option>{(campsiteAssignmentOptions.gudeps || []).filter(g=>g.can_assign!==false || g.gudep_id===gid).map(g=><option key={g.gudep_id} value={g.gudep_id}>{g.gudep_name} · {g.gudep_number}</option>)}</select></label>
+                {gid && <><label className="block text-xs text-slate-600 dark:text-slate-300">Cari peserta<input disabled={busy} value={participantQuery} onChange={e=>setParticipantQuery(e.target.value)} placeholder="Nama atau ID peserta" className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white p-2 text-sm text-slate-900 dark:bg-[#202027] dark:text-white" /></label><div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-300"><span>{draft.length} dipilih / kapasitas {capacity}</span><button type="button" disabled={busy || !selectable.length} onClick={()=>setParticipantDrafts(old=>({...old,[lot.id]:selectable.every(p=>draft.includes(p.id))?draft.filter(id=>!selectable.some(p=>p.id===id)):Array.from(new Set(draft.concat(selectable.map(p=>p.id))))}))} className="min-h-11 font-semibold">Pilih / batalkan hasil pencarian</button><button type="button" disabled={busy} onClick={()=>setParticipantDrafts(old=>({...old,[lot.id]:[]}))} className="min-h-11">Kosongkan pilihan</button></div>
+                <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200 dark:border-white/10">{displayed.length?displayed.map(p=><label key={p.id} className="flex min-h-11 gap-2 border-b border-slate-100 p-3 text-sm text-slate-800 dark:border-white/10 dark:text-slate-100"><input type="checkbox" checked={draft.includes(p.id)} disabled={busy || Boolean(p.lot_number && p.lot_number!==canonical?.lot_code)} onChange={e=>setParticipantDrafts(old=>({...old,[lot.id]:e.target.checked?Array.from(new Set(draft.concat(p.id))):draft.filter(id=>id!==p.id)}))}/><span className="min-w-0 break-words">{p.name}<span className="block text-xs text-slate-500 dark:text-slate-400">{p.lot_number?`Kapling ${p.lot_number}`:'Belum ditempatkan'}</span></span></label>):<p className="p-3 text-xs text-slate-500">Tidak ada peserta Gudep yang sesuai sektor/pencarian. Keanggotaan harus cocok dengan data GAS.</p>}</div><p className="text-xs text-slate-500 dark:text-slate-400">Pilihan di luar pencarian tetap ikut disimpan. Untuk memindahkan peserta, lepaskan dari kapling asal dahulu. Kosongkan seluruh pilihan dan simpan untuk melepas penempatan ini.</p></>}
+                {draft.length>capacity && <p role="alert" className="text-xs text-rose-700">Pilihan melebihi kapasitas. Kurangi pilihan sebelum menyimpan.</p>}
+                <div className="flex flex-wrap gap-2"><button type="submit" disabled={busy || !confirmed || !gid || draft.length>capacity || (!allocated && !draft.length)} className="min-h-11 rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{assignmentLotBusy===lot.id?'Menyimpan…':allocated && !draft.length?'Lepaskan Penempatan':'Simpan Penempatan'}</button><button type="button" disabled={busy} onClick={()=>setLotEditor('')} className="min-h-11 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:text-slate-200">Batal</button></div>
+              </form>}
               <div className="flex flex-wrap gap-3"><button type="button" disabled={busy || !confirmed || allocated || String(lot.status).toLowerCase() !== 'available'} onClick={() => {setCapacityEditor(capacityEditor === lot.id ? '' : lot.id);setCapacityDraft(String(capacity));setLotEditor('');feedbackFor(lot.id,{});}} className="min-h-11 text-xs font-semibold text-slate-600 dark:text-slate-300 disabled:opacity-40">Edit Kapasitas</button></div>
               {capacityEditor === lot.id && <form onSubmit={e => {e.preventDefault();void saveCapacity(lot);}} className="space-y-3 border-t border-slate-100 pt-3 dark:border-white/10"><label className="block text-xs text-slate-600 dark:text-slate-300">Kapasitas (tempat)<input required type="number" min="1" step="1" disabled={busy} value={capacityDraft} onChange={e => setCapacityDraft(e.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white p-2.5 text-sm text-slate-900 dark:bg-[#202027] dark:text-white" /></label><div className="flex flex-wrap gap-2"><button type="submit" disabled={busy} className="min-h-11 rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{capacityBusy ? 'Menyimpan…' : 'Simpan Kapasitas'}</button><button type="button" disabled={busy} onClick={() => setCapacityEditor('')} className="min-h-11 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:text-slate-200">Batal</button></div></form>}
               <details className="border-t border-slate-100 pt-3 dark:border-white/10"><summary className="cursor-pointer text-xs font-semibold text-slate-600 dark:text-slate-300">Detail Kapling</summary><div className="mt-3 space-y-2 text-xs text-slate-600 dark:text-slate-300"><p className="break-all">ID: {lot.id}</p><p>Zona: {lot.zone || '—'}</p><p>Posisi: X {lot.coordinates.x}% · Y {lot.coordinates.y}%</p>{lot.notes && <p className="break-words">Catatan: {lot.notes}</p>}<div className="flex flex-wrap gap-2"><button type="button" disabled={!layoutReady || layoutBusy || layoutDirty || removingLot || busy} onClick={() => void handleHideLot(lot.id,!getShape(lot.id).hidden)} className="min-h-11 rounded-xl border border-sky-300 px-3 py-2 text-xs text-sky-700 dark:text-sky-300 disabled:opacity-40">{getShape(lot.id).hidden ? 'Tampilkan Pin' : 'Sembunyikan Pin'}</button><button type="button" disabled={busy || allocated || !confirmed} onClick={() => void handleDeleteLot(lot.id)} className="min-h-11 rounded-xl border border-rose-200 px-3 py-2 text-xs text-rose-700 disabled:opacity-40">Arsipkan Kapling</button></div>{layoutDirty && <p>Simpan tata letak pada bagian Denah sebelum mengubah tampilan pin.</p>}{allocated && <p>Kapling teralokasi tidak dapat diarsipkan dari kartu.</p>}</div></details>
@@ -772,7 +801,7 @@ export const CampsiteManager: React.FC = () => {
                   <div className="flex items-center gap-2 mt-1.5">
                     <span className="text-[10px] text-slate-400">Tugaskan:</span>
                     <select
-                      value={selectedLot.contingentId || ''}
+                      disabled value={selectedLot.contingentId || ''}
                       onChange={(e) => handleAssignContingent(selectedLot.id, e.target.value)}
                       className="px-2 py-1 bg-black/40 border border-white/10 rounded-lg text-white text-[11px] focus:outline-none focus:border-emerald-500"
                     >
@@ -862,32 +891,34 @@ export const CampsiteManager: React.FC = () => {
           ))}
         </div>
 </div></details>
-<details className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141418]" onToggle={e => {if(e.currentTarget.open) void loadStructure();}}><summary className="cursor-pointer px-5 py-4 font-semibold text-sm text-slate-800 dark:text-slate-100">Generator struktur kapling</summary><div className="p-3 sm:p-4">
+<details className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141418]" onToggle={e => {if(e.currentTarget.open && !structureLock.current) void loadStructure();}}><summary className="cursor-pointer px-5 py-4 font-semibold text-sm text-slate-800 dark:text-slate-100">Generator struktur kapling</summary><div className="p-3 sm:p-4">
         <section className="p-5 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 space-y-5">
           <header>
             <h3 className="font-bold text-base text-slate-900 dark:text-white">Generator Kabupaten → Kecamatan Putra/Putri → Kelurahan → Kavling</h3>
             <p className="text-xs text-slate-500 mt-1">Setiap kavling untuk satu regu. Struktur dan nomor dibuat di GAS; posisi kavling di denah diatur setelah pembuatan.</p>
           </header>
           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">Nama Kabupaten
-            <input value={structureKabupaten} maxLength={100} onChange={e => {setStructureKabupaten(e.target.value);setStructurePreview(null);}} placeholder="Contoh: Kabupaten ..." className="mt-1 w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 dark:bg-slate-900 dark:text-white dark:border-slate-600" />
+            <input disabled={structureBusy || structureLoading} value={structureKabupaten} maxLength={100} onChange={e => {setStructureKabupaten(e.target.value);setStructurePreview(null);}} placeholder="Contoh: Kabupaten ..." className="mt-1 w-full p-3 rounded-xl border border-slate-300 bg-white text-slate-900 dark:bg-slate-900 dark:text-white dark:border-slate-600" />
           </label>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {([{key:'putra',title:'Kecamatan Putra',v:structurePutraVillages,setV:setStructurePutraVillages,l:structurePutraLots,setL:setStructurePutraLots}, {key:'putri',title:'Kecamatan Putri',v:structurePutriVillages,setV:setStructurePutriVillages,l:structurePutriLots,setL:setStructurePutriLots}] as const).map(d => (
               <div key={d.key} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
                 <h4 className="font-bold text-sm text-slate-900 dark:text-white">{d.title}</h4>
                 <label className="block text-xs text-slate-600 dark:text-slate-300">Jumlah Kelurahan
-                  <input type="number" min="0" max="100" value={d.v} onChange={e => {d.setV(e.target.value);setStructurePreview(null);}} className="mt-1 w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 dark:bg-slate-900 dark:text-white dark:border-slate-600" />
+                  <input disabled={structureBusy || structureLoading} type="number" min="0" max="100" value={d.v} onChange={e => {d.setV(e.target.value);setStructurePreview(null);}} className="mt-1 w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 dark:bg-slate-900 dark:text-white dark:border-slate-600" />
                 </label>
                 <label className="block text-xs text-slate-600 dark:text-slate-300">Jumlah kavling per Kelurahan
-                  <input type="number" min="0" max="100" value={d.l} onChange={e => {d.setL(e.target.value);setStructurePreview(null);}} className="mt-1 w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 dark:bg-slate-900 dark:text-white dark:border-slate-600" />
+                  <input disabled={structureBusy || structureLoading} type="number" min="0" max="100" value={d.l} onChange={e => {d.setL(e.target.value);setStructurePreview(null);}} className="mt-1 w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 dark:bg-slate-900 dark:text-white dark:border-slate-600" />
                 </label>
               </div>
             ))}
           </div>
+          <p className="text-sm text-slate-600 dark:text-slate-300">Isi Nama Kabupaten, jumlah Kelurahan, dan kapling per Kelurahan. Tekan Periksa &amp; Generate: GAS akan memeriksa rencana, lalu meminta konfirmasi sebelum membuat kapling. Pratinjau terpisah bersifat opsional.</p>
+          {structureLoading && <p role="status" className="text-sm text-sky-700 dark:text-sky-300">Memuat struktur dari GAS…</p>}
           <div className="flex flex-wrap gap-2">
-            <button type="button" disabled={structureBusy} onClick={() => void previewStructure()} className="px-4 py-2 rounded-xl bg-sky-700 text-white text-xs font-bold disabled:opacity-50">{structureBusy?'Memproses...':'Pratinjau dari GAS'}</button>
-            <button type="button" disabled={structureBusy || !structurePreview?.canGenerate || structurePreview.newLots===0} onClick={() => void generateStructure()} className="px-4 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold disabled:opacity-40">Generate Kavling di GAS</button>
-            <button type="button" disabled={structureBusy} onClick={() => void loadStructure()} className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold dark:text-white">Muat Ulang Struktur</button>
+            <button type="button" disabled={structureBusy || structureLoading} onClick={() => void previewStructure()} className="px-4 py-2 rounded-xl bg-sky-700 text-white text-xs font-bold disabled:opacity-50">{structureBusy?'Memproses...':'Pratinjau dari GAS'}</button>
+            <button type="button" disabled={structureBusy || structureLoading} onClick={() => void generateStructure()} className="px-4 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold disabled:opacity-40">{structureBusy ? 'Memeriksa / Memproses…' : 'Periksa & Generate Kapling'}</button>
+            <button type="button" disabled={structureBusy || structureLoading} onClick={() => void loadStructure()} className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold dark:text-white">Muat Ulang Struktur</button>
           </div>
           {structureError && <p role="alert" className="p-3 rounded-xl bg-rose-50 text-rose-700 text-xs">{structureError}</p>}
           {structureMessage && <p role="status" className="p-3 rounded-xl bg-emerald-50 text-emerald-700 text-xs">{structureMessage}</p>}
@@ -906,7 +937,7 @@ export const CampsiteManager: React.FC = () => {
           <p className="text-xs text-amber-700 dark:text-amber-300">Pembuatan tidak menetapkan regu dan tidak menempatkan posisi pin otomatis. Gunakan Papan Alokasi dan Peta Interaktif sesudahnya. Jangan mengulang permintaan ketika status GAS belum diketahui.</p>
         </section>
 </div></details>
-<details className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141418]"><summary className="cursor-pointer px-5 py-4 font-semibold text-sm text-slate-800 dark:text-slate-100">Papan alokasi lanjutan & bantuan otomatis</summary><div className="p-3 sm:p-4">
+<details className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141418]"><summary className="cursor-pointer px-5 py-4 font-semibold text-sm text-slate-800 dark:text-slate-100">Informasi Alokasi Gudep</summary><p className="p-4 text-sm text-slate-600 dark:text-slate-300">Alokasi memakai checklist peserta di kartu kapling. Bantuan alokasi kontingen lama tidak dijalankan agar pembagian peserta tetap mengikuti pilihan admin.</p><div hidden className="p-3 sm:p-4">
         <div className="space-y-4">
           {/* Top Control Bar */}
           <div className="p-4 rounded-[28px] bg-white dark:bg-[#141418] border border-[#ECECEF] dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
@@ -1263,7 +1294,7 @@ export const CampsiteManager: React.FC = () => {
               <div>
                 <label className="text-slate-700 dark:text-slate-300 font-semibold block mb-1">Kontingen Penghuni:</label>
                 <select
-                  value={lotForm.contingentId}
+                  disabled value={lotForm.contingentId}
                   onChange={e => setLotForm({ ...lotForm, contingentId: e.target.value })}
                   className="w-full px-3 py-2 bg-[#FAFAFA] dark:bg-black/40 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white"
                 >
