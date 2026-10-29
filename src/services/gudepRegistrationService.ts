@@ -46,6 +46,12 @@ export const gudepRegistrationService = {
   // pada panel pengelolaan/administrasi yang tetap menggunakan list().
   listForParticipantRegistration: () => send<{ gudep: GudepRecord[] }>('gudep.participant.registration.options', {}),
   detail: (gudep_id: string) => send<GudepDetail>('gudep.registration.detail', { gudep_id }),
+  updateGudep: (data: {
+    gudep_id: string; gudep_number: string; gudep_name: string; institution_name?: string;
+  }) => send<{ gudep: GudepRecord; contingent_id: string }>('gudep.registration.update', data),
+  updateRegu: (data: {
+    gudep_id: string; regu_id: string; regu_name: string;
+  }) => send<{ regu: GudepRegu }>('gudep.regu.update', data),
   syncContingent: (gudep_id: string) => send<{ gudep_id: string; contingent_id: string; created: boolean; participant_count: number }>('gudep.registration.syncContingent', { gudep_id }),
   create: (data: {
     request_key: string; gudep_number: string; gudep_name: string;
