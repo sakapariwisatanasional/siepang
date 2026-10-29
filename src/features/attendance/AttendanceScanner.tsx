@@ -39,9 +39,9 @@ import { authService } from '../../services/authService';
 import { syncQueue } from '../../offline/syncQueue';
 import { Participant, Contingent, ScheduleItem } from '../../types';
 
-export const AttendanceScanner: React.FC = () => {
+export const AttendanceScanner: React.FC<{ activityOnly?: boolean; initialScheduleId?: string }> = ({ activityOnly = false, initialScheduleId = '' }) => {
   const currentUser = authService.getCurrentUser();
-  const [activeTab, setActiveTab] = useState<'individual_checkin' | 'contingent_checkin' | 'activity_session' | 'dashboard'>('individual_checkin');
+  const [activeTab, setActiveTab] = useState<'individual_checkin' | 'contingent_checkin' | 'activity_session' | 'dashboard'>(activityOnly ? 'activity_session' : 'individual_checkin');
 
   // Search and manual input
   const [searchQuery, setSearchQuery] = useState('');
@@ -162,7 +162,7 @@ export const AttendanceScanner: React.FC = () => {
   const [loadingData, setLoadingData] = useState(true);
   const [reloadVersion, setReloadVersion] = useState(0);
   const activitySubmitLock = useRef(false);
-  const [selectedScheduleId, setSelectedScheduleId] = useState<string>('');
+  const [selectedScheduleId, setSelectedScheduleId] = useState<string>(initialScheduleId);
   const [recentRecords, setRecentRecords] = useState<AttendanceRecord[]>(attendanceService.getRecords());
   const [, forceRefresh] = useState(0);
 
@@ -337,7 +337,7 @@ export const AttendanceScanner: React.FC = () => {
         </div>
 
         {/* Tab Switcher */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-[#FAFAFA] dark:bg-white/5 rounded-2xl border border-[#ECECEF] dark:border-white/5 text-xs font-semibold">
+        {!activityOnly && <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-[#FAFAFA] dark:bg-white/5 rounded-2xl border border-[#ECECEF] dark:border-white/5 text-xs font-semibold">
           <button
             type="button"
             onClick={() => setActiveTab('individual_checkin')}
@@ -374,7 +374,7 @@ export const AttendanceScanner: React.FC = () => {
           >
             📊 Statistik Kehadiran
           </button>
-        </div>
+        </div>}
       </div>
 
       {/* TAB 1: INDIVIDUAL CHECK-IN DESK (Requirement 20) */}
