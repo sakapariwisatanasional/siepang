@@ -39,8 +39,11 @@ import { authService } from '../../services/authService';
 import { syncQueue } from '../../offline/syncQueue';
 import { Participant, Contingent, ScheduleItem } from '../../types';
 
-export const AttendanceScanner: React.FC<{ activityOnly?: boolean; initialScheduleId?: string }> = ({ activityOnly = false, initialScheduleId = '' }) => {
+export const AttendanceScanner: React.FC<{ activityOnly?: boolean; initialScheduleId?: string; sourceKind?: 'schedule' | 'activity' }> = ({ activityOnly = false, initialScheduleId = '', sourceKind = 'schedule' }) => {
   const currentUser = authService.getCurrentUser();
+  const [attendanceKind,setAttendanceKind] = useState<'schedule' | 'activity'>(sourceKind);
+  const isCampActivity = attendanceKind === 'activity';
+  const itemLabel = isCampActivity ? 'aktivitas perkemahan' : 'jadwal kegiatan';
   const [activeTab, setActiveTab] = useState<'individual_checkin' | 'contingent_checkin' | 'activity_session' | 'dashboard'>(activityOnly ? 'activity_session' : 'individual_checkin');
 
   // Search and manual input
@@ -172,9 +175,9 @@ export const AttendanceScanner: React.FC<{ activityOnly?: boolean; initialSchedu
     const jobs = [
       participantService.loadParticipants(),
       attendanceService.refreshRecords().then(rows => {if(mounted)setRecentRecords(rows);}),
-      apiTransport.send<ScheduleItem[]>('schedules.list', {}).then(response => {
+      apiTransport.send<any[]>(isCampActivity ? 'activities.list' : 'schedules.list', {}).then(response => {
         if(!response.ok || !Array.isArray(response.data)) throw new Error(response.error?.message || 'Jadwal kegiatan belum dapat dibaca dari GAS.');
-        if(mounted) setScheduleItems(response.data.filter(s => !(s as any).archived_at && !['archived','cancelled','canceled','deleted'].includes(String(s.status || '').toLowerCase())));
+        if(mounted) setScheduleItems(response.data.map(s => isCampActivity ? ({...s,title:s.name || s.title,xpReward:Number(s.pointRule ?? s.xp_reward ?? 0),time:`${s.startTime || ''} - ${s.endTime || ''}`}) : s).filter(s => !(s as any).archived_at && !['archived','cancelled','canceled','deleted','inactive'].includes(String(s.status || '').toLowerCase())));
       }),
     ];
     void Promise.allSettled(jobs).then(results => {
@@ -183,7 +186,7 @@ export const AttendanceScanner: React.FC<{ activityOnly?: boolean; initialSchedu
       setLoadingData(false); forceRefresh(v => v+1);
     });
     return () => {mounted=false;};
-  }, [reloadVersion]);
+  }, [reloadVersion, attendanceKind]);
   const [latestSuccess, setLatestSuccess] = useState<{ record: AttendanceRecord; offline: boolean } | null>(null);
 
   // Dashboard filter state (Requirement 23)
@@ -199,7 +202,8 @@ export const AttendanceScanner: React.FC<{ activityOnly?: boolean; initialSchedu
   const connectionState = syncQueue.getConnectionState();
   const allParticipants = participantService.getParticipants();
   const selectedSchedule = scheduleItems.find(s => s.id === selectedScheduleId);
-  const sessionRecords = recentRecords.filter(r => r.sessionId === selectedScheduleId);
+  const sessionKey = isCampActivity ? `ACTIVITY:${selectedScheduleId}` : selectedScheduleId;
+  const sessionRecords = recentRecords.filter(r => r.sessionId === sessionKey);
   const selectedContingent = contingents.find(c => c.id === selectedContingentId) || contingents[0];
   const contingentParticipants = participantService.getParticipants({ contingentId: selectedContingent?.id });
 
@@ -260,7 +264,8 @@ export const AttendanceScanner: React.FC<{ activityOnly?: boolean; initialSchedu
       const res = await attendanceService.recordAttendance(
         code,
         selectedSchedule.id,
-        selectedSchedule?.title || 'Kegiatan Lapangan'
+        selectedSchedule?.title || 'Kegiatan Lapangan',
+        attendanceKind
       );
       setLatestSuccess(res);
       setRecentRecords([...attendanceService.getRecords()]);
@@ -280,7 +285,7 @@ export const AttendanceScanner: React.FC<{ activityOnly?: boolean; initialSchedu
     return true;
   });
 
-  const attendedIds = new Set(recentRecords.filter(r => dashFilterActivity === 'all' ? scheduleItems.some(s => s.id===r.sessionId) : r.sessionId===dashFilterActivity).map(r => r.participantId));
+  const attendedIds = new Set(recentRecords.filter(r => dashFilterActivity === 'all' ? scheduleItems.some(s => (isCampActivity ? `ACTIVITY:${s.id}` : s.id)===r.sessionId) : r.sessionId===(isCampActivity ? `ACTIVITY:${dashFilterActivity}` : dashFilterActivity)).map(r => r.participantId));
   const presentCount = filteredDashboardParticipants.filter(p => attendedIds.has(p.id)).length;
   const absentCount = filteredDashboardParticipants.length - presentCount;
   const attendanceRate =
@@ -294,6 +299,10 @@ export const AttendanceScanner: React.FC<{ activityOnly?: boolean; initialSchedu
         <button type="button" onClick={() => setReloadVersion(v => v+1)} disabled={loadingData || isProcessing} className="px-4 py-2 rounded-xl border disabled:opacity-40">{loadingData?'Memuat data GAS…':'Muat ulang data'}</button>
         {loadError && <p role="alert" className="text-red-700 dark:text-red-300">{loadError} Data yang tampil mungkin belum lengkap.</p>}
       </div>
+      {!activityOnly && <div className="flex flex-wrap gap-2" aria-label="Jenis pemberian poin">
+        <button type="button" disabled={isProcessing} onClick={() => {setAttendanceKind('schedule');setSelectedScheduleId('');setDashFilterActivity('all');}} className={`px-4 py-3 rounded-xl border ${!isCampActivity?'bg-emerald-700 text-white':''}`}>Jadwal Kegiatan</button>
+        <button type="button" disabled={isProcessing} onClick={() => {setAttendanceKind('activity');setSelectedScheduleId('');setDashFilterActivity('all');}} className={`px-4 py-3 rounded-xl border ${isCampActivity?'bg-emerald-700 text-white':''}`}>Aktivitas Perkemahan</button>
+      </div>}
       {toast && (
         <div className="p-3.5 rounded-2xl bg-white dark:bg-[#1C1C1E] border border-emerald-500/40 text-xs text-emerald-800 dark:text-emerald-300 font-semibold flex items-center justify-between shadow-lg animate-in fade-in">
           <span>{toast}</span>
@@ -643,22 +652,22 @@ export const AttendanceScanner: React.FC<{ activityOnly?: boolean; initialSchedu
             <div>
               <h3 className="text-sm font-bold text-[#171717] dark:text-white flex items-center gap-2">
                 <CalendarCheck className="w-4 h-4 text-[#E1306C]" />
-                <span>Presensi Kehadiran Sesi Kegiatan & Apel</span>
+                <span>Presensi &amp; Poin {isCampActivity ? 'Aktivitas Perkemahan' : 'Jadwal Kegiatan'}</span>
               </h3>
               <p className="text-xs text-[#6B7280] dark:text-slate-400 mt-0.5">
-                Pilih agenda kegiatan untuk mencatat kehadiran peserta dan mencegah pencatatan ganda.
+                Pilih {itemLabel}. Poin dihitung terpisah oleh GAS untuk setiap peserta.
               </p>
             </div>
 
             {/* Session Selector */}
             <div>
-              <label className="text-xs font-semibold text-[#171717] dark:text-slate-300 block mb-1">Pilih Sesi Kegiatan:</label>
+              <label className="text-xs font-semibold text-[#171717] dark:text-slate-300 block mb-1">Pilih {itemLabel}:</label>
               <select
                 value={selectedScheduleId}
                 onChange={e => setSelectedScheduleId(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-[#FAFAFA] dark:bg-[#1A1A1E] border border-[#ECECEF] dark:border-white/10 rounded-xl text-base md:text-xs text-[#171717] dark:text-white min-h-[44px]"
               >
-                <option value="">Pilih agenda kegiatan</option>
+                <option value="">Pilih {itemLabel}</option>
                 {scheduleItems.map(s => (
                   <option key={s.id} value={s.id}>
                     Hari ke-{s.dayNumber} · {s.time} · {s.title} ({s.location}) · {s.xpReward || 0} poin
@@ -667,8 +676,8 @@ export const AttendanceScanner: React.FC<{ activityOnly?: boolean; initialSchedu
               </select>
             </div>
 
-            {!loadingData && scheduleItems.length === 0 && <p role="status" className="text-sm text-amber-700">Belum ada agenda aktif dari GAS. Tambahkan jadwal kegiatan terlebih dahulu.</p>}
-            <p className="text-xs text-slate-600 dark:text-slate-300">Poin mengikuti agenda di GAS. Satu peserta mendapat poin sekali untuk setiap agenda, termasuk jika berganti petugas.</p>
+            {!loadingData && scheduleItems.length === 0 && <p role="status" className="text-sm text-amber-700">Belum ada {itemLabel} aktif dari GAS. Tambahkan data terlebih dahulu.</p>}
+            <p className="text-xs text-slate-600 dark:text-slate-300">Poin mengikuti {isCampActivity ? 'Activities.xp_points' : 'Schedules.xp_reward'} di GAS. Satu peserta mendapat poin sekali untuk setiap {itemLabel}.</p>
             {/* Scan or Input */}
             <div className="flex gap-2">
               <input
@@ -746,7 +755,7 @@ export const AttendanceScanner: React.FC<{ activityOnly?: boolean; initialSchedu
             </div>
           </div>
 
-          <label className="block text-sm">Agenda kegiatan
+          <label className="block text-sm">{isCampActivity ? 'Aktivitas Perkemahan' : 'Jadwal Kegiatan'}
             <select className="block w-full p-3 rounded-xl border text-slate-900" value={dashFilterActivity} onChange={e => setDashFilterActivity(e.target.value)}>
               <option value="all">Pernah hadir pada kegiatan mana pun</option>
               {scheduleItems.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
