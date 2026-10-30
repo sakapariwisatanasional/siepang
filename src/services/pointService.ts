@@ -150,7 +150,7 @@ class PointService {
           created_at: now,
           created_by: actor.id,
         },
-      });
+      }, category === 'peer_appreciation' ? { timeoutMs: 45000 } : undefined);
       const row = saved.data?.record;
       if (!saved.ok || !row?.id || String(row.participant_id) !== participantId || Number(row.amount) !== amount) {
         throw new Error(saved.error?.message || 'GAS belum mengonfirmasi transaksi XP.');
