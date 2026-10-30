@@ -5,8 +5,9 @@
  * NOTE: This is an ADDITIVE page component. Mount it as a dedicated route/tab
  * with role checks in App.tsx; backend independently enforces permissions.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { Archive, CheckCircle2, ExternalLink, Film, Image as ImageIcon, Loader2, Pencil, Plus, RefreshCw, Save, Search, X, AlertCircle } from 'lucide-react';
+import { apiTransport } from '../../services/apiTransport';
 import { documentationService, type GalleryUrlRecord } from '../../services/documentationService';
 
 type GalleryForm = {
@@ -93,6 +94,52 @@ const validHttps = (value: string) => {
     const u = new URL(value);
     return u.protocol === 'https:' && !!u.hostname && !u.username && !u.password;
   } catch { return false; }
+};
+
+type CarouselSettings = { carousel_settings: boolean; saved?: boolean; event_id: string; configured: boolean; enabled: boolean; folder_url: string; folder_name: string; version: string; updated_at?: string };
+const CarouselSettingsPanel: React.FC = () => {
+  const [settings,setSettings] = useState<CarouselSettings|null>(null);
+  const [folder,setFolder] = useState('');
+  const [enabled,setEnabled] = useState(true);
+  const [loading,setLoading] = useState(true);
+  const [saving,setSaving] = useState(false);
+  const [error,setError] = useState('');
+  const [notice,setNotice] = useState('');
+  const [revision,setRevision] = useState(0);
+  const saveLock = useRef(false);
+  const mounted = useRef(false);
+  useEffect(() => {mounted.current=true;return () => {mounted.current=false;};},[]);
+  useEffect(() => {
+    let active=true;setLoading(true);setError('');
+    apiTransport.send<CarouselSettings>('gallery.admin.list',{view:'DRIVE_CAROUSEL_SETTINGS'},{timeoutMs:45000}).then(result => {
+      if(!result.ok || !result.data?.carousel_settings || typeof result.data.version!=='string')throw new Error(result.error?.message || 'Backend pengaturan carousel belum tersedia. Perbarui dua modul galeri GAS dan deployment.');
+      if(active){setSettings(result.data);setFolder(result.data.folder_url||'');setEnabled(result.data.configured?result.data.enabled:true);}
+    }).catch(e => {if(active)setError(e?.message||'Gagal membaca pengaturan dari GAS.');}).finally(() => {if(active)setLoading(false);});
+    return () => {active=false;};
+  },[revision]);
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();if(saveLock.current || !settings)return;
+    saveLock.current=true;setSaving(true);setError('');setNotice('');
+    try {
+      const result=await apiTransport.send<CarouselSettings>('gallery.admin.save',{view:'DRIVE_CAROUSEL_SETTINGS',event_id:settings.event_id,version:settings.version,enabled,folder_url:folder.trim()},{timeoutMs:45000});
+      if(!result.ok || !result.data?.saved || !result.data.carousel_settings || result.data.event_id!==settings.event_id)throw new Error(result.error?.message||'Penyimpanan belum dikonfirmasi GAS. Muat ulang pengaturan sebelum mencoba kembali.');
+      if(mounted.current){setSettings(result.data);setFolder(result.data.folder_url);setEnabled(result.data.enabled);setNotice(result.data.enabled?'Carousel aktif. Buka atau muat ulang portal publik untuk melihat foto.':'Carousel dinonaktifkan. Galeri foto dan video lain tetap tersedia.');}
+    }catch(e:any){if(mounted.current)setError((e?.message||'Gagal menyimpan pengaturan.')+' Isian tetap tersedia. Jika koneksi terputus, muat ulang pengaturan untuk memeriksa hasilnya.');}
+    finally{saveLock.current=false;if(mounted.current)setSaving(false);}
+  };
+  return <section aria-label="Pengaturan carousel dokumentasi" className="space-y-4 rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm dark:border-emerald-900 dark:bg-slate-900 sm:p-6">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-bold text-[#203C33] dark:text-white">Carousel Dokumentasi Portal Publik</h2><p className="mt-1 text-sm text-slate-500">Tautkan folder foto untuk event aktif. Pengaturan disimpan di GAS.</p></div><button type="button" disabled={loading||saving} onClick={() => {setNotice('');setRevision(x=>x+1);}} className="min-h-11 rounded-xl border px-3 py-2 text-sm disabled:opacity-40">Muat ulang pengaturan</button></div>
+    {loading && <p role="status" className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin"/>Membaca pengaturan...</p>}
+    {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+    {notice && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
+    {!loading && settings && <form onSubmit={e=>void save(e)} className="space-y-4"><p className="text-sm text-slate-600 dark:text-slate-300">Status tersimpan: <strong>{settings.configured?(settings.enabled?'Aktif':'Nonaktif'):'Belum dikonfigurasi'}</strong>{settings.folder_name?` · ${settings.folder_name}`:''}</p>
+      <fieldset disabled={saving} className="space-y-4 disabled:opacity-60"><label className="flex min-h-11 items-center gap-3 text-sm font-semibold text-slate-700 dark:text-slate-200"><input type="checkbox" checked={enabled} onChange={e=>setEnabled(e.target.checked)} className="h-5 w-5 accent-emerald-700"/>Aktifkan carousel pada portal publik</label>
+      <label className="block space-y-2 text-sm font-semibold text-slate-700 dark:text-slate-200">Link folder Google Drive<input type="url" required={enabled} value={folder} onChange={e=>setFolder(e.target.value)} placeholder="https://drive.google.com/drive/folders/..." className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base font-normal text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white"/></label>
+      <p className="text-xs text-slate-500">Gunakan akses siapa saja yang memiliki link sebagai pembaca untuk folder dan foto. Foto di subfolder tidak dibaca. Izin Drive tidak diubah otomatis.</p>
+      <button type="button" onClick={()=>{setFolder('https://drive.google.com/drive/folders/1QKiCvE84puhv7XRtc--0ODEIm8XzmVnX');setEnabled(true);}} className="min-h-11 rounded-xl border border-emerald-300 px-3 py-2 text-sm text-emerald-800 dark:text-emerald-200">Isi folder dokumentasi Jambore</button>
+      <button type="submit" className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white sm:w-auto">{saving?<Loader2 className="h-4 w-4 animate-spin"/>:<Save className="h-4 w-4"/>}{saving?'Memeriksa folder & menyimpan...':'Simpan Pengaturan Carousel'}</button></fieldset>
+      <p className="text-xs text-slate-500">GAS memeriksa akses folder sebelum mengaktifkan carousel. Maksimal 60 foto; daftar diperbarui melalui cache hingga 2 menit.</p></form>}
+  </section>;
 };
 
 export const AdminPublicGalleryManager: React.FC = () => {
@@ -193,6 +240,8 @@ export const AdminPublicGalleryManager: React.FC = () => {
           <button type="button" onClick={() => { setForm(emptyForm()); setError(''); setNotice(''); }} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"><Plus className="h-4 w-4"/> Tambah Media</button>
         </div>
       </div>
+
+      <CarouselSettingsPanel/>
 
       {error && <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0"/>{error}</div>}
       {notice && <div role="status" className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0"/>{notice}</div>}
