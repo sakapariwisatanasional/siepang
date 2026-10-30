@@ -96,6 +96,8 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   // Anti-abuse state
   const [givenTypes, setGivenTypes] = useState<Set<PeerAppreciationType>>(new Set());
   const [checkingAppreciations, setCheckingAppreciations] = useState(false);
+  const [peerBusy, setPeerBusy] = useState(false);
+  const peerSubmitLock = useRef(false);
 
   const [pointKind, setPointKind] = useState<'schedule' | 'activity' | null>(null);
   const [pointOptions, setPointOptions] = useState<Array<{id:string;name:string;xp:number}>>([]);
@@ -106,11 +108,11 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   const [pointWaitSeconds, setPointWaitSeconds] = useState(0);
   useEffect(() => {
     setPointWaitSeconds(0);
-    if (!pointBusy) return;
+    if (!pointBusy && !peerBusy) return;
     const startedAt = Date.now();
     const timer = setInterval(() => setPointWaitSeconds(Math.floor((Date.now()-startedAt)/1000)),1000);
     return () => clearInterval(timer);
-  }, [pointBusy]);
+  }, [pointBusy, peerBusy]);
   const [pointError, setPointError] = useState('');
   const [pointResult, setPointResult] = useState('');
   const [pointReload, setPointReload] = useState(0);
@@ -130,7 +132,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     onClose();
   };
   useEffect(() => {
-    if (!isOpen) cancelPointClose();
+    if (!isOpen) { scanSessionVersion.current++; cancelPointClose(); }
     return cancelPointClose;
   }, [isOpen]);
   const currentUser = authService.getCurrentUser();
@@ -138,6 +140,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   const canViewHealth = currentRole === 'health_officer' || currentRole === 'workspace_admin' || currentRole === 'superadmin';
   const canCheckIn = currentRole === 'registration_officer' || currentRole === 'workspace_admin' || currentRole === 'superadmin';
   const assignedRoles = [currentRole, ...(Array.isArray((currentUser as any)?.roles) ? (currentUser as any).roles : [])];
+  const canGivePeerAppreciation = !!currentUser?.id;
   const canTakeAttendance = assignedRoles.some(role => ['attendance_officer','registration_officer','committee','event_admin','workspace_admin','superadmin'].includes(role));
 
   useEffect(() => {
@@ -289,6 +292,8 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   useEffect(() => {
     if (!isOpen) {
       setScanPaused(false);
+      setShowPeerModal(false);
+      setGivenTypes(new Set());
       setScannedParticipant(null);
       setScannedUserQr(null);
       setScannedActivityResult(null);
@@ -452,11 +457,12 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   };
 
   const handleOpenPeerModal = async () => {
-    if (!scannedParticipant) return;
+    if (!scannedParticipant || !canGivePeerAppreciation || peerSubmitLock.current) return;
     if (currentUser?.participantCode && scannedParticipant.code === currentUser.participantCode) {
       setActionErrorMessage('Tidak boleh memberikan apresiasi kepada diri sendiri.');
       return;
     }
+    const openingVersion = scanSessionVersion.current;
     setCheckingAppreciations(true);
     try {
       // Langsung periksa riwayat pemberi + penerima di GAS, tanpa memuat
@@ -465,31 +471,40 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
       // The ledger XPTransaction view does not expose giver ID, so only disable
       // types already granted in this browser; GAS validates all historic grants.
       const existingTypes = await pointService.getGivenAppreciationTypes(scannedParticipant.id);
+      if (openingVersion !== scanSessionVersion.current) return;
       setGivenTypes(new Set(existingTypes));
       setActionErrorMessage(null);
       setShowPeerModal(true);
     } catch (err: any) {
-      setActionErrorMessage(err?.message || 'Gagal memeriksa riwayat apresiasi di GAS.');
+      if (openingVersion === scanSessionVersion.current) setActionErrorMessage(err?.message || 'Gagal memeriksa riwayat apresiasi di GAS.');
     } finally {
       setCheckingAppreciations(false);
     }
   };
 
   const handlePeerAppreciation = async (type: PeerAppreciationType) => {
-    if (!scannedParticipant) return;
+    if (!scannedParticipant || !canGivePeerAppreciation || peerSubmitLock.current || givenTypes.has(type)) return;
+    peerSubmitLock.current = true;
+    setPeerBusy(true);
+    setActionErrorMessage(null);
+    const operationVersion = scanSessionVersion.current;
+    const target = scannedParticipant;
     try {
-      await pointService.givePeerAppreciation(scannedParticipant.id, scannedParticipant.name, type);
-      participantService.invalidateScannerIdentityCache(scannedParticipant.id);
+      await pointService.givePeerAppreciation(target.id, target.name, type);
+      participantService.invalidateScannerIdentityCache(target.id);
+      if (operationVersion !== scanSessionVersion.current) return;
       setGivenTypes(prev => new Set(prev).add(type));
       setShowPeerModal(false);
-      setActionSuccessMessage(`⚜️ Apresiasi "${type}" tersimpan di GAS (PointTransactions).`);
-      setTimeout(() => {
-        setActionSuccessMessage(null);
-        setScannedParticipant(null);
-        onClose();
+      setActionSuccessMessage(`Apresiasi "${type}" terkonfirmasi di GAS.`);
+      cancelPointClose();
+      pointCloseTimer.current = setTimeout(() => {
+        if (operationVersion === scanSessionVersion.current) finishPointScan();
       }, 1500);
     } catch (err: any) {
-      setActionErrorMessage(err.message);
+      if (operationVersion === scanSessionVersion.current) setActionErrorMessage(err?.message || 'Pemberian poin belum terkonfirmasi. Silakan coba lagi.');
+    } finally {
+      peerSubmitLock.current = false;
+      setPeerBusy(false);
     }
   };
 
@@ -679,8 +694,8 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                     </button>
                   )}
 
-                  {/* 3. Peer Appreciation (With Anti-Abuse Rules) */}
-                  <button
+                  {/* Every signed-in user may give appreciation; GAS validates each transaction. */}
+                  {canGivePeerAppreciation && <button
                     disabled={checkingAppreciations}
                     onClick={handleOpenPeerModal}
                     className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-semibold text-xs transition-colors border border-amber-500/30 cursor-pointer"
@@ -690,7 +705,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                       <span>Beri Tanda Apresiasi Kawan Pramuka</span>
                     </div>
                     <ChevronRight className="w-4 h-4 text-amber-500" />
-                  </button>
+                  </button>}
 
                   {/* 4. Rekam Medis (HEALTH OFFICER ONLY — PRIVACY ENFORCED) */}
                   {canViewHealth ? (
@@ -778,11 +793,15 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
             </div>
 
             <div className="space-y-2">
+              {peerBusy && <div role="status" aria-live="polite" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800"><span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />Sedang menyimpan apresiasi ke GAS...</span><span>{pointWaitSeconds} detik. Menunggu konfirmasi penyimpanan.</span></div>}
+              {actionErrorMessage && <p role="alert" className="text-sm text-red-700">{actionErrorMessage}</p>}
               {PEER_APPRECIATIONS.map(item => (
                 <button
                   key={item.type}
+                  disabled={peerBusy || givenTypes.has(item.type)}
+                  aria-busy={peerBusy}
                   onClick={() => handlePeerAppreciation(item.type)}
-                  className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-white/5 hover:bg-amber-500/15 border border-[#ECECEF] dark:border-white/10 text-left transition-colors cursor-pointer"
+                  className="w-full flex items-center justify-between p-3 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed bg-slate-50 dark:bg-white/5 hover:bg-amber-500/15 border border-[#ECECEF] dark:border-white/10 text-left transition-colors cursor-pointer"
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-sm">
