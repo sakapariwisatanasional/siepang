@@ -758,6 +758,8 @@ export const ScheduleActivityEditor: React.FC = () => {
                     type="button"
                     onClick={() => setSelectedQrActivity({
                       id: act.id,
+                      scheduleId: `ACTIVITY:${act.id}`,
+                      scheduleXpReward: Number(act.pointRule || 0),
                       title: act.name || act.title || '',
                       category: act.type,
                       location: act.location,
@@ -766,7 +768,7 @@ export const ScheduleActivityEditor: React.FC = () => {
                     className="px-3 py-1.5 rounded-xl bg-red-700/80 hover:bg-red-600 text-slate-900 text-[11px] font-bold flex items-center gap-1.5 shadow"
                   >
                     <QrCode className="w-3.5 h-3.5" />
-                    <span>Kelola QR Pos & Tantangan</span>
+                    <span>Kelola &amp; Cetak QR Aktivitas</span>
                   </button>
                 </div>
               </div>
