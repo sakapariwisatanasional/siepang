@@ -174,7 +174,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     try {
       if (/^https?:\/\//i.test(code)) {
         const url = new URL(code);
-        code = url.searchParams.get('p') || url.searchParams.get('participant_id') || code;
+        code = url.searchParams.get('p') || url.searchParams.get('participant_id') || url.searchParams.get('user_id') || code;
       }
     } catch { /* Gunakan token QR asli bila bukan URL valid. */ }
 
@@ -190,6 +190,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
     // bukan ke participants.list. Ini menjaga QR peserta lama tetap berjalan.
     const normalizedCode = code.toUpperCase();
     const isUserQr =
+      /^usr_[A-Za-z0-9_-]+$/i.test(code) ||
       normalizedCode.startsWith('SIEPANG-USER-') ||
       normalizedCode.startsWith('SIEPANG:QR:V1:USR_') ||
       normalizedCode.startsWith('SIEPANG:QR:V1:USER_');
@@ -204,7 +205,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
         const payload = userQrRes.data || {};
         const user = payload.user || payload.profile || payload;
         const userId = String(
-          user.user_id || user.userId || payload.user_id || payload.userId || ''
+          user.user_id || user.userId || user.id || payload.user_id || payload.userId || ''
         ).trim();
 
         if (!userId) {
