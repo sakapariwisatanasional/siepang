@@ -344,34 +344,19 @@ const VisitorPublicRegistrationForm: React.FC<VisitorPublicRegistrationModalProp
                 3. Waktu & Rencana Kunjungan
               </h4>
 
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">Tanggal Kunjungan *:</label>
-                  <input
-                    type="date" required
-                    value={visitDate}
-                    onChange={e => setVisitDate(e.target.value)}
-                    className="w-full px-2 py-1.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono text-xs outline-none"
-                  />
+              <div className="space-y-4 rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
+                <label className="block text-sm font-semibold text-slate-700">Tanggal kunjungan *<input type="date" required value={visitDate} onChange={e => setVisitDate(e.target.value)} className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base text-slate-900"/></label>
+                <p className="text-xs text-slate-600">Waktu menggunakan WIB (format 24 jam). Rencana datang dan pulang boleh dikosongkan. Kehadiran aktual dicatat petugas saat scan QR.</p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <label className="block text-sm font-semibold text-slate-700">Rencana datang · opsional<input type="time" step="60" value={expectedArrival} onChange={e => setExpectedArrival(e.target.value)} className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base text-slate-900"/></label>
+                  <label className="block text-sm font-semibold text-slate-700">Rencana pulang · opsional<input type="time" step="60" value={expectedDeparture} min={expectedArrival || undefined} onChange={e => setExpectedDeparture(e.target.value)} className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base text-slate-900"/></label>
                 </div>
-                <div>
-                  <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">Rencana Datang (Opsional):</label>
-                  <input
-                    type="time"
-                    value={expectedArrival}
-                    onChange={e => setExpectedArrival(e.target.value)}
-                    className="w-full px-2 py-1.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono text-xs outline-none"
-                  />
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => {const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Jakarta',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date());setExpectedArrival(parts);if(expectedDeparture && expectedDeparture<=parts)setExpectedDeparture('');}} className="min-h-11 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm text-emerald-800">Isi jam datang sekarang</button>
+                  {[1,2].map(hours => <button key={hours} type="button" disabled={!expectedArrival || Number(expectedArrival.slice(0,2))+hours>23} onClick={() => {const [h,m]=expectedArrival.split(':').map(Number);setExpectedDeparture(`${String(h+hours).padStart(2,'0')}:${String(m).padStart(2,'0')}`);}} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 disabled:opacity-40">Pulang {hours} jam setelah datang</button>)}
+                  <button type="button" onClick={() => {setExpectedArrival('');setExpectedDeparture('');}} className="min-h-11 px-3 py-2 text-sm text-slate-600 underline">Kosongkan waktu</button>
                 </div>
-                <div>
-                  <label className="text-slate-500 dark:text-slate-400 text-[10px] block mb-1">Rencana Pulang (Opsional):</label>
-                  <input
-                    type="time"
-                    value={expectedDeparture}
-                    onChange={e => setExpectedDeparture(e.target.value)}
-                    className="w-full px-2 py-1.5 bg-[#FAFAFA] dark:bg-white/5 border border-[#ECECEF] dark:border-white/10 rounded-xl text-[#171717] dark:text-white font-mono text-xs outline-none"
-                  />
-                </div>
+                <p className="text-xs text-slate-500">Rencana pulang harus sesudah rencana datang pada tanggal yang sama.</p>
               </div>
 
               <div className="grid grid-cols-2 gap-2.5">
