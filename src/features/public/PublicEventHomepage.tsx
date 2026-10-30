@@ -66,6 +66,7 @@ import { PublicSponsorStrip } from '../../components/banners/PublicSponsorStrip'
 import { GlobalFooter } from '../../components/layout/GlobalFooter';
 import { VisitorPublicRegistrationModal } from '../visitors/VisitorPublicRegistrationModal';
 import { MediaItem, LeaderboardEntry, ScheduleItem, Announcement } from '../../types';
+import { DrivePhotoCarousel } from '../documentation/DrivePhotoCarousel';
 import { ParticipantAvatar } from '../../components/ParticipantAvatar';
 import { resolveGoogleDriveImageUrl } from '../../utils/googleDriveImage';
 
@@ -1087,6 +1088,8 @@ export const PublicEventHomepage: React.FC<PublicEventHomepageProps> = ({
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
+
+        {isConfigured && <DrivePhotoCarousel />}
 
         {photoPreviews.length === 0 ? (
           <div className="p-8 rounded-2xl bg-white dark:bg-[#121215] border border-black/5 dark:border-white/10 text-center text-xs text-slate-500 dark:text-slate-400 space-y-1">
